@@ -93,9 +93,24 @@ const NotificationsBell = () => {
             ) : (
               items.map((it, i) => {
                 const Icon = ICONS[it.icon] || Bell;
+                // BUG 6 FIX: route each notification to its CORRECT
+                // destination. Before this fix every notification —
+                // wish, rsvp, expiring — opened the RSVPs page.
+                const handleClick = () => {
+                  setOpen(false);
+                  if (!it.profile_id) return;
+                  if (it.type === 'wish') {
+                    navigate(`/admin/profile/${it.profile_id}/wishes`);
+                  } else if (it.type === 'expiring') {
+                    navigate(`/admin/profile/${it.profile_id}/edit`);
+                  } else {
+                    // default — RSVP notifications
+                    navigate(`/admin/profile/${it.profile_id}/rsvps`);
+                  }
+                };
                 return (
                   <button key={i}
-                    onClick={() => { setOpen(false); if (it.profile_id) navigate(`/admin/profile/${it.profile_id}/rsvps`); }}
+                    onClick={handleClick}
                     className="w-full px-4 py-3 flex items-start gap-3 text-left transition-colors hover:bg-white/5 border-b"
                     style={{ borderColor: 'var(--lux-border)' }}
                     data-testid={`notification-item-${i}`}>

@@ -97,11 +97,28 @@ export const QuickEditModal = ({ open, onClose, profile, onSaved }) => {
                   className="lux-input" data-testid="quick-edit-date" />
               </Field>
               <Field label="Status">
+                {/* BUG 3 FIX (Option A): the PUBLISHED option used to be
+                    available here. Choosing it called PATCH .../quick which
+                    directly set status=PUBLISHED in Mongo, BYPASSING the
+                    lifecycle service so no credits were deducted. We removed
+                    the option — to publish a draft the photographer must use
+                    the Publish step in the full editor which deducts credits
+                    correctly. Quick-edit can still revert PUBLISHED → DRAFT
+                    (a "Revert to draft" option is shown if the profile is
+                    currently published) since unpublishing has no credit
+                    side-effect. */}
                 <select value={status} onChange={(e) => setStatus(e.target.value)}
                   className="lux-input" data-testid="quick-edit-status">
                   <option value="DRAFT">Draft</option>
-                  <option value="PUBLISHED">Published</option>
+                  {profile?.status === 'PUBLISHED' && (
+                    <option value="PUBLISHED">Published (current)</option>
+                  )}
                 </select>
+                {profile?.status !== 'PUBLISHED' && (
+                  <span className="block mt-1.5 text-[10px]" style={{ color: 'rgba(255,248,220,0.5)' }}>
+                    To publish, open the full editor → Publish step (credits will be deducted).
+                  </span>
+                )}
               </Field>
 
               <Field label={`Tags (${tags.length}/20)`}>

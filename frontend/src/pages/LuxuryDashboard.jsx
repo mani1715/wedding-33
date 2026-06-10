@@ -164,7 +164,7 @@ const LuxuryDashboard = () => {
     try { await navigator.clipboard.writeText(url); }
     catch (_) { prompt('Copy this link:', url); }
   };
-  const doDownloadQR = (p) => window.open(`/admin/profile/${p.id}/qr`, '_blank');
+  const doDownloadQR = (p) => window.open(`/admin/profile/${p.id}/qr-codes`, '_blank');
   const doWhatsApp = (p) => {
     const url = `${window.location.origin}/invite/${p.slug}`;
     const text = encodeURIComponent(`You're invited! ${p.bride_name} & ${p.groom_name} ✨ ${url}`);
@@ -173,10 +173,41 @@ const LuxuryDashboard = () => {
   const doViewAsGuest = (p) => window.open(`/invite/${p.slug}?preview=1`, '_blank');
 
   // Bulk --------------------------------------------------------------------
+  // BUG 2 FIX: Bulk Publish used to call the generic /bulk-action endpoint
+  // which sets status=PUBLISHED directly in Mongo, completely bypassing the
+  // lifecycle service — photographers could publish unlimited invitations
+  // for FREE by selecting many cards at once. We now loop publish through
+  // the proper lifecycle endpoint that deducts credits. All other actions
+  // (archive / unarchive / delete / unpublish) continue using bulk-action
+  // because they do not touch credits.
   const bulkAction = async (action) => {
     if (selected.size === 0) return;
     if (action === 'delete' && !window.confirm(`Move ${selected.size} weddings to trash?`)) return;
     const ids = Array.from(selected);
+
+    if (action === 'publish') {
+      const failures = [];
+      for (const id of ids) {
+        try {
+          await axios.post(`${API_URL}/api/weddings/${id}/publish`);
+        } catch (e) {
+          const msg = e?.response?.data?.detail || e?.message || 'Unknown error';
+          failures.push(`#${id.slice(0, 8)}: ${msg}`);
+        }
+      }
+      if (failures.length) {
+        alert(
+          `${ids.length - failures.length} of ${ids.length} published.\n\nErrors:\n` +
+          failures.slice(0, 5).join('\n') +
+          (failures.length > 5 ? `\n…and ${failures.length - 5} more` : '')
+        );
+      }
+      clearSel();
+      fetchPage();
+      refreshAuth?.(); // refresh credit balance pill in nav
+      return;
+    }
+
     await axios.post(`${API_URL}/api/admin/profiles/bulk-action`, { ids, action });
     clearSel();
     fetchPage();
@@ -422,7 +453,7 @@ const LuxuryDashboard = () => {
 
       <AIStoryComposer open={aiOpen} onClose={() => setAiOpen(false)} />
       <QuickEditModal open={!!editing} profile={editing} onClose={() => setEditing(null)} onSaved={onQuickSaved} />
-      <TopUpCreditsModal open={topUpOpen} onClose={() => setTopUpOpen(false)} onSuccess={() => { refreshAuth?.(); }} />
+      <TopUpCreditsModal open={topUpOpen} onClose={() => setTopUpOpen(false)} onSuccess={() => { setTopUpOpen(false); refreshAuth?.(); }} />
       <BulkActionBar
         selectedCount={selected.size}
         context={status}
@@ -454,6 +485,28 @@ const LuxuryDashboard = () => {
 };
 
 // ------------------------------------ Card --------------------------------------
+/**
+ * BUG 1 FIX: route to the correct edit form based on invitation_category.
+ * Wedding profiles → /admin/profile/:id/edit (LuxuryProfileForm).
+ * Birthday / half-saree / puberty / dhoti profiles → /admin/celebration/:id/edit
+ * (CelebrationProfileForm). Using the wrong form shows a blank/broken page.
+ *
+ * BUG 8 FIX: provide a human-readable label for the invitation category so
+ * the dashboard card can show a small badge next to the couple/celebrant name.
+ */
+const getEditRoute = (p) => {
+  const cat = p?.invitation_category || 'wedding';
+  if (cat !== 'wedding') return `/admin/celebration/${p.id}/edit`;
+  return `/admin/profile/${p.id}/edit`;
+};
+
+const CATEGORY_LABELS = {
+  baby_birthday: 'Baby Birthday',
+  half_saree:    'Half Saree',
+  puberty:       'Puberty Ceremony',
+  dhoti:         'Dhoti Ceremony',
+};
+
 const Card = ({
   p, i, selected, onSelect, stats,
   onQuickEdit, onDuplicate, onArchive, onUnarchive, onDelete,
@@ -522,6 +575,23 @@ const Card = ({
           {p.bride_name || 'Bride'} <span className="text-gold italic font-script">&</span> {p.groom_name || 'Groom'}
         </h3>
 
+        {/* BUG 8 FIX: invitation category badge — helps photographers
+            instantly tell apart wedding cards from baby birthday / half
+            saree / puberty / dhoti cards on a mixed-event dashboard. */}
+        {p.invitation_category && p.invitation_category !== 'wedding' && (
+          <span
+            className="inline-block mt-1 text-[9px] tracking-[0.2em] uppercase px-2 py-0.5 rounded-full"
+            style={{
+              background: 'rgba(212,175,55,0.10)',
+              border: '1px solid var(--lux-border)',
+              color: 'rgba(255,248,220,0.7)',
+            }}
+            data-testid={`category-badge-${p.id}`}
+          >
+            {CATEGORY_LABELS[p.invitation_category] || p.invitation_category.replace(/_/g, ' ')}
+          </span>
+        )}
+
         {/* Date + city */}
         <div className="flex flex-wrap items-center gap-3 text-[11px] mt-2"
           style={{ color: 'rgba(255,248,220,0.55)' }}>
@@ -541,7 +611,7 @@ const Card = ({
             data-testid={`expiring-banner-${p.id}`}>
             <AlertTriangle className="w-3.5 h-3.5" />
             <span>Expires in {expiringDays} day{expiringDays === 1 ? '' : 's'}</span>
-            <button onClick={() => navigate(`/admin/profile/${p.id}/edit`)}
+            <button onClick={() => navigate(getEditRoute(p))}
               className="ml-auto text-[10px] underline" data-testid={`expiring-extend-${p.id}`}>
               Extend
             </button>
@@ -595,7 +665,7 @@ const Card = ({
         <div className="mt-auto flex flex-wrap gap-2 text-xs">
           <ActionBtn onClick={() => navigate(`/admin/profile/${p.id}/invitations`)}
             icon={Link2} label="Get Invitation" testid={`get-invitation-${p.id}`} primary />
-          <ActionBtn onClick={() => navigate(`/admin/profile/${p.id}/edit`)}
+          <ActionBtn onClick={() => navigate(getEditRoute(p))}
             icon={Edit3} label="Edit" testid={`edit-${p.id}`} />
           <ActionBtn onClick={() => navigate(`/admin/profile/${p.id}/rsvps`)}
             icon={MessageCircle} label="RSVPs" testid={`rsvp-${p.id}`} />

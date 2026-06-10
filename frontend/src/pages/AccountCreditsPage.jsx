@@ -15,6 +15,7 @@ import { motion } from 'framer-motion';
 import { Sparkles, Gift, CheckCircle, AlertCircle, ArrowDownLeft, ArrowUpRight, RotateCcw, Wallet, Copy, Users, RefreshCw, ArrowLeft, ArrowRight, Coins } from 'lucide-react';
 import BackButton from '@/components/BackButton';
 import PhotographerTierCard from '@/components/PhotographerTierCard';
+import TopUpCreditsModal from '@/components/dashboard/TopUpCreditsModal';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -76,6 +77,12 @@ export default function AccountCreditsPage() {
 
   const [pricing, setPricing] = useState(null);
   const [myTier, setMyTier] = useState(null);
+
+  // BUG 7 FIX: photographers buying credits used to be sent to /purchase
+  // (the design-invitation buy flow) which has no payment option for credit
+  // packs. Now we open the same Razorpay TopUpCreditsModal the dashboard
+  // uses, which talks to /api/admin/credits/purchase/create-order + verify.
+  const [topUpOpen, setTopUpOpen] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/api/public/pricing/effective?audience=${audience}`)
@@ -388,8 +395,14 @@ export default function AccountCreditsPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        // Razorpay integration is wired elsewhere — for now route to existing flow.
-                        navigate(`/purchase?pack=${p.credits}&audience=${audience}`);
+                        // BUG 7 FIX: photographers → Razorpay credit
+                        // purchase modal (correct endpoint + tier-aware
+                        // pricing). Normal users → /purchase design flow.
+                        if (isPhotographer) {
+                          setTopUpOpen(true);
+                        } else {
+                          navigate(`/purchase?pack=${p.credits}&audience=${audience}`);
+                        }
                       }}
                       className="mt-3 px-3 py-2 rounded-lg text-[10px] tracking-[0.3em] uppercase font-medium"
                       style={{ background: 'linear-gradient(135deg,#D4AF37,#B8941F)', color: '#1A0F08' }}
@@ -689,6 +702,14 @@ export default function AccountCreditsPage() {
           })}
         </div>
       </div>
+
+      {/* BUG 7 FIX: Razorpay credit-pack purchase modal for photographers.
+          Opened by the "Buy now" button when isPhotographer === true. */}
+      <TopUpCreditsModal
+        open={topUpOpen}
+        onClose={() => setTopUpOpen(false)}
+        onSuccess={() => { setTopUpOpen(false); refresh(); }}
+      />
     </div>
   );
 }

@@ -267,6 +267,26 @@ def build_admin_dashboard_v2_router(db, require_admin, log_audit_action):
             raise HTTPException(status_code=400, detail="No fields to update")
         if "tags" in upd and len(upd["tags"]) > 20:
             raise HTTPException(status_code=400, detail="Maximum 20 tags allowed")
+
+        # BUG 3 FIX (Option B — server-side guard):
+        # Quick-edit must NEVER be a backdoor to publishing without paying
+        # credits. If the caller is trying to set status=PUBLISHED on a
+        # profile that isn't already published, refuse — they must go
+        # through the lifecycle service (POST /api/weddings/{id}/publish)
+        # which deducts a credit. Unpublishing (PUBLISHED → DRAFT) is fine
+        # because it has no credit side-effect.
+        if upd.get("status") == "PUBLISHED":
+            existing = await db.profiles.find_one({"id": profile_id}, {"status": 1, "is_published": 1})
+            already_published = bool(existing and (existing.get("status") == "PUBLISHED" or existing.get("is_published")))
+            if not already_published:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "To publish, use the Publish step in the full editor. "
+                        "This is required so credits are deducted correctly."
+                    ),
+                )
+
         upd["updated_at"] = datetime.now(timezone.utc).isoformat()
         if upd.get("status") == "PUBLISHED":
             upd["is_published"] = True
