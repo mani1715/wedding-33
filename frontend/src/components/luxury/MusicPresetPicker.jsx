@@ -1,19 +1,22 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, Check, Loader2, Music } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
-const MOODS = ['all', 'devotional', 'classical', 'pleasant', 'cinematic', 'romantic'];
+const WEDDING_MOODS = ['all', 'devotional', 'classical', 'pleasant', 'cinematic', 'romantic'];
+const CELEBRATION_MOODS = ['all', 'lullaby', 'joyful', 'devotional', 'pleasant', 'cinematic'];
 
 /**
  * 20-track curated preset picker with inline preview audio.
  * - value: currently selected URL (string)
  * - onChange(url): emit selected URL
  * - allowCustom: also show a "paste your own URL" field
+ * - category: 'wedding' (default) or 'celebration' — switches the curated
+ *   library and the mood filter list.
  */
-const MusicPresetPicker = ({ value, onChange, allowCustom = true }) => {
+const MusicPresetPicker = ({ value, onChange, allowCustom = true, category = 'wedding' }) => {
   const [presets, setPresets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [playingId, setPlayingId] = useState(null);
@@ -24,15 +27,33 @@ const MusicPresetPicker = ({ value, onChange, allowCustom = true }) => {
   const [playError, setPlayError] = useState('');
   const audioRef = useRef(null);
 
+  const MOODS = useMemo(
+    () => (category === 'celebration' ? CELEBRATION_MOODS : WEDDING_MOODS),
+    [category]
+  );
+
   useEffect(() => {
     (async () => {
       try {
-        const res = await axios.get(`${API_URL}/api/music/presets`);
-        setPresets(res.data?.presets || []);
+        const url = category === 'celebration'
+          ? `${API_URL}/api/music/presets?category=celebration`
+          : `${API_URL}/api/music/presets`;
+        const res = await axios.get(url);
+        // Normalise — backend may return either {title,id,…} or
+        // {name,preset_id,…}; we want a single shape here.
+        const raw = res.data?.presets || [];
+        const normalised = raw.map((p) => ({
+          id: p.id || p.preset_id,
+          title: p.title || p.name,
+          url: p.url,
+          mood: p.mood || p.category,
+          duration_sec: p.duration_sec || 180,
+        }));
+        setPresets(normalised);
       } catch (e) { /* silent */ }
       finally { setLoading(false); }
     })();
-  }, []);
+  }, [category]);
 
   useEffect(() => {
     if (presets.find((p) => p.url === value)) setCustomUrl('');

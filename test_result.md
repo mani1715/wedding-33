@@ -352,6 +352,47 @@ agent_communication:
         Lint clean, frontend compiles successfully.
     - agent: "main"
       message: |
+        BATCH B (round 1 — partial): added two non-wedding form features
+        as requested by the user:
+          1. Background-music picker (smaller curated 10-track library
+             for babies/half-saree/puberty/dhoti — separate from the
+             20-track wedding library):
+               • /app/backend/music_library.py — new
+                 CELEBRATION_MUSIC_LIBRARY constant + the existing
+                 /api/music/presets endpoint now accepts
+                 ?category=celebration to return that smaller set.
+               • /app/frontend/src/components/luxury/MusicPresetPicker.jsx
+                 — accepts new `category` prop, switches the curated
+                 list AND the mood-filter pills accordingly.
+               • /app/frontend/src/pages/CelebrationProfileForm.jsx
+                 — new "Background music" section in Step 1 (Photos &
+                 Story) with the celebration picker + autoplay checkbox.
+                 background_music is saved on the profile as
+                 { enabled, url, file_url, autoplay } so the existing
+                 CelebrationPublicView audio player picks it up.
+          2. AI translation (Gemini, credit-gated):
+               • /app/backend/celebration_translation.py — NEW file.
+                 Gemini 2.5 Flash with the existing GEMINI_API_KEY,
+                 strict JSON response. Two routes:
+                   - POST /api/admin/profiles/{id}/translate   (1 credit)
+                   - POST /api/users/profiles/{id}/translate   (free)
+                 Persists into profiles.translations[<lang>].
+                 Supported langs: tamil, telugu, kannada, malayalam,
+                 hindi (english is source).
+               • server.py — router mounted under /api prefix.
+               • CelebrationProfileForm — new "AI Translation (Gemini)"
+                 panel under Languages with per-language Translate
+                 (1 cr) button.  Disabled until the profile is saved
+                 (we need an id to charge against + persist on).
+        Verified:
+          • curl /api/music/presets?category=celebration → 10 tracks ✓
+          • POST /api/admin/profiles/x/translate without auth → 401 ✓
+          • webpack compiled successfully, no blocking lint errors
+        Pending verification: end-to-end translate test via UI is best
+        done by the user with their real credits + saved profile.
+
+    - agent: "main"
+      message: |
         DESIGN-PARITY BUG (Jul 2026 round-3): Published celebration
         invitation HERO did NOT visually match the home-page PREVIEW
         even though they shared most components. Concrete repro from

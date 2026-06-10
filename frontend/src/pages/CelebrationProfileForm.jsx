@@ -5,10 +5,11 @@ import axios from 'axios';
 import {
   ArrowLeft, Save, Sparkles, ChevronRight, ChevronLeft, Check,
   Heart, Calendar, MapPin, User, Image as ImageIcon, Video, Radio,
-  Trash2, Plus, Eye, ExternalLink,
+  Trash2, Plus, Eye, ExternalLink, Music, Languages, Loader2, AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useUserAuth } from '@/context/UserAuthContext';
+import MusicPresetPicker from '@/components/luxury/MusicPresetPicker';
 import '@/styles/luxury.css';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
@@ -84,7 +85,18 @@ const CelebrationProfileForm = () => {
     video_link: '',
     live_link: '',
     closing_message: '',
+    // Background music — picked from celebration-curated preset library
+    // or pasted as a custom URL. Same shape as wedding flow so the
+    // public renderer (CelebrationPublicView) keeps working.
+    background_music_url: '',
+    background_music_autoplay: false,
+    // AI-translated copies (read-only here; populated by "Translate now"
+    // button further down).  Shape: { tamil: {...}, telugu: {...}, ... }
+    translations: {},
   });
+  // Translation UX state — independent of `saving` so the user can keep
+  // editing while a translation is in flight.
+  const [translating, setTranslating] = useState({ inflight: false, lang: '', err: '' });
 
   useEffect(() => {
     document.body.classList.add('luxe', 'luxe-grain', 'luxe-vignette');
@@ -144,6 +156,9 @@ const CelebrationProfileForm = () => {
             video_link: ci.video_link || '',
             live_link: ci.live_link || '',
             closing_message: ci.closing_message || '',
+            background_music_url: p.background_music?.url || p.background_music?.file_url || '',
+            background_music_autoplay: !!p.background_music?.autoplay,
+            translations: p.translations || ci.translations || {},
           }));
         }
       } catch (e) {
@@ -166,6 +181,42 @@ const CelebrationProfileForm = () => {
     const exists = f.selected_features.includes(key);
     return { ...f, selected_features: exists ? f.selected_features.filter((x) => x !== key) : [...f.selected_features, key] };
   });
+
+  // ----- AI translation (Gemini-backed, credit-gated) ----------------------
+  // The "Translate now" button shows up next to each non-English language.
+  // It only works on a SAVED profile (so we have an id to charge against
+  // and persist the translations on). The backend deducts 1 credit per
+  // language and writes the translated copy into profile.translations.
+  const translateLang = useCallback(async (lang) => {
+    if (!profileId) {
+      setError('Please save the profile first, then translate.');
+      return;
+    }
+    setTranslating({ inflight: true, lang, err: '' });
+    try {
+      const endpoint = isAdminRoute
+        ? `${API_URL}/api/admin/profiles/${profileId}/translate`
+        : `${API_URL}/api/users/profiles/${profileId}/translate`;
+      const { data } = await axios.post(endpoint, { language: lang });
+      // Merge returned translation into form state
+      setForm((f) => ({
+        ...f,
+        translations: { ...(f.translations || {}), [lang]: data.translation || {} },
+      }));
+      setSuccess(`Translated to ${lang}. ${data.credits_remaining != null ? `${data.credits_remaining} credit${data.credits_remaining === 1 ? '' : 's'} remaining.` : ''}`);
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      const msg = typeof detail === 'string'
+        ? detail
+        : (e?.response?.status === 402
+            ? 'Not enough credits to translate. Please top up.'
+            : 'Translation failed. Please try again.');
+      setTranslating({ inflight: false, lang: '', err: msg });
+      setError(msg);
+      return;
+    }
+    setTranslating({ inflight: false, lang: '', err: '' });
+  }, [profileId, isAdminRoute]);
 
   const totalCredits = useMemo(() => {
     if (!meta) return 0;
@@ -250,8 +301,14 @@ const CelebrationProfileForm = () => {
         love_story: form.story || '',
         couple_photo_url: form.cover_photo_url || '',
         link_expiry_type: preselectedExpiry || 'permanent',
-        background_music: { enabled: false, url: '', autoplay: false },
-        sections_enabled: {},
+        background_music: {
+          enabled: !!form.background_music_url,
+          url: form.background_music_url || '',
+          file_url: form.background_music_url || '',
+          autoplay: !!form.background_music_autoplay,
+        },
+        translations: form.translations || {},
+        sections_enabled: form.background_music_url ? { music: true } : {},
         map_settings: form.venue_map_link ? { embed_enabled: true, map_link: form.venue_map_link } : { embed_enabled: false },
         selected_features: form.selected_features,
       };
@@ -415,6 +472,69 @@ const CelebrationProfileForm = () => {
           ))}
         </div>
       </Field>
+
+      {/* ── AI translation (Gemini, credit-gated) ──────────────────────
+          Available languages: Tamil, Telugu, Kannada, Malayalam, Hindi.
+          Photographer enables a language (above) → clicks "Translate now
+          (1 credit)" → invitation copy (welcome, story, closing) is
+          auto-translated using Gemini and saved on the profile.
+          English is always the source language. */}
+      <Field label="AI Translation (Gemini)" full>
+        <div className="lux-glass p-4 space-y-3"
+             style={{ background: 'rgba(212,175,55,0.04)', border: '1px solid rgba(212,175,55,0.18)' }}>
+          <div className="flex items-start gap-3">
+            <Languages className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#D4AF37' }} />
+            <div className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,248,220,0.7)' }}>
+              We translate the welcome message, story, and closing line into your selected language using <span style={{ color: '#D4AF37' }}>Gemini AI</span>.
+              {' '}<span style={{ color: '#D4AF37', fontWeight: 600 }}>1 credit per language.</span>{' '}
+              {isEdit
+                ? 'Pick a language below and tap "Translate now".'
+                : 'Save the invitation first — then come back to this step to translate.'}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {['tamil', 'telugu', 'kannada', 'malayalam', 'hindi'].map((langId) => {
+              const L = LANGUAGES.find((x) => x.id === langId);
+              const enabled = form.enabled_languages.includes(langId);
+              const translated = !!form.translations?.[langId];
+              const isInflight = translating.inflight && translating.lang === langId;
+              return (
+                <div key={langId}
+                     className="flex items-center justify-between rounded-lg px-3 py-2"
+                     style={{ background: 'rgba(255,248,220,0.03)', border: '1px solid rgba(212,175,55,0.12)' }}
+                     data-testid={`cf-translate-row-${langId}`}>
+                  <div className="min-w-0">
+                    <div className="text-sm" style={{ color: enabled ? '#FFF8DC' : 'rgba(255,248,220,0.45)' }}>
+                      {L?.label} <span className="text-[10px] tracking-wider uppercase ml-1"
+                                       style={{ color: 'rgba(255,248,220,0.45)' }}>{langId}</span>
+                    </div>
+                    <div className="text-[10px] tracking-wider uppercase"
+                         style={{ color: translated ? '#86EFAC' : 'rgba(255,248,220,0.45)' }}>
+                      {translated ? '✓ Translated' : (enabled ? 'Ready to translate' : 'Enable above to translate')}
+                    </div>
+                  </div>
+                  <button type="button"
+                    disabled={!enabled || !isEdit || isInflight}
+                    onClick={() => translateLang(langId)}
+                    className="lux-btn lux-btn-ghost text-[10px] tracking-wider uppercase disabled:opacity-40 shrink-0"
+                    data-testid={`cf-translate-btn-${langId}`}>
+                    {isInflight ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    {isInflight ? 'Translating…' : (translated ? 'Retranslate' : 'Translate (1 cr)')}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {!isEdit && (
+            <div className="text-[10px] tracking-wider uppercase flex items-center gap-1.5"
+                 style={{ color: 'rgba(212,175,55,0.7)' }}>
+              <AlertCircle className="w-3 h-3" /> Save the invitation first, then return here to translate.
+            </div>
+          )}
+        </div>
+      </Field>
     </motion.div>
   );
 
@@ -492,6 +612,42 @@ const CelebrationProfileForm = () => {
           onChange={(e) => setField('closing_message', e.target.value)}
           placeholder="Thank you for being part of our joy…"
           data-testid="cf-closing" />
+      </Field>
+
+      {/* ── Background music — celebration-curated picker ───────────
+          A smaller (10-track) celebration-specific library: lullabies
+          for babies, joyful welcomes for half-saree/dhoti, devotional
+          beds for puberty ceremonies, plus cinematic moments. Honours
+          the same shape as the wedding flow so the public renderer
+          (CelebrationPublicView) plays the picked track unchanged. */}
+      <Field label="Background music" full>
+        <div className="lux-glass p-4"
+             style={{ background: 'rgba(212,175,55,0.04)', border: '1px solid rgba(212,175,55,0.18)' }}>
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex items-start gap-2 min-w-0">
+              <Music className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#D4AF37' }} />
+              <div className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,248,220,0.7)' }}>
+                Pick a soft instrumental that plays on the invitation page. Tap a track to preview, then &ldquo;Pick&rdquo; to select. Leave empty for a silent page.
+              </div>
+            </div>
+            <label className="flex items-center gap-1.5 cursor-pointer shrink-0">
+              <input type="checkbox"
+                checked={form.background_music_autoplay}
+                onChange={(e) => setField('background_music_autoplay', e.target.checked)}
+                data-testid="cf-music-autoplay" />
+              <span className="text-[10px] tracking-wider uppercase"
+                    style={{ color: 'rgba(255,248,220,0.7)' }}>
+                Autoplay
+              </span>
+            </label>
+          </div>
+          <MusicPresetPicker
+            category="celebration"
+            value={form.background_music_url}
+            onChange={(url) => setField('background_music_url', url || '')}
+            allowCustom={true}
+          />
+        </div>
       </Field>
     </motion.div>
   );

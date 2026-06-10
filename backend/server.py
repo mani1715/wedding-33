@@ -13953,6 +13953,18 @@ user_features_router = build_user_features_router(
 app.include_router(user_features_router)
 
 # =====================================================================
+# Celebration Translation — Gemini-backed translation (credit-gated)
+# =====================================================================
+from celebration_translation import build_celebration_translation_router
+celebration_translation_router = build_celebration_translation_router(
+    db=db,
+    get_current_admin=require_admin,
+    get_current_user=get_current_public_user,
+    credit_service=credit_service,
+)
+app.include_router(celebration_translation_router, prefix="/api")
+
+# =====================================================================
 # Pricing & Discounts — theme bundle pricing + coupon codes
 # =====================================================================
 from pricing_features import build_pricing_router
