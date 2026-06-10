@@ -328,6 +328,28 @@ agent_communication:
             { 1_month:1, 3_months:2, 6_months:3, 1_year:5, lifetime:10 }
             kept ONLY as fallback if the API hasn't responded yet.
         NO BACKEND CHANGES this round. No backend re-test needed.
+
+    - agent: "main"
+      message: |
+        BUG: Selected design not rendered on published celebration
+        invitation. User reported the published baby-birthday invite
+        showed only the user's uploaded photo as the hero background +
+        a generic purple gradient — the actual selected design's
+        artwork (cake, balloons, baby cartoon) was missing.
+        ROOT CAUSE: /app/frontend/src/components/luxury/CelebrationPublicView.jsx
+        never read data.design_id and never fetched the design metadata,
+        so the hero only rendered (theme.heroGradient + coverPhoto).
+        FIX: Added module-level design cache + render-time dedup fetch
+        of /api/event-categories/{cat}/designs. Resolved the selected
+        design via priority: data.design_id → data.design_selections[cat]
+        → data.design_selections.default → fallback to first design.
+        Hero now renders the design's preview_image as the primary
+        full-bleed backdrop at opacity 0.92 with a subtle Ken-Burns
+        zoom and a soft gradient tint. coverPhoto is no longer the
+        hero background — it still appears in the celebrant photo
+        showcase section below. OpeningCurtain also gets the design
+        image so the cinematic intro matches the chosen artwork.
+        Lint clean, frontend compiles successfully.
     - agent: "testing"
       message: |
         ✅ BUG 3 SERVER-SIDE GUARD VERIFIED AND WORKING

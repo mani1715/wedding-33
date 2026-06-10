@@ -187,7 +187,7 @@ const Countdown = ({ targetDate, accent }) => {
 };
 
 /* ── Opening curtain — mirrors wedding's cinematic intro ──────────── */
-const OpeningCurtain = ({ name, subtitle, accent, gradient, onDone }) => {
+const OpeningCurtain = ({ name, subtitle, accent, gradient, designImage, onDone }) => {
   useEffect(() => {
     const id = setTimeout(onDone, 1900);
     return () => clearTimeout(id);
@@ -206,7 +206,24 @@ const OpeningCurtain = ({ name, subtitle, accent, gradient, onDone }) => {
       }}
       data-testid="celebration-opening-curtain"
     >
+      {/* BUG FIX: show the SELECTED DESIGN in the opening curtain too —
+          this is the first thing the guest sees and it should match the
+          chosen artwork (cake/balloons/floral) not a generic gradient. */}
+      {designImage && (
+        <motion.img
+          src={designImage}
+          alt=""
+          initial={{ scale: 1.18, opacity: 0 }}
+          animate={{ scale: 1, opacity: 0.55 }}
+          transition={{ duration: 2.2, ease: 'easeOut' }}
+          className="absolute inset-0 w-full h-full object-cover"
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        />
+      )}
       <div className="absolute inset-0 opacity-30" style={{ background: gradient }} />
+      <div className="absolute inset-0" style={{
+        background: 'linear-gradient(180deg, rgba(11,9,8,0.45) 0%, rgba(11,9,8,0.85) 100%)',
+      }} />
       <div className="relative text-center px-6">
         <motion.div
           initial={{ opacity: 0 }}
@@ -654,6 +671,28 @@ const LivePhotoWallSection = ({ slug, accent, primary, softBg, softBorder, event
 };
 
 /* ── MAIN VIEWER ──────────────────────────────────────────────────── */
+/* Module-level cache so navigating between published invitations of the
+   same category doesn't re-hit the API. Mirrors the same pattern used
+   by CelebrationInvitationPreview. */
+const _designCache = new Map();
+const _designFetches = new Map();
+
+const fetchDesignsForCategory = (category) => {
+  if (_designCache.has(category)) return Promise.resolve(_designCache.get(category));
+  if (_designFetches.has(category)) return _designFetches.get(category);
+  const p = axios
+    .get(`${API_URL}/api/event-categories/${category}/designs`)
+    .then((res) => {
+      const designs = res?.data?.designs || [];
+      _designCache.set(category, designs);
+      return designs;
+    })
+    .catch(() => { _designCache.set(category, []); return []; })
+    .finally(() => { _designFetches.delete(category); });
+  _designFetches.set(category, p);
+  return p;
+};
+
 const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null }) => {
   const cat = data?.invitation_category || 'baby_birthday';
   const theme = CATEGORY_THEME[cat] || CATEGORY_THEME.baby_birthday;
@@ -690,6 +729,56 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
   const extras = Array.isArray(ci.extra_photos) ? ci.extra_photos.filter(Boolean) : [];
   const coverPhoto = data?.couple_photo_url || data?.bride_photo_url || data?.groom_photo_url || '';
   const allPhotos = [coverPhoto, ...extras].filter(Boolean);
+
+  /* ── BUG: SELECTED DESIGN NOT RENDERED ─────────────────────────────
+   * Previously the hero only used theme.heroGradient + coverPhoto, so
+   * the published invitation looked identical regardless of which
+   * design the photographer/family picked from the gallery. Now we
+   * look up the selected design's preview_image and render it as the
+   * full-bleed hero backdrop (the design's cake / balloons / floral
+   * artwork). The gradient stays as a fallback for legacy invitations
+   * that have no design_id and as a tint over the design image.
+   *
+   * design_id resolution order:
+   *   1. data.design_id (form submission default)
+   *   2. data.design_selections[cat]   (per-category selection map)
+   *   3. data.design_selections.default
+   * ─────────────────────────────────────────────────────────────── */
+  const selectedDesignId =
+    data?.design_id ||
+    data?.design_selections?.[cat] ||
+    data?.design_selections?.default ||
+    '';
+
+  const [categoryDesigns, setCategoryDesigns] = useState(
+    () => _designCache.get(cat) || null
+  );
+  // Mirror the pattern used by CelebrationInvitationPreview: fire the
+  // fetch outside of a useEffect so React doesn't flag the resolved
+  // setState as a set-state-in-effect. The module-level cache + the
+  // fetchPromises de-dupe map make this safe across re-renders.
+  if (cat && !_designCache.has(cat) && !_designFetches.has(cat)) {
+    fetchDesignsForCategory(cat).then(setCategoryDesigns);
+  } else if (cat && categoryDesigns === null && _designFetches.has(cat)) {
+    _designFetches.get(cat).then(setCategoryDesigns);
+  }
+
+  const selectedDesign = useMemo(() => {
+    if (!Array.isArray(categoryDesigns) || categoryDesigns.length === 0) return null;
+    if (selectedDesignId) {
+      const found = categoryDesigns.find((d) => d.design_id === selectedDesignId);
+      if (found) return found;
+    }
+    // Fallback: first design in the category so something cinematic
+    // always shows even if the stored id is no longer valid.
+    return categoryDesigns[0];
+  }, [categoryDesigns, selectedDesignId]);
+
+  const designBackdrop = useMemo(
+    () => resolveUrl(selectedDesign?.preview_image || selectedDesign?.thumbnail || ''),
+    [selectedDesign]
+  );
+
   const eventDate = data?.event_date ? new Date(data.event_date) : null;
   const formattedDate = eventDate
     ? eventDate.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -739,6 +828,7 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
             subtitle={subtitle}
             accent={theme.accent}
             gradient={theme.heroGradient}
+            designImage={designBackdrop}
             onDone={() => setOpening(false)}
           />
         )}
@@ -751,11 +841,42 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
         animate={{ opacity: previewMode && opening ? 0 : 1 }}
         transition={{ duration: 0.8 }}
         data-testid="celebration-hero"
+        data-design-id={selectedDesign?.design_id || ''}
       >
-        {/* Full-banner design background — gradient + cover photo + dark
-            legibility overlay. Same recipe as wedding HeroCover. */}
+        {/* BUG FIX: render the SELECTED DESIGN as the primary hero
+            backdrop. The gradient is kept underneath as a base color
+            and as a fallback tint for designs with transparent corners.
+            The user's uploaded coverPhoto is no longer used as the hero
+            background — it still appears in the photo showcase section
+            below. */}
         <div className="absolute inset-0" style={{ background: theme.heroGradient }} />
-        {coverPhoto && (
+
+        {designBackdrop ? (
+          /* Selected design — rendered at high opacity so the artwork
+             dominates the banner exactly like the gallery preview the
+             photographer chose. A subtle Ken-Burns zoom adds life. */
+          <div className="absolute inset-0 overflow-hidden">
+            <motion.img
+              src={designBackdrop}
+              alt={selectedDesign?.name || theme.label}
+              initial={{ scale: 1.08 }}
+              animate={{ scale: 1 }}
+              transition={{ duration: 10, ease: 'easeOut' }}
+              className="w-full h-full object-cover"
+              style={{ opacity: 0.92 }}
+              data-testid="hero-design-backdrop"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
+            {/* Soft gradient tint over the design to add depth while keeping
+                the artwork legible. */}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{ background: theme.heroGradient, opacity: 0.18 }}
+            />
+          </div>
+        ) : coverPhoto ? (
+          /* Fallback when no design is selected (legacy invitations) —
+             use the celebrant photo with a darker overlay like before. */
           <div className="absolute inset-0 overflow-hidden">
             <motion.img
               src={resolveUrl(coverPhoto)}
@@ -767,9 +888,12 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
               style={{ opacity: 0.5 }}
             />
           </div>
-        )}
+        ) : null}
+
         <div className="absolute inset-0" style={{
-          background: 'linear-gradient(180deg, rgba(11,9,8,0.25) 0%, rgba(11,9,8,0.85) 100%)',
+          background: designBackdrop
+            ? 'linear-gradient(180deg, rgba(11,9,8,0.08) 0%, rgba(11,9,8,0.78) 100%)'
+            : 'linear-gradient(180deg, rgba(11,9,8,0.25) 0%, rgba(11,9,8,0.85) 100%)',
         }} />
 
         {/* monogram corners — purely decorative, gives the wedding-grade feel */}
