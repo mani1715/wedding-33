@@ -18,7 +18,7 @@
  *                  false (live public viewing) those overlays are hidden.
  *   previewExitTo — optional override for the sticky CTA target URL.
  */
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
@@ -210,7 +210,7 @@ const Countdown = ({ targetDate, accent }) => {
 };
 
 /* ── Opening curtain — mirrors wedding's cinematic intro ──────────── */
-const OpeningCurtain = ({ name, subtitle, accent, gradient, designImage, onDone }) => {
+const OpeningCurtain = ({ name, subtitle, accent, gradient, designImage, onDone, previewMode = true }) => {
   useEffect(() => {
     const id = setTimeout(onDone, 1900);
     return () => clearTimeout(id);
@@ -255,7 +255,7 @@ const OpeningCurtain = ({ name, subtitle, accent, gradient, designImage, onDone 
           className="text-[10px] sm:text-xs tracking-[0.42em] uppercase mb-5"
           style={{ color: accent }}
         >
-          ✦  Sample Invitation Preview  ✦
+          ✦  {previewMode ? 'Sample Invitation Preview' : 'You Are Cordially Invited'}  ✦
         </motion.div>
         <motion.h1
           initial={{ opacity: 0, scale: 0.7, y: 24 }}
@@ -734,13 +734,35 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
     };
   }, [theme.sectionBg]);
 
-  const [opening, setOpening] = useState(!!previewMode);
+  const [opening, setOpening] = useState(() => {
+    // Show the cinematic opening once per browser session per slug.
+    // In preview mode it always plays.
+    if (previewMode) return true;
+    try {
+      const k = `maja_celebration_opening_seen_${data?.slug || 'x'}`;
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        if (window.sessionStorage.getItem(k)) return false;
+      }
+    } catch (_) { /* ignore */ }
+    return true;
+  });
+
+  const handleOpeningDone = useCallback(() => {
+    setOpening(false);
+    try {
+      const k = `maja_celebration_opening_seen_${data?.slug || 'x'}`;
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        window.sessionStorage.setItem(k, '1');
+      }
+    } catch (_) { /* ignore */ }
+  }, [data?.slug]);
+
   // Safety net — never leave a user on a black curtain
   useEffect(() => {
     if (!opening) return;
-    const id = setTimeout(() => setOpening(false), 4500);
+    const id = setTimeout(handleOpeningDone, 4500);
     return () => clearTimeout(id);
-  }, [opening]);
+  }, [opening, handleOpeningDone]);
 
   const celebrantName = ci.celebrant_name || data?.groom_name || 'Our Star';
   const firstName = celebrantName.split(' ')[0];
@@ -844,16 +866,19 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
       {previewMode && <WatermarkOverlay text={`${theme.label} · MAJA Demo`} />}
       {previewMode && <DemoPill accent={theme.accent} label={`Preview · ${theme.label}`} />}
 
-      {/* ── OPENING CURTAIN (preview only) ─────────────────────────── */}
+      {/* ── OPENING CURTAIN — cinematic intro for both preview & public ─
+           Public mode shows it once per session (sessionStorage gate).
+           Mirrors what guests see on the home-page preview. */}
       <AnimatePresence>
-        {previewMode && opening && (
+        {opening && (
           <OpeningCurtain
             name={firstName}
-            subtitle={subtitle}
+            subtitle={previewMode ? subtitle : (theme.eyebrowShort || theme.label)}
             accent={theme.accent}
             gradient={theme.heroGradient}
             designImage={designBackdrop}
-            onDone={() => setOpening(false)}
+            onDone={handleOpeningDone}
+            previewMode={previewMode}
           />
         )}
       </AnimatePresence>
@@ -885,7 +910,7 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
       <motion.section
         className="relative overflow-hidden"
         initial={{ opacity: 0 }}
-        animate={{ opacity: previewMode && opening ? 0 : 1 }}
+        animate={{ opacity: opening ? 0 : 1 }}
         transition={{ duration: 0.8 }}
         data-testid="celebration-hero"
         data-design-id={selectedDesign?.design_id || ''}
