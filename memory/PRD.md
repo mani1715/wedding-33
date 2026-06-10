@@ -28,6 +28,14 @@
   - Top bar: ← Designs · "PREVIEW · {Category}" · USE THIS DESIGN
   - Below hero: Our Story section, Cherished Photos gallery (3 sample photos per category), Closing Blessing section, sticky bottom CTA
   - Verified visually for baby_birthday, half_saree, puberty, dhoti
+- [10 Jun 2026] **Feature parity with wedding live invitation** — added the full guest experience:
+  - **Opening animation** (`CelebrationOpening`) — full-screen 2.5 s cinematic zoom-in over the design backdrop with eyebrow + celebrant name + nickname + date; plays once per session per category (sessionStorage key `celeb_open_seen_*`)
+  - **Live countdown** (D / H / M / S) until the celebration date, ticking via `useSyncExternalStore` (React-19 strict-purity-safe)
+  - **Event details** card pair (Date + Time, Venue with Google Maps deep link)
+  - **RSVP form** (name, guest count, attending toggle, optional note, animated confirmation — preview mode, no API write)
+  - **Blessings & Wishes Wall** with 3 sample wishes + "add yours" form (in-memory in preview)
+  - **Cinematic closing** (`CelebrationClosing`) — in-flow reverse Ken-Burns on the design image + falling accent-colored petals + "WITH ALL OUR LOVE · Thank you for visiting. · — Celebrant —" overlay
+  - **Footer** with celebrant signature + "Crafted with reverence · MAJA Creations"
 
 ## Known Things to Be Aware Of
 - Backend has `security_middleware` that blocks bot user-agents (curl etc.) on `/api/` root. Browser/frontend access works fine.

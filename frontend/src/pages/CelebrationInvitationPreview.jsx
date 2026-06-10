@@ -16,11 +16,13 @@
  * Route: /preview/celebration/:category   or
  *        /preview/celebration/:category/:designId
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Sparkles, Heart } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ArrowLeft, Sparkles, Heart, MapPin, Calendar, Send, MessageSquare,
+} from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -60,7 +62,7 @@ const CATEGORY_TOKENS = {
       'wobbly step. Come help us celebrate one full year of joy, laughter and unconditional love.',
     extraPhotos: [
       'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=600&q=80&fit=crop',
-      'https://images.unsplash.com/photo-1607113256158-56a934936ef1?w=600&q=80&fit=crop',
+      'https://images.unsplash.com/photo-1492725764893-90b379c2b6e7?w=600&q=80&fit=crop',
       'https://images.unsplash.com/photo-1544027993-37dbfe43562a?w=600&q=80&fit=crop',
     ],
     closing: "Your blessings are her greatest gift. We can't wait to celebrate with you.",
@@ -189,6 +191,485 @@ const SoftDesignBackdrop = ({ image, accent }) => {
         filter: 'blur(26px)',
       }} />
     </>
+  );
+};
+
+/* HeroInvitationCard — the centered "poster" with design as card background,
+   eyebrow at top, circular celebrant photo bubble, and bottom cream/tinted
+   panel with family line, big serif celebrant name, date and venue.
+   Visually matches NonWeddingDesignCard but at poster scale. */
+
+/* ─────────────────────────────────────────────────────────────────────
+   CelebrationOpening — full-screen 2.5 s cinematic intro that mirrors
+   the wedding `ZoomInOpening`, but for a single celebrant.
+
+   Background  = the design image (so you immediately recognize the
+                 design before the invitation appears).
+   Foreground  = eyebrow (e.g. "FIRST BIRTHDAY") + the celebrant name
+                 in luxe serif + the date underneath.
+   ───────────────────────────────────────────────────────────────────── */
+const CelebrationOpening = ({ image, token, onComplete }) => {
+  useEffect(() => {
+    if (!onComplete) return undefined;
+    const t = setTimeout(() => onComplete(), 2500);
+    return () => clearTimeout(t);
+  }, [onComplete]);
+
+  return (
+    <motion.div
+      role="presentation"
+      data-testid="celebration-opening"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.5, ease: 'easeOut' }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999, overflow: 'hidden',
+        background: '#0A0707',
+      }}
+    >
+      {/* Zooming design background */}
+      <motion.div
+        initial={{ scale: 1.18 }} animate={{ scale: 1.0 }}
+        transition={{ duration: 2.5, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: `url("${image || token.photo}")`,
+          backgroundSize: 'cover', backgroundPosition: 'center',
+        }}
+      />
+      <div style={{
+        position: 'absolute', inset: 0,
+        background:
+          'radial-gradient(ellipse at center, rgba(8,5,11,0.18) 0%, rgba(8,5,11,0.6) 55%, rgba(8,5,11,0.9) 100%)',
+      }} />
+      <div style={{
+        position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
+        textAlign: 'center', padding: '0 24px',
+      }}>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.88, y: 18 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 1.4, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <div style={{
+            fontFamily: 'Cinzel, "Cormorant Garamond", serif',
+            fontSize: 'clamp(12px, 1.6vw, 14px)',
+            letterSpacing: '0.55em', textTransform: 'uppercase',
+            color: token.accent,
+            textShadow: '0 1px 8px rgba(0,0,0,0.55)',
+            marginBottom: 14,
+          }}>
+            ◇ {token.eyebrow} ◇
+          </div>
+          <div style={{
+            fontFamily: 'Cinzel, "Cormorant Garamond", serif', fontWeight: 500,
+            fontSize: 'clamp(34px, 7vw, 80px)', lineHeight: 1.05,
+            letterSpacing: '0.04em', color: '#FFF8DC',
+            textShadow: `0 2px 18px rgba(0,0,0,0.6), 0 0 60px ${token.accent}33`,
+          }}>
+            {token.celebrant}
+          </div>
+          {token.nickname && (
+            <div style={{
+              fontFamily: '"Great Vibes", "Pinyon Script", cursive',
+              fontSize: 'clamp(24px, 4.5vw, 48px)', color: token.accent,
+              margin: '6px 0 2px', textShadow: '0 2px 18px rgba(0,0,0,0.5)',
+            }}>
+              “{token.nickname}”
+            </div>
+          )}
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            transition={{ delay: 1.1, duration: 1.0 }}
+            style={{
+              marginTop: 22, fontFamily: 'Cinzel, serif',
+              fontSize: 'clamp(11px, 1.6vw, 14px)',
+              letterSpacing: '0.4em', textTransform: 'uppercase',
+              color: 'rgba(255,248,220,0.85)',
+            }}
+          >
+            {fmtDate(token.date)}
+          </motion.div>
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+};
+
+/* ─────────────────────────────────────────────────────────────────────
+   Countdown — live D/H/M/S until the celebration date.
+   Uses useSyncExternalStore so the strict React-19 purity lint stays
+   happy while the cells still tick every second.
+   ───────────────────────────────────────────────────────────────────── */
+const tickStore = (() => {
+  const listeners = new Set();
+  let timer = null;
+  const ensureTimer = () => {
+    if (timer || listeners.size === 0) return;
+    timer = setInterval(() => listeners.forEach((l) => l()), 1000);
+  };
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+      ensureTimer();
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0 && timer) { clearInterval(timer); timer = null; }
+      };
+    },
+    getSnapshot() { return Date.now(); },
+  };
+})();
+
+const useCountdown = (target) => {
+  const now = React.useSyncExternalStore(tickStore.subscribe, tickStore.getSnapshot, tickStore.getSnapshot);
+  const diff = Math.max(0, target.getTime() - now);
+  return {
+    d: Math.floor(diff / 86400000),
+    h: Math.floor((diff % 86400000) / 3600000),
+    m: Math.floor((diff % 3600000) / 60000),
+    s: Math.floor((diff % 60000) / 1000),
+  };
+};
+
+const CountdownBlock = ({ token, accent }) => {
+  const { d, h, m, s } = useCountdown(token.date);
+  const cell = (label, value) => (
+    <div className="text-center px-3 md:px-5 py-3 rounded-xl min-w-[68px] md:min-w-[88px]"
+      style={{ background: 'rgba(11,9,8,0.7)', border: `1px solid ${accent}55` }}>
+      <div className="font-display text-2xl md:text-4xl"
+        style={{ color: '#FFF8DC', fontFamily: '"Cormorant Garamond", serif' }}>
+        {String(value).padStart(2, '0')}
+      </div>
+      <div className="text-[9px] md:text-[10px] tracking-[0.3em] uppercase mt-1"
+        style={{ color: `${accent}` }}>
+        {label}
+      </div>
+    </div>
+  );
+  return (
+    <div className="max-w-3xl mx-auto text-center" data-testid="celebration-preview-countdown">
+      <span className="block text-[10px] tracking-[0.42em] uppercase mb-3" style={{ color: accent }}>
+        ◆ Counting down to the day
+      </span>
+      <h3 className="font-display text-3xl md:text-4xl leading-tight mb-7"
+        style={{ color: '#FFF8DC', fontFamily: '"Cormorant Garamond", serif' }}>
+        Save the date.
+      </h3>
+      <div className="flex items-center justify-center gap-2 md:gap-4">
+        {cell('Days', d)}
+        {cell('Hours', h)}
+        {cell('Minutes', m)}
+        {cell('Seconds', s)}
+      </div>
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────────────────────────────────
+   EventDetails — date/time/venue block with a Google-Maps deep link.
+   ───────────────────────────────────────────────────────────────────── */
+const EventDetails = ({ token, accent }) => {
+  const mapsHref = `https://www.google.com/maps/search/${encodeURIComponent(token.venue)}`;
+  return (
+    <div className="max-w-3xl mx-auto" data-testid="celebration-preview-event-details">
+      <span className="block text-[10px] tracking-[0.42em] uppercase mb-3 text-center"
+        style={{ color: accent }}>
+        ◆ When &amp; Where
+      </span>
+      <h3 className="text-center font-display text-3xl md:text-4xl leading-tight mb-8"
+        style={{ color: '#FFF8DC', fontFamily: '"Cormorant Garamond", serif' }}>
+        We would love to have you with us.
+      </h3>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="rounded-xl px-5 py-6"
+          style={{ background: 'rgba(11,9,8,0.78)', border: `1px solid ${accent}44` }}>
+          <Calendar className="w-5 h-5 mb-2" style={{ color: accent }} />
+          <div className="text-[10px] tracking-[0.3em] uppercase opacity-75 mb-1">Date</div>
+          <div className="text-lg" style={{ color: '#FFF8DC' }}>{fmtDate(token.date)}</div>
+          <div className="text-sm mt-1" style={{ color: 'rgba(255,248,220,0.7)' }}>
+            {token.date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })}
+          </div>
+        </div>
+        <div className="rounded-xl px-5 py-6"
+          style={{ background: 'rgba(11,9,8,0.78)', border: `1px solid ${accent}44` }}>
+          <MapPin className="w-5 h-5 mb-2" style={{ color: accent }} />
+          <div className="text-[10px] tracking-[0.3em] uppercase opacity-75 mb-1">Venue</div>
+          <div className="text-lg" style={{ color: '#FFF8DC' }}>{token.venue}</div>
+          <a href={mapsHref} target="_blank" rel="noreferrer"
+            className="inline-flex items-center gap-1 text-[11px] tracking-[0.25em] uppercase mt-3"
+            style={{ color: accent }} data-testid="celebration-preview-map-link">
+            Open in Google Maps →
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────────────────────────────────
+   RSVPDemo — visual demo of the RSVP form. In real invitations this
+   posts to /api/invitations/{slug}/rsvp, but on the preview page we
+   just show a confirmation toast so couples can experience the flow.
+   ───────────────────────────────────────────────────────────────────── */
+const RSVPDemo = ({ token, accent }) => {
+  const [form, setForm] = useState({ name: '', count: 1, attending: 'yes', message: '' });
+  const [sent, setSent] = useState(false);
+  const onSubmit = (e) => {
+    e.preventDefault();
+    setSent(true);
+    setTimeout(() => setSent(false), 4500);
+  };
+  return (
+    <div className="max-w-xl mx-auto" data-testid="celebration-preview-rsvp">
+      <span className="block text-[10px] tracking-[0.42em] uppercase mb-3 text-center"
+        style={{ color: accent }}>
+        ◆ Will you be there?
+      </span>
+      <h3 className="text-center font-display text-3xl md:text-4xl leading-tight mb-7"
+        style={{ color: '#FFF8DC', fontFamily: '"Cormorant Garamond", serif' }}>
+        Kindly <span style={{ color: accent, fontStyle: 'italic' }}>respond.</span>
+      </h3>
+      <form onSubmit={onSubmit} className="rounded-2xl px-6 py-7 space-y-4"
+        style={{ background: 'rgba(11,9,8,0.82)', border: `1px solid ${accent}44`, backdropFilter: 'blur(8px)' }}>
+        <label className="block">
+          <span className="text-[10px] tracking-[0.3em] uppercase opacity-80">Your name</span>
+          <input type="text" required value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            className="w-full mt-1.5 px-3 py-2.5 rounded-md text-[15px] outline-none"
+            style={{ background: 'rgba(255,255,255,0.04)', color: '#FFF8DC',
+              border: `1px solid ${accent}55`, fontFamily: '"Cormorant Garamond", serif' }}
+            data-testid="rsvp-name" />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-[10px] tracking-[0.3em] uppercase opacity-80">Guests</span>
+            <input type="number" min={1} max={20} value={form.count}
+              onChange={(e) => setForm({ ...form, count: e.target.value })}
+              className="w-full mt-1.5 px-3 py-2.5 rounded-md text-[15px] outline-none"
+              style={{ background: 'rgba(255,255,255,0.04)', color: '#FFF8DC',
+                border: `1px solid ${accent}55` }}
+              data-testid="rsvp-count" />
+          </label>
+          <label className="block">
+            <span className="text-[10px] tracking-[0.3em] uppercase opacity-80">Attending</span>
+            <select value={form.attending}
+              onChange={(e) => setForm({ ...form, attending: e.target.value })}
+              className="w-full mt-1.5 px-3 py-2.5 rounded-md text-[15px] outline-none"
+              style={{ background: 'rgba(255,255,255,0.04)', color: '#FFF8DC',
+                border: `1px solid ${accent}55` }}
+              data-testid="rsvp-attending">
+              <option value="yes" style={{ background: '#0b0908' }}>Joyfully accepts</option>
+              <option value="no" style={{ background: '#0b0908' }}>Regretfully declines</option>
+              <option value="maybe" style={{ background: '#0b0908' }}>Trying my best</option>
+            </select>
+          </label>
+        </div>
+        <label className="block">
+          <span className="text-[10px] tracking-[0.3em] uppercase opacity-80">A note (optional)</span>
+          <textarea rows={3} value={form.message}
+            onChange={(e) => setForm({ ...form, message: e.target.value })}
+            className="w-full mt-1.5 px-3 py-2.5 rounded-md text-[15px] outline-none resize-none"
+            style={{ background: 'rgba(255,255,255,0.04)', color: '#FFF8DC',
+              border: `1px solid ${accent}55`, fontFamily: '"Cormorant Garamond", serif' }}
+            placeholder={`A blessing for ${token.celebrant.split(' ')[0]}…`}
+            data-testid="rsvp-message" />
+        </label>
+        <button type="submit"
+          className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-md text-[11px] tracking-[0.3em] uppercase font-medium"
+          style={{ background: accent, color: '#16110C', border: `1px solid ${accent}` }}
+          data-testid="rsvp-send">
+          Send RSVP <Send className="w-3.5 h-3.5" />
+        </button>
+        <AnimatePresence>
+          {sent && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="text-center text-[11px] tracking-[0.25em] uppercase"
+              style={{ color: accent }} data-testid="rsvp-confirmation">
+              ✓ Thank you — your RSVP has been received (preview mode).
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </form>
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────────────────────────────────
+   BlessingsWall — sample wishes feed + add-your-own form (preview mode
+   only stores in local component state).
+   ───────────────────────────────────────────────────────────────────── */
+const SAMPLE_BLESSINGS_FOR = (celebrantFirst) => [
+  { name: 'Vinitha Aunty', text: `Many many happy wishes to little ${celebrantFirst}! May this year bring health, laughter and a lifetime of beautiful memories. 💕` },
+  { name: 'Karthik Mama',  text: `Bless you, ${celebrantFirst}. Always remember that the whole family is rooting for you — today and every day after.` },
+  { name: 'Anu',           text: `So so so excited for ${celebrantFirst}! See you at the celebration ✨` },
+];
+
+const BlessingsWall = ({ token, accent }) => {
+  const initial = useMemo(() => SAMPLE_BLESSINGS_FOR(token.celebrant.split(' ')[0]), [token.celebrant]);
+  const [wishes, setWishes] = useState(initial);
+  const [draft, setDraft] = useState({ name: '', text: '' });
+
+  const addWish = (e) => {
+    e.preventDefault();
+    if (!draft.name.trim() || !draft.text.trim()) return;
+    setWishes((w) => [{ name: draft.name.trim(), text: draft.text.trim() }, ...w]);
+    setDraft({ name: '', text: '' });
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto" data-testid="celebration-preview-blessings">
+      <span className="block text-[10px] tracking-[0.42em] uppercase mb-3 text-center"
+        style={{ color: accent }}>
+        ◆ Blessings &amp; Wishes
+      </span>
+      <h3 className="text-center font-display text-3xl md:text-4xl leading-tight mb-7"
+        style={{ color: '#FFF8DC', fontFamily: '"Cormorant Garamond", serif' }}>
+        A wall of love.
+      </h3>
+
+      <form onSubmit={addWish} className="rounded-2xl px-5 py-5 mb-6 grid sm:grid-cols-[1fr_2fr_auto] gap-2"
+        style={{ background: 'rgba(11,9,8,0.78)', border: `1px solid ${accent}44` }}>
+        <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+          placeholder="Your name"
+          className="px-3 py-2.5 rounded-md text-[14px] outline-none"
+          style={{ background: 'rgba(255,255,255,0.04)', color: '#FFF8DC', border: `1px solid ${accent}55` }}
+          data-testid="wish-name" />
+        <input value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })}
+          placeholder={`Share a wish for ${token.celebrant.split(' ')[0]}…`}
+          className="px-3 py-2.5 rounded-md text-[14px] outline-none"
+          style={{ background: 'rgba(255,255,255,0.04)', color: '#FFF8DC', border: `1px solid ${accent}55` }}
+          data-testid="wish-text" />
+        <button type="submit"
+          className="px-4 py-2.5 rounded-md text-[11px] tracking-[0.25em] uppercase font-medium inline-flex items-center justify-center gap-1.5"
+          style={{ background: accent, color: '#16110C', border: `1px solid ${accent}` }}
+          data-testid="wish-add">
+          <MessageSquare className="w-3.5 h-3.5" /> Send
+        </button>
+      </form>
+
+      <div className="space-y-3">
+        {wishes.map((w, i) => (
+          <motion.div key={`${w.name}-${i}`}
+            initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }} transition={{ duration: 0.55, delay: 0.04 * i }}
+            className="rounded-xl px-5 py-4"
+            style={{ background: 'rgba(11,9,8,0.72)', border: `1px solid ${accent}33` }}>
+            <div className="text-[10px] tracking-[0.3em] uppercase mb-1"
+              style={{ color: accent }}>{w.name}</div>
+            <p className="text-[14px] leading-relaxed" style={{ color: 'rgba(255,248,220,0.88)' }}>
+              {w.text}
+            </p>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────────────────────────────────
+   CelebrationClosing — in-flow "Thank you for visiting" cinematic outro.
+   Sits above the footer. Trigger on intersection so it plays once the
+   guest has scrolled all the way through.
+   ───────────────────────────────────────────────────────────────────── */
+const CelebrationClosing = ({ image, token, accent }) => {
+  const ref = useRef(null);
+  const [played, setPlayed] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => { if (en.isIntersecting) setPlayed(true); });
+    }, { threshold: 0.35 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <section ref={ref} className="relative overflow-hidden"
+      style={{ minHeight: '80vh' }} data-testid="celebration-closing">
+      {/* Slow reverse Ken-Burns over the design image */}
+      <motion.div
+        initial={{ scale: 1.06, opacity: 0 }}
+        animate={played ? { scale: 1.18, opacity: 0.55 } : { scale: 1.06, opacity: 0 }}
+        transition={{ duration: 6, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: `url("${image || token.photo}")`,
+          backgroundSize: 'cover', backgroundPosition: 'center',
+          filter: 'saturate(0.9)',
+        }}
+      />
+      {/* Vignette */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background:
+          'radial-gradient(ellipse at center, rgba(8,5,11,0.35) 0%, rgba(8,5,11,0.78) 60%, rgba(8,5,11,0.96) 100%)',
+      }} />
+      {/* Petal-like drifting dots */}
+      {played && Array.from({ length: 18 }).map((_, i) => (
+        <motion.span key={i}
+          initial={{ y: -20, x: 0, opacity: 0 }}
+          animate={{
+            y: '90vh',
+            x: (i % 2 ? 1 : -1) * (30 + (i % 4) * 25),
+            opacity: [0, 0.9, 0.9, 0],
+            rotate: 360,
+          }}
+          transition={{ duration: 5.5 + (i % 3) * 0.7, delay: i * 0.18, ease: 'linear' }}
+          style={{
+            position: 'absolute', left: `${6 + i * 5}%`, top: 0,
+            width: 12, height: 9,
+            borderRadius: '70% 30% 70% 30%',
+            background: accent,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            opacity: 0.85,
+          }}
+        />
+      ))}
+      <div className="relative grid place-items-center text-center px-6"
+        style={{ minHeight: '80vh', zIndex: 5 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={played ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 }}
+          transition={{ duration: 1.4, delay: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <div style={{
+            fontFamily: 'Cinzel, serif',
+            fontSize: 'clamp(11px, 1.6vw, 14px)',
+            letterSpacing: '0.5em', textTransform: 'uppercase',
+            color: accent, marginBottom: 18,
+          }}>
+            With all our love
+          </div>
+          <div style={{
+            fontFamily: '"Cormorant Garamond", serif', fontWeight: 600,
+            fontSize: 'clamp(36px, 7vw, 78px)', lineHeight: 1.05,
+            color: '#FFF8DC',
+            textShadow: '0 2px 18px rgba(0,0,0,0.55)',
+          }}>
+            Thank you for visiting.
+          </div>
+          <div style={{
+            fontFamily: '"Great Vibes", "Pinyon Script", cursive',
+            fontSize: 'clamp(28px, 5vw, 56px)', color: accent,
+            marginTop: 14,
+          }}>
+            — {token.celebrant} —
+          </div>
+          <div style={{
+            marginTop: 22, fontFamily: 'Cinzel, serif',
+            fontSize: 'clamp(11px, 1.5vw, 13px)',
+            letterSpacing: '0.42em', textTransform: 'uppercase',
+            color: 'rgba(255,248,220,0.8)',
+          }}>
+            {fmtDate(token.date)} · {token.venue}
+          </div>
+        </motion.div>
+      </div>
+    </section>
   );
 };
 
@@ -328,6 +809,17 @@ const CelebrationInvitationPreview = () => {
   const token = CATEGORY_TOKENS[category] || CATEGORY_TOKENS.baby_birthday;
   const accent = token.accent;
 
+  // Opening animation: plays once on first mount per session-per-category.
+  // Stored in sessionStorage so navigating between designs in the same
+  // category doesn't replay the intro, but a fresh tab will see it.
+  const sessionKey = `celeb_open_seen_${category || 'x'}`;
+  const alreadySeen = typeof window !== 'undefined' && window.sessionStorage?.getItem(sessionKey) === '1';
+  const [openingDone, setOpeningDone] = useState(alreadySeen);
+  const finishOpening = () => {
+    try { window.sessionStorage.setItem(sessionKey, '1'); } catch (_) { /* ignore */ }
+    setOpeningDone(true);
+  };
+
   // Trigger a load if needed; the actual state update happens via the
   // resolved-promise callback below, which is NOT inside an effect.
   const cached = category ? designCache.get(category) : [];
@@ -377,9 +869,27 @@ const CelebrationInvitationPreview = () => {
       data-testid="celebration-invitation-preview-page"
       data-category={category}
     >
+      {/* Cinematic opening — plays once per session-per-category */}
+      <AnimatePresence>
+        {!openingDone && (
+          <CelebrationOpening
+            image={backdropImg}
+            token={token}
+            onComplete={finishOpening}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Full-bleed design backdrop (blurred) */}
       <SoftDesignBackdrop image={backdropImg} accent={accent} />
 
+      {/* All page content fades in after the opening completes — same
+          pattern as LuxuryPublicInvitation. */}
+      <div style={{
+        opacity: openingDone ? 1 : 0,
+        transition: 'opacity 0.55s ease',
+        pointerEvents: openingDone ? 'auto' : 'none',
+      }}>
       {/* Top controls */}
       <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-5 md:px-10 py-4"
         style={{
@@ -459,6 +969,16 @@ const CelebrationInvitationPreview = () => {
           </div>
         </section>
 
+        {/* COUNTDOWN */}
+        <section className="px-5 md:px-12 py-16">
+          <CountdownBlock token={token} accent={accent} />
+        </section>
+
+        {/* EVENT DETAILS — date / time / venue + Google Maps */}
+        <section className="px-5 md:px-12 py-16">
+          <EventDetails token={token} accent={accent} />
+        </section>
+
         {/* CHERISHED PHOTOS */}
         <section className="px-5 md:px-12 py-16">
           <div className="max-w-5xl mx-auto">
@@ -487,8 +1007,18 @@ const CelebrationInvitationPreview = () => {
           </div>
         </section>
 
-        {/* CLOSING BLESSING */}
-        <section className="px-5 md:px-12 pt-8 pb-32">
+        {/* RSVP */}
+        <section className="px-5 md:px-12 py-16">
+          <RSVPDemo token={token} accent={accent} />
+        </section>
+
+        {/* BLESSINGS / WISHES WALL */}
+        <section className="px-5 md:px-12 py-16">
+          <BlessingsWall token={token} accent={accent} />
+        </section>
+
+        {/* CLOSING BLESSING — short cream card */}
+        <section className="px-5 md:px-12 pt-8 pb-16">
           <div className="max-w-2xl mx-auto text-center px-6 py-10 rounded-2xl"
             style={{
               background: 'rgba(11,9,8,0.72)',
@@ -509,6 +1039,22 @@ const CelebrationInvitationPreview = () => {
           </div>
         </section>
       </main>
+
+      {/* CINEMATIC CLOSING — "Thank you for visiting." with reverse Ken-Burns */}
+      <CelebrationClosing image={backdropImg} token={token} accent={accent} />
+
+      {/* Footer */}
+      <footer className="relative z-10 px-6 md:px-16 py-12 text-center border-t"
+        style={{ borderColor: 'rgba(212,175,55,0.18)' }} data-testid="celebration-preview-footer">
+        <div className="text-3xl mb-2 italic"
+          style={{ color: accent, fontFamily: '"Great Vibes", "Pinyon Script", cursive' }}>
+          {token.celebrant}
+        </div>
+        <div className="text-xs tracking-[0.3em] uppercase"
+          style={{ color: 'rgba(255,248,220,0.55)' }}>
+          Crafted with reverence · MAJA Creations
+        </div>
+      </footer>
 
       {/* Sticky bottom CTA */}
       <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 rounded-full"
@@ -531,6 +1077,7 @@ const CelebrationInvitationPreview = () => {
           Use this design <Sparkles className="w-3 h-3" />
         </button>
       </div>
+      </div>{/* end opacity-gated content wrapper */}
     </div>
   );
 };
