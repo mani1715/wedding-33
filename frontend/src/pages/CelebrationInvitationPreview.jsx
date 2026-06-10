@@ -21,7 +21,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, Sparkles, Heart, MapPin, Calendar, Send, MessageSquare, QrCode, Camera, Share2,
+  ArrowLeft, Sparkles, Heart, MapPin, Calendar, Send, MessageSquare, Camera, Search,
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
@@ -570,161 +570,96 @@ const BlessingsWall = ({ token, accent }) => {
 };
 
 /* ─────────────────────────────────────────────────────────────────────
-   LivePhotoQR — a sample QR code panel. In real invitations this QR
-   points guests at `/i/{slug}/live-photos` where they can upload to a
-   shared live gallery. Here we render a sample QR that resolves to the
-   preview URL itself so couples can visualise the feature.
+   Shared wedding-style primitives, copied 1:1 from DesignFullPreview so
+   non-wedding sections render with the exact same visual language.
    ───────────────────────────────────────────────────────────────────── */
-const LivePhotoQR = ({ token, accent, link }) => {
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=2&color=${
-    accent.replace('#', '')}&bgcolor=FFF8DC&data=${encodeURIComponent(link)}`;
-  return (
-    <div className="max-w-3xl mx-auto" data-testid="celebration-preview-qr">
-      <span className="block text-[10px] tracking-[0.42em] uppercase mb-3 text-center"
-        style={{ color: accent }}>
-        ◆ Live Photo Wall
-      </span>
-      <h3 className="text-center font-display text-3xl md:text-4xl leading-tight mb-3"
-        style={{ color: '#FFF8DC', fontFamily: '"Cormorant Garamond", serif' }}>
-        Scan &amp; share your moment.
-      </h3>
-      <p className="text-center text-sm md:text-base mb-7"
-        style={{ color: 'rgba(255,248,220,0.7)' }}>
-        Every guest can capture a photo on their phone and watch it appear instantly on the live wall
-        at the venue. Print this QR on the printed invite — or guests can scan it directly from their
-        digital copy.
-      </p>
-      <div className="grid sm:grid-cols-[auto_1fr] gap-6 items-center rounded-2xl px-6 py-7"
-        style={{ background: 'rgba(11,9,8,0.78)', border: `1px solid ${accent}44` }}>
-        <div className="mx-auto sm:mx-0 p-3 rounded-xl"
-          style={{ background: '#FFF8DC', boxShadow: `0 12px 28px ${accent}33` }}>
-          <img src={qrSrc} alt="Live photo wall QR" width={180} height={180}
-            style={{ display: 'block' }} data-testid="celebration-preview-qr-image" />
-        </div>
-        <ol className="space-y-2.5 text-sm md:text-base"
-          style={{ color: 'rgba(255,248,220,0.85)' }}>
-          <li className="flex gap-3"><span style={{ color: accent }}>①</span>
-            Open the camera app on your phone and scan the QR.</li>
-          <li className="flex gap-3"><span style={{ color: accent }}>②</span>
-            Tap the link — no app needed.</li>
-          <li className="flex gap-3"><span style={{ color: accent }}>③</span>
-            Pick up to <strong style={{ color: '#FFF8DC' }}>5 photos</strong> from your roll.</li>
-          <li className="flex gap-3"><span style={{ color: accent }}>④</span>
-            Watch them appear on the projector wall at the venue ✨
-          </li>
-        </ol>
-      </div>
-      <div className="text-center mt-4">
-        <button type="button"
-          onClick={() => { try { navigator.clipboard?.writeText(link); } catch (_) { /* ignore */ } }}
-          className="inline-flex items-center gap-2 text-[11px] tracking-[0.3em] uppercase px-4 py-2 rounded-md"
-          style={{ color: accent, border: `1px solid ${accent}55`, background: 'rgba(11,9,8,0.6)' }}
-          data-testid="celebration-preview-qr-copy">
-          <Share2 className="w-3.5 h-3.5" /> Copy invitation link
-        </button>
-      </div>
+const PAGE_BG = '#1A130B';           // matches wedding default pageBg
+const TEXT_ON_BG = '#FFF8DC';
+const MUTED_TEXT = 'rgba(255,248,220,0.7)';
+const HEADING_FONT = '"Cormorant Garamond", serif';
+
+const Panel = ({ accent, testId, children }) => (
+  <section data-testid={testId} className="relative px-6 md:px-16" style={{ paddingTop: '4.5rem', paddingBottom: '4.5rem' }}>
+    <div
+      className="max-w-3xl mx-auto rounded-2xl px-6 md:px-10 py-8 md:py-10"
+      style={{
+        background: `${PAGE_BG}CC`,
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        border: `1px solid ${accent}44`,
+        boxShadow: '0 16px 50px rgba(0,0,0,0.10)',
+      }}
+    >
+      {children}
     </div>
-  );
-};
+  </section>
+);
+
+const Eyebrow = ({ accent, children }) => (
+  <div className="text-[10px] tracking-[0.4em] uppercase mb-3" style={{ color: accent }}>{children}</div>
+);
+
+const SectionHeading = ({ children }) => (
+  <h2 className="leading-tight"
+    style={{ fontFamily: HEADING_FONT, color: TEXT_ON_BG, fontSize: 'clamp(1.6rem, 3.2vw, 2.5rem)' }}>
+    {children}
+  </h2>
+);
+
+const PillButton = ({ accent, children, onClick, testId }) => (
+  <button type="button" onClick={onClick}
+    className="text-[11px] tracking-[0.3em] uppercase px-5 py-2.5 rounded-md inline-flex items-center gap-2"
+    style={{ color: PAGE_BG, background: accent }}
+    data-testid={testId}>
+    {children}
+  </button>
+);
 
 /* ─────────────────────────────────────────────────────────────────────
-   AIFaceMatch — sample of the AI face matching add-on. The real flow
-   (in LuxuryPublicInvitation) uses /api/ai/face-match to surface
-   moments where the guest appears in the wedding's photo library.
-   Here we render a static visual demo so couples can preview the look.
+   LivePhotoWall — mirrors the wedding `live-photo-wall-section` Panel
+   from DesignFullPreview exactly. Eyebrow + heading with italic script
+   accent + short description + gold pill CTA.
    ───────────────────────────────────────────────────────────────────── */
-const AIFaceMatch = ({ token, accent }) => {
-  const [step, setStep] = useState('idle');
-  const onTryDemo = () => {
-    setStep('scanning');
-    setTimeout(() => setStep('matched'), 2200);
-  };
-  return (
-    <div className="max-w-3xl mx-auto" data-testid="celebration-preview-face-match">
-      <span className="block text-[10px] tracking-[0.42em] uppercase mb-3 text-center"
-        style={{ color: accent }}>
-        ◆ AI Face Matching
-      </span>
-      <h3 className="text-center font-display text-3xl md:text-4xl leading-tight mb-3"
-        style={{ color: '#FFF8DC', fontFamily: '"Cormorant Garamond", serif' }}>
-        Find <span style={{ color: accent, fontStyle: 'italic' }}>your photos</span> after the event.
-      </h3>
-      <p className="text-center text-sm md:text-base mb-7"
-        style={{ color: 'rgba(255,248,220,0.7)' }}>
-        Take a single selfie — our AI will surface every photo from the celebration
-        that <strong style={{ color: '#FFF8DC' }}>you appear in</strong>. No scrolling through
-        thousands of photos. Just yours.
-      </p>
-      <div className="rounded-2xl px-6 py-7 grid sm:grid-cols-[auto_1fr] gap-6 items-center"
-        style={{ background: 'rgba(11,9,8,0.78)', border: `1px solid ${accent}44` }}>
-        <div className="relative mx-auto sm:mx-0">
-          <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-full overflow-hidden"
-            style={{ border: `3px solid ${accent}`,
-              boxShadow: '0 8px 28px rgba(0,0,0,0.45)' }}>
-            <img src={token.photo} alt="Sample selfie"
-              className="w-full h-full"
-              style={{ objectFit: 'cover', objectPosition: 'center top' }} />
-          </div>
-          {step === 'scanning' && (
-            <motion.div
-              initial={{ y: -10, opacity: 0.7 }} animate={{ y: 70, opacity: 0.7 }}
-              transition={{ duration: 1.4, repeat: Infinity, repeatType: 'reverse', ease: 'linear' }}
-              className="absolute left-0 right-0 mx-auto h-[3px] rounded-full"
-              style={{ width: '90%', background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
-                top: 10, boxShadow: `0 0 14px ${accent}` }}
-            />
-          )}
-        </div>
-        <div>
-          {step === 'idle' && (
-            <>
-              <p className="text-sm md:text-base mb-3" style={{ color: 'rgba(255,248,220,0.85)' }}>
-                Tap below to see how the AI scans a guest&apos;s face and matches it against the
-                event&apos;s photo library in seconds.
-              </p>
-              <button type="button" onClick={onTryDemo}
-                className="inline-flex items-center gap-2 text-[11px] tracking-[0.3em] uppercase px-4 py-2.5 rounded-md font-medium"
-                style={{ background: accent, color: '#16110C', border: `1px solid ${accent}` }}
-                data-testid="celebration-preview-face-demo">
-                <Camera className="w-4 h-4" /> Try demo scan
-              </button>
-            </>
-          )}
-          {step === 'scanning' && (
-            <p className="text-sm tracking-[0.2em] uppercase" style={{ color: accent }}>
-              ✦ Scanning library… matching face features…
-            </p>
-          )}
-          {step === 'matched' && (
-            <>
-              <p className="text-[11px] tracking-[0.3em] uppercase mb-3"
-                style={{ color: accent }}>
-                ✓ 27 photos matched
-              </p>
-              <div className="grid grid-cols-4 gap-2">
-                {token.extraPhotos.concat(token.extraPhotos).slice(0, 8).map((p, i) => (
-                  <motion.div key={i}
-                    initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.45, delay: 0.06 * i }}
-                    className="aspect-square rounded-md overflow-hidden"
-                    style={{ border: `1px solid ${accent}55` }}>
-                    <img src={p} alt={`Match ${i + 1}`} className="w-full h-full object-cover" loading="lazy" />
-                  </motion.div>
-                ))}
-              </div>
-              <button type="button" onClick={() => setStep('idle')}
-                className="mt-3 text-[10px] tracking-[0.3em] uppercase"
-                style={{ color: 'rgba(255,248,220,0.6)' }}
-                data-testid="celebration-preview-face-reset">
-                Reset demo
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+const LivePhotoWall = ({ accent, eventLabel }) => (
+  <Panel accent={accent} testId="celebration-preview-live-photo-wall">
+    <Eyebrow accent={accent}>◆ Live Photo Wall</Eyebrow>
+    <SectionHeading>
+      Photos appear{' '}
+      <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>live.</em>
+    </SectionHeading>
+    <p className="mt-3 text-sm" style={{ color: MUTED_TEXT }}>
+      The photographer&apos;s hand-picked moments stream here as the {eventLabel.toLowerCase()} unfolds.
+    </p>
+    <div className="mt-4">
+      <PillButton accent={accent} testId="celebration-live-wall-cta">
+        <Camera className="w-3.5 h-3.5" /> View live wall
+      </PillButton>
     </div>
-  );
-};
+  </Panel>
+);
+
+/* ─────────────────────────────────────────────────────────────────────
+   FindMyPhotos — mirrors the wedding `find-photos-section` Panel from
+   DesignFullPreview exactly.
+   ───────────────────────────────────────────────────────────────────── */
+const FindMyPhotos = ({ accent, eventLabel }) => (
+  <Panel accent={accent} testId="celebration-preview-find-photos">
+    <Eyebrow accent={accent}>◆ AI-powered photo search</Eyebrow>
+    <SectionHeading>
+      Find{' '}
+      <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>your photos</em>{' '}
+      from the {eventLabel.toLowerCase()}.
+    </SectionHeading>
+    <p className="mt-3 text-sm" style={{ color: MUTED_TEXT }}>
+      Upload one selfie. Our AI will surface every photo of you from the day.
+    </p>
+    <div className="mt-4">
+      <PillButton accent={accent} testId="celebration-find-photos-cta">
+        <Search className="w-3.5 h-3.5" /> Find My Photos
+      </PillButton>
+    </div>
+  </Panel>
+);
 
 /* ─────────────────────────────────────────────────────────────────────
    CelebrationClosing — in-flow "Thank you for visiting" cinematic outro.
@@ -1204,16 +1139,11 @@ const CelebrationInvitationPreview = () => {
           <BlessingsWall token={token} accent={accent} />
         </section>
 
-        {/* LIVE PHOTO QR */}
-        <section className="px-5 md:px-12 py-16">
-          <LivePhotoQR token={token} accent={accent}
-            link={typeof window !== 'undefined' ? window.location.href : ''} />
-        </section>
+        {/* LIVE PHOTO WALL — wedding-style Panel */}
+        <LivePhotoWall accent={accent} eventLabel={token.label} />
 
-        {/* AI FACE MATCHING */}
-        <section className="px-5 md:px-12 py-16">
-          <AIFaceMatch token={token} accent={accent} />
-        </section>
+        {/* AI-POWERED PHOTO SEARCH — wedding-style Panel */}
+        <FindMyPhotos accent={accent} eventLabel={token.label} />
 
         {/* CLOSING BLESSING — short cream card */}
         <section className="px-5 md:px-12 pt-8 pb-16">
