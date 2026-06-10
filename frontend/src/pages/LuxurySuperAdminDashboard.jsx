@@ -257,12 +257,16 @@ const LuxurySuperAdminDashboard = () => {
         {/* Tabs */}
         <div className="flex gap-2 mb-6 flex-wrap">
           {[
-            { id: 'analytics', label: 'Analytics' },
-            { id: 'admins',    label: 'Photographers' },
-            { id: 'users',     label: 'Normal Users' },
-            { id: 'audit',     label: 'Audit Log' },
-            { id: 'plans',     label: 'Plans & Pricing' },
-            { id: 'events',    label: 'Event Categories' },
+            { id: 'analytics',  label: 'Analytics' },
+            { id: 'admins',     label: 'Photographers' },
+            { id: 'users',      label: 'Normal Users' },
+            { id: 'audit',      label: 'Audit Log' },
+            { id: 'plans',      label: 'Plans & Pricing' },
+            { id: 'events',     label: 'Event Categories' },
+            // BUG 5 FIX: SuperAdminGiftCodes + InlineGiftCodes were
+            // already imported/defined but had no tab entry, so the page
+            // was effectively orphaned in the super-admin shell.
+            { id: 'gift_codes', label: 'Gift Codes' },
           ].map((t) => (
             <button
               key={t.id} onClick={() => setTab(t.id)}
@@ -514,6 +518,14 @@ const LuxurySuperAdminDashboard = () => {
         {tab === 'events' && (
           <Suspense fallback={<div className="lux-glass p-12 text-center" style={{ color: 'rgba(255,248,220,0.5)' }}>Loading…</div>}>
             <EventCategoriesPanel />
+          </Suspense>
+        )}
+
+        {/* BUG 5 FIX: render the Gift Codes admin panel (lazy-loaded
+            from SuperAdminGiftCodes via the InlineGiftCodes wrapper). */}
+        {tab === 'gift_codes' && (
+          <Suspense fallback={<div className="lux-glass p-12 text-center" style={{ color: 'rgba(255,248,220,0.5)' }}>Loading…</div>}>
+            <InlineGiftCodes />
           </Suspense>
         )}
       </div>

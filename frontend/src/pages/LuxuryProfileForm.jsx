@@ -222,6 +222,36 @@ const LuxuryProfileForm = () => {
   const [shareLink, setShareLink] = useState('');
   // Dynamic pricing — photographer audience (admin panel surface).
   const pricing = usePricing('photographer');
+
+  // BUG 6 FIX: load expiry tier credit costs from /api/admin/expiry-tiers
+  // and pass them through to computeTotalPublishCost + PublishCostBreakdown.
+  // Previously both used a HARDCODED { '1_month': 1, ..., 'lifetime': 10 }
+  // map, so any super-admin override in the Pricing Hub was ignored in the
+  // preview (backend would still charge the real cost, leading to confusing
+  // "you said 1 credit but charged 3" reports). Now the preview matches the
+  // backend exactly.
+  const [expiryCreditsMap, setExpiryCreditsMap] = useState({
+    '1_month':  1,
+    '3_months': 2,
+    '6_months': 3,
+    '1_year':   5,
+    'lifetime': 10,
+  });
+  useEffect(() => {
+    let cancelled = false;
+    axios.get(`${API_URL}/api/admin/expiry-tiers`).then((res) => {
+      if (cancelled) return;
+      const tiers = Array.isArray(res.data?.tiers) ? res.data.tiers : [];
+      if (tiers.length === 0) return;
+      const map = {};
+      tiers.forEach((t) => {
+        if (t?.id != null) map[t.id] = Number(t.credits ?? 0);
+      });
+      setExpiryCreditsMap((prev) => ({ ...prev, ...map }));
+    }).catch(() => { /* keep static fallback */ });
+    return () => { cancelled = true; };
+  }, []);
+
   const [previewTheme, setPreviewTheme] = useState(null); // theme preview modal
   const [topUpOpen, setTopUpOpen] = useState(false);
 
@@ -1800,7 +1830,12 @@ const LuxuryProfileForm = () => {
                       whenever the photographer toggles a feature, picks a
                       different expiry tier, or switches design. Shows the
                       exact charge BEFORE they hit Publish. */}
-                  <PublishCostBreakdown form={form} pricing={pricing} balance={admin?.available_credits ?? 0} />
+                  <PublishCostBreakdown
+                    form={form}
+                    pricing={pricing}
+                    balance={admin?.available_credits ?? 0}
+                    expiryCreditsMap={expiryCreditsMap}
+                  />
 
                   {/* All-Features Pack upsell — shows whenever any configured
                       pack would be cheaper than buying the user's currently
@@ -1830,11 +1865,11 @@ const LuxuryProfileForm = () => {
                       const result = await save({ publish: true });
                       if (result) setPublished(true);
                     }}
-                    disabled={saving || (admin?.available_credits ?? 0) < computeTotalPublishCost(form, pricing)}
+                    disabled={saving || (admin?.available_credits ?? 0) < computeTotalPublishCost(form, pricing, expiryCreditsMap)}
                     className="lux-btn w-full justify-center"
                     data-testid="publish-btn"
                   >
-                    {saving ? 'Publishing…' : published ? 'Re-publish (free)' : `Publish Now · ${computeTotalPublishCost(form, pricing)} credit${computeTotalPublishCost(form, pricing) === 1 ? '' : 's'}`}
+                    {saving ? 'Publishing…' : published ? 'Re-publish (free)' : `Publish Now · ${computeTotalPublishCost(form, pricing, expiryCreditsMap)} credit${computeTotalPublishCost(form, pricing, expiryCreditsMap) === 1 ? '' : 's'}`}
                     <Check className="w-4 h-4" />
                   </button>
 
@@ -2299,7 +2334,13 @@ const FEATURE_FLAG_COST_KEYS = [
 
 // Resolved once with usePricing -> we expose a pure helper because the
 // Publish button needs the same number for its disabled check.
-function computeTotalPublishCost(form, pricing) {
+//
+// BUG 6 FIX: `expiryCreditsMap` is now passed in by the caller (loaded
+// from /api/admin/expiry-tiers). Falls back to the static defaults if
+// the caller doesn't provide one (e.g. early renders before fetch).
+const STATIC_EXPIRY_CREDITS = { '1_month': 1, '3_months': 2, '6_months': 3, '1_year': 5, 'lifetime': 10 };
+
+function computeTotalPublishCost(form, pricing, expiryCreditsMap = STATIC_EXPIRY_CREDITS) {
   const themeMeta = getThemeById(form?.design_theme);
   const themeCost = pricing.themeCost(form?.design_theme, themeMeta?.creditCost ?? 1);
 
@@ -2318,15 +2359,14 @@ function computeTotalPublishCost(form, pricing) {
   // configured a separate price row).
   const giftsExtra = form?.gifts?.enabled ? pricing.optionCredits('gift_registry_extra', 0) : 0;
 
-  // Expiry tier cost — pulled from default static map; backend resolves
-  // the real value, this is the optimistic preview.
-  const EXPIRY_CREDITS = { '1_month': 1, '3_months': 2, '6_months': 3, '1_year': 5, 'lifetime': 10 };
-  const expiryCost = EXPIRY_CREDITS[form?.expiry_tier] ?? 0;
+  // Expiry tier cost — pulled live from /api/admin/expiry-tiers so the
+  // preview matches whatever the super admin configured in the Pricing Hub.
+  const expiryCost = expiryCreditsMap?.[form?.expiry_tier] ?? STATIC_EXPIRY_CREDITS[form?.expiry_tier] ?? 0;
 
   return themeCost + featureCost + giftsExtra + expiryCost;
 }
 
-const PublishCostBreakdown = ({ form, pricing, balance = 0 }) => {
+const PublishCostBreakdown = ({ form, pricing, balance = 0, expiryCreditsMap = STATIC_EXPIRY_CREDITS }) => {
   const themeMeta = getThemeById(form?.design_theme);
   const themeCost = pricing.themeCost(form?.design_theme, themeMeta?.creditCost ?? 1);
 
@@ -2338,9 +2378,9 @@ const PublishCostBreakdown = ({ form, pricing, balance = 0 }) => {
       return { label: entry.label, credits: isFree ? 0 : (credits || 0), isFree };
     });
 
-  const EXPIRY_CREDITS = { '1_month': 1, '3_months': 2, '6_months': 3, '1_year': 5, 'lifetime': 10 };
-  const expiryCost = EXPIRY_CREDITS[form?.expiry_tier] ?? 0;
-  const total = computeTotalPublishCost(form, pricing);
+  // BUG 6 FIX: dynamic expiry credit lookup (was hardcoded before).
+  const expiryCost = expiryCreditsMap?.[form?.expiry_tier] ?? STATIC_EXPIRY_CREDITS[form?.expiry_tier] ?? 0;
+  const total = computeTotalPublishCost(form, pricing, expiryCreditsMap);
   const enoughCredits = balance >= total;
 
   return (

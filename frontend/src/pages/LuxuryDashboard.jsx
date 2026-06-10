@@ -663,8 +663,30 @@ const Card = ({
 
         {/* Primary actions only — secondary moved to CardMenu */}
         <div className="mt-auto flex flex-wrap gap-2 text-xs">
-          <ActionBtn onClick={() => navigate(`/admin/profile/${p.id}/invitations`)}
-            icon={Link2} label="Get Invitation" testid={`get-invitation-${p.id}`} primary />
+          {/* BUG 4 FIX: the "Get Invitation" button used to send photographers
+              straight to /invitations even when the profile was still a
+              DRAFT — they'd hit a paywall mid-flow with zero warning. We now
+              swap the button for "Publish to Get Link" on drafts which jumps
+              the photographer to the editor's Publish step where the cost
+              breakdown + credit check is shown up-front. Published profiles
+              keep the original "Get Invitation" behaviour. */}
+          {isPublished ? (
+            <ActionBtn onClick={() => navigate(`/admin/profile/${p.id}/invitations`)}
+              icon={Link2} label="Get Invitation" testid={`get-invitation-${p.id}`} primary />
+          ) : (
+            <ActionBtn
+              onClick={() => {
+                const ok = window.confirm(
+                  'This invitation is still a draft. To get the shareable link, you need to publish it first (1+ credits will be charged). Continue to the Publish step?'
+                );
+                if (ok) navigate(getEditRoute(p));
+              }}
+              icon={Link2}
+              label="Publish to Get Link"
+              testid={`publish-to-get-link-${p.id}`}
+              primary
+            />
+          )}
           <ActionBtn onClick={() => navigate(getEditRoute(p))}
             icon={Edit3} label="Edit" testid={`edit-${p.id}`} />
           <ActionBtn onClick={() => navigate(`/admin/profile/${p.id}/rsvps`)}

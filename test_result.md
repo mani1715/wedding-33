@@ -305,6 +305,29 @@ agent_communication:
              status → expect 200 (regression check).
         Other backend endpoints were not modified. No frontend testing
         required for this round.
+
+    - agent: "main"
+      message: |
+        Second batch of photographer-panel bug fixes (Jul 2026). User
+        re-listed BUG 2 (bulk publish) and BUG 3 (top-up onSuccess
+        refreshAuth) — both were ALREADY FIXED in the previous round
+        (verified by grep: LuxuryDashboard.jsx L188 has the loop +
+        refreshAuth, L456 has setTopUpOpen+refreshAuth in onSuccess).
+        Three NEW frontend-only fixes applied:
+          • BUG 4 — Get Invitation button on DRAFT cards now reads
+            "Publish to Get Link" and triggers a window.confirm() warning
+            before navigating to the editor's Publish step (uses
+            getEditRoute so celebration drafts also work).
+          • BUG 5 — Added "Gift Codes" tab to the super-admin dashboard
+            tabs array + Suspense render block for InlineGiftCodes.
+          • BUG 6 — LuxuryProfileForm now loads expiry tier credits from
+            GET /api/admin/expiry-tiers at mount, stores them in
+            expiryCreditsMap state, and threads that map through both
+            computeTotalPublishCost(form, pricing, map) and
+            <PublishCostBreakdown expiryCreditsMap={...} />. Static
+            { 1_month:1, 3_months:2, 6_months:3, 1_year:5, lifetime:10 }
+            kept ONLY as fallback if the API hasn't responded yet.
+        NO BACKEND CHANGES this round. No backend re-test needed.
     - agent: "testing"
       message: |
         ✅ BUG 3 SERVER-SIDE GUARD VERIFIED AND WORKING
