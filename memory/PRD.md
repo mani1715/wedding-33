@@ -34,8 +34,12 @@
   - **Event details** card pair (Date + Time, Venue with Google Maps deep link)
   - **RSVP form** (name, guest count, attending toggle, optional note, animated confirmation — preview mode, no API write)
   - **Blessings & Wishes Wall** with 3 sample wishes + "add yours" form (in-memory in preview)
-  - **Cinematic closing** (`CelebrationClosing`) — in-flow reverse Ken-Burns on the design image + falling accent-colored petals + "WITH ALL OUR LOVE · Thank you for visiting. · — Celebrant —" overlay
+  - **Live Photo QR Code** — sample QR + 4-step "scan, tap, pick, watch" guide; QR points back at the current preview URL; "Copy invitation link" button
+  - **AI Face Matching** demo — interactive "Try demo scan" button with a sweeping laser line over a sample selfie, then renders 8 matched photo thumbnails and a "Reset demo" link
+  - **Cinematic closing** (`CelebrationClosing`) — in-flow reverse Ken-Burns on the design image + falling accent-colored petals + new copy "**Your presence is enough for us. Thank you.**" + celebrant signature with glow animation + date · venue strapline
   - **Footer** with celebrant signature + "Crafted with reverence · MAJA Creations"
+- [10 Jun 2026] **Photo bubble centering fix** — outer absolute wrapper does the `left:50% + translateX(-50%)` math; the framer-motion child only animates scale/opacity, so transform never gets overridden. Confirmed via DOM probe: cardCenter=960, bubbleCenter=960.
+- [10 Jun 2026] **Scroll reveal animations fix** — all page content is now conditionally rendered (`{openingDone && …}`) instead of opacity-gated, so framer-motion `whileInView` IntersectionObservers fire properly as the guest scrolls (instead of marking everything "seen" while hidden).
 
 ## Known Things to Be Aware Of
 - Backend has `security_middleware` that blocks bot user-agents (curl etc.) on `/api/` root. Browser/frontend access works fine.

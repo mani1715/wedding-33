@@ -21,7 +21,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, Sparkles, Heart, MapPin, Calendar, Send, MessageSquare,
+  ArrowLeft, Sparkles, Heart, MapPin, Calendar, Send, MessageSquare, QrCode, Camera, Share2,
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
@@ -570,6 +570,163 @@ const BlessingsWall = ({ token, accent }) => {
 };
 
 /* ─────────────────────────────────────────────────────────────────────
+   LivePhotoQR — a sample QR code panel. In real invitations this QR
+   points guests at `/i/{slug}/live-photos` where they can upload to a
+   shared live gallery. Here we render a sample QR that resolves to the
+   preview URL itself so couples can visualise the feature.
+   ───────────────────────────────────────────────────────────────────── */
+const LivePhotoQR = ({ token, accent, link }) => {
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=2&color=${
+    accent.replace('#', '')}&bgcolor=FFF8DC&data=${encodeURIComponent(link)}`;
+  return (
+    <div className="max-w-3xl mx-auto" data-testid="celebration-preview-qr">
+      <span className="block text-[10px] tracking-[0.42em] uppercase mb-3 text-center"
+        style={{ color: accent }}>
+        ◆ Live Photo Wall
+      </span>
+      <h3 className="text-center font-display text-3xl md:text-4xl leading-tight mb-3"
+        style={{ color: '#FFF8DC', fontFamily: '"Cormorant Garamond", serif' }}>
+        Scan &amp; share your moment.
+      </h3>
+      <p className="text-center text-sm md:text-base mb-7"
+        style={{ color: 'rgba(255,248,220,0.7)' }}>
+        Every guest can capture a photo on their phone and watch it appear instantly on the live wall
+        at the venue. Print this QR on the printed invite — or guests can scan it directly from their
+        digital copy.
+      </p>
+      <div className="grid sm:grid-cols-[auto_1fr] gap-6 items-center rounded-2xl px-6 py-7"
+        style={{ background: 'rgba(11,9,8,0.78)', border: `1px solid ${accent}44` }}>
+        <div className="mx-auto sm:mx-0 p-3 rounded-xl"
+          style={{ background: '#FFF8DC', boxShadow: `0 12px 28px ${accent}33` }}>
+          <img src={qrSrc} alt="Live photo wall QR" width={180} height={180}
+            style={{ display: 'block' }} data-testid="celebration-preview-qr-image" />
+        </div>
+        <ol className="space-y-2.5 text-sm md:text-base"
+          style={{ color: 'rgba(255,248,220,0.85)' }}>
+          <li className="flex gap-3"><span style={{ color: accent }}>①</span>
+            Open the camera app on your phone and scan the QR.</li>
+          <li className="flex gap-3"><span style={{ color: accent }}>②</span>
+            Tap the link — no app needed.</li>
+          <li className="flex gap-3"><span style={{ color: accent }}>③</span>
+            Pick up to <strong style={{ color: '#FFF8DC' }}>5 photos</strong> from your roll.</li>
+          <li className="flex gap-3"><span style={{ color: accent }}>④</span>
+            Watch them appear on the projector wall at the venue ✨
+          </li>
+        </ol>
+      </div>
+      <div className="text-center mt-4">
+        <button type="button"
+          onClick={() => { try { navigator.clipboard?.writeText(link); } catch (_) { /* ignore */ } }}
+          className="inline-flex items-center gap-2 text-[11px] tracking-[0.3em] uppercase px-4 py-2 rounded-md"
+          style={{ color: accent, border: `1px solid ${accent}55`, background: 'rgba(11,9,8,0.6)' }}
+          data-testid="celebration-preview-qr-copy">
+          <Share2 className="w-3.5 h-3.5" /> Copy invitation link
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────────────────────────────────
+   AIFaceMatch — sample of the AI face matching add-on. The real flow
+   (in LuxuryPublicInvitation) uses /api/ai/face-match to surface
+   moments where the guest appears in the wedding's photo library.
+   Here we render a static visual demo so couples can preview the look.
+   ───────────────────────────────────────────────────────────────────── */
+const AIFaceMatch = ({ token, accent }) => {
+  const [step, setStep] = useState('idle');
+  const onTryDemo = () => {
+    setStep('scanning');
+    setTimeout(() => setStep('matched'), 2200);
+  };
+  return (
+    <div className="max-w-3xl mx-auto" data-testid="celebration-preview-face-match">
+      <span className="block text-[10px] tracking-[0.42em] uppercase mb-3 text-center"
+        style={{ color: accent }}>
+        ◆ AI Face Matching
+      </span>
+      <h3 className="text-center font-display text-3xl md:text-4xl leading-tight mb-3"
+        style={{ color: '#FFF8DC', fontFamily: '"Cormorant Garamond", serif' }}>
+        Find <span style={{ color: accent, fontStyle: 'italic' }}>your photos</span> after the event.
+      </h3>
+      <p className="text-center text-sm md:text-base mb-7"
+        style={{ color: 'rgba(255,248,220,0.7)' }}>
+        Take a single selfie — our AI will surface every photo from the celebration
+        that <strong style={{ color: '#FFF8DC' }}>you appear in</strong>. No scrolling through
+        thousands of photos. Just yours.
+      </p>
+      <div className="rounded-2xl px-6 py-7 grid sm:grid-cols-[auto_1fr] gap-6 items-center"
+        style={{ background: 'rgba(11,9,8,0.78)', border: `1px solid ${accent}44` }}>
+        <div className="relative mx-auto sm:mx-0">
+          <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-full overflow-hidden"
+            style={{ border: `3px solid ${accent}`,
+              boxShadow: '0 8px 28px rgba(0,0,0,0.45)' }}>
+            <img src={token.photo} alt="Sample selfie"
+              className="w-full h-full"
+              style={{ objectFit: 'cover', objectPosition: 'center top' }} />
+          </div>
+          {step === 'scanning' && (
+            <motion.div
+              initial={{ y: -10, opacity: 0.7 }} animate={{ y: 70, opacity: 0.7 }}
+              transition={{ duration: 1.4, repeat: Infinity, repeatType: 'reverse', ease: 'linear' }}
+              className="absolute left-0 right-0 mx-auto h-[3px] rounded-full"
+              style={{ width: '90%', background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
+                top: 10, boxShadow: `0 0 14px ${accent}` }}
+            />
+          )}
+        </div>
+        <div>
+          {step === 'idle' && (
+            <>
+              <p className="text-sm md:text-base mb-3" style={{ color: 'rgba(255,248,220,0.85)' }}>
+                Tap below to see how the AI scans a guest&apos;s face and matches it against the
+                event&apos;s photo library in seconds.
+              </p>
+              <button type="button" onClick={onTryDemo}
+                className="inline-flex items-center gap-2 text-[11px] tracking-[0.3em] uppercase px-4 py-2.5 rounded-md font-medium"
+                style={{ background: accent, color: '#16110C', border: `1px solid ${accent}` }}
+                data-testid="celebration-preview-face-demo">
+                <Camera className="w-4 h-4" /> Try demo scan
+              </button>
+            </>
+          )}
+          {step === 'scanning' && (
+            <p className="text-sm tracking-[0.2em] uppercase" style={{ color: accent }}>
+              ✦ Scanning library… matching face features…
+            </p>
+          )}
+          {step === 'matched' && (
+            <>
+              <p className="text-[11px] tracking-[0.3em] uppercase mb-3"
+                style={{ color: accent }}>
+                ✓ 27 photos matched
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                {token.extraPhotos.concat(token.extraPhotos).slice(0, 8).map((p, i) => (
+                  <motion.div key={i}
+                    initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.45, delay: 0.06 * i }}
+                    className="aspect-square rounded-md overflow-hidden"
+                    style={{ border: `1px solid ${accent}55` }}>
+                    <img src={p} alt={`Match ${i + 1}`} className="w-full h-full object-cover" loading="lazy" />
+                  </motion.div>
+                ))}
+              </div>
+              <button type="button" onClick={() => setStep('idle')}
+                className="mt-3 text-[10px] tracking-[0.3em] uppercase"
+                style={{ color: 'rgba(255,248,220,0.6)' }}
+                data-testid="celebration-preview-face-reset">
+                Reset demo
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────────────────────────────────
    CelebrationClosing — in-flow "Thank you for visiting" cinematic outro.
    Sits above the footer. Trigger on intersection so it plays once the
    guest has scrolled all the way through.
@@ -646,19 +803,35 @@ const CelebrationClosing = ({ image, token, accent }) => {
           </div>
           <div style={{
             fontFamily: '"Cormorant Garamond", serif', fontWeight: 600,
-            fontSize: 'clamp(36px, 7vw, 78px)', lineHeight: 1.05,
+            fontSize: 'clamp(28px, 5.4vw, 64px)', lineHeight: 1.12,
             color: '#FFF8DC',
             textShadow: '0 2px 18px rgba(0,0,0,0.55)',
+            maxWidth: '20ch',
+            margin: '0 auto',
           }}>
-            Thank you for visiting.
+            Your presence is enough for us. Thank you.
           </div>
-          <div style={{
-            fontFamily: '"Great Vibes", "Pinyon Script", cursive',
-            fontSize: 'clamp(28px, 5vw, 56px)', color: accent,
-            marginTop: 14,
-          }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={played ? {
+              opacity: [0, 1, 1],
+              scale: [0.85, 1.08, 1.0],
+              textShadow: [
+                '0 0 0px rgba(255,248,220,0)',
+                `0 0 36px ${accent}AA`,
+                `0 0 18px ${accent}88`,
+              ],
+            } : { opacity: 0, scale: 0.85 }}
+            transition={{ duration: 2.2, delay: 1.4, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+              fontFamily: '"Great Vibes", "Pinyon Script", cursive',
+              fontSize: 'clamp(34px, 6.5vw, 72px)', color: accent,
+              marginTop: 22, letterSpacing: '0.01em',
+            }}
+            data-testid="closing-celebrant-signature"
+          >
             — {token.celebrant} —
-          </div>
+          </motion.div>
           <div style={{
             marginTop: 22, fontFamily: 'Cinzel, serif',
             fontSize: 'clamp(11px, 1.5vw, 13px)',
@@ -713,23 +886,38 @@ const HeroInvitationCard = ({ design, token }) => {
         </span>
       </motion.div>
 
-      {/* Photo bubble */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.85 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.3 }}
-        className="absolute z-10"
-        style={{ top: '22%', left: '50%', transform: 'translateX(-50%)' }}
+      {/* Photo bubble — outer wrapper does the absolute centering so that
+          framer-motion's animated transform (scale) doesn't clobber the
+          translateX(-50%) used for horizontal centering. */}
+      <div className="absolute z-10"
+        style={{
+          top: '20%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+        }}
       >
-        <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden"
-          style={{
-            border: `4px solid ${token.accent}`,
-            boxShadow: '0 8px 28px rgba(0,0,0,0.4), inset 0 0 0 4px rgba(255,255,255,0.9)',
-            background: `url(${token.photo}) center/cover`,
-          }} />
-        <div aria-hidden className="absolute -inset-2 rounded-full pointer-events-none"
-          style={{ border: `1.5px dashed ${token.accent}80` }} />
-      </motion.div>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.3 }}
+          className="relative"
+        >
+          <div className="rounded-full overflow-hidden"
+            style={{
+              width: 'min(40vw, 156px)',
+              height: 'min(40vw, 156px)',
+              border: `4px solid ${token.accent}`,
+              boxShadow: '0 8px 28px rgba(0,0,0,0.45), inset 0 0 0 4px rgba(255,255,255,0.95)',
+              background: '#fff',
+            }}>
+            <img src={token.photo} alt={token.celebrant}
+              className="w-full h-full"
+              style={{ objectFit: 'cover', objectPosition: 'center top', display: 'block' }} />
+          </div>
+          <div aria-hidden className="absolute -inset-2 rounded-full pointer-events-none"
+            style={{ border: `1.5px dashed ${token.accent}80` }} />
+        </motion.div>
+      </div>
 
       {/* Bottom cream / tinted invitation panel */}
       <motion.div
@@ -883,13 +1071,12 @@ const CelebrationInvitationPreview = () => {
       {/* Full-bleed design backdrop (blurred) */}
       <SoftDesignBackdrop image={backdropImg} accent={accent} />
 
-      {/* All page content fades in after the opening completes — same
-          pattern as LuxuryPublicInvitation. */}
-      <div style={{
-        opacity: openingDone ? 1 : 0,
-        transition: 'opacity 0.55s ease',
-        pointerEvents: openingDone ? 'auto' : 'none',
-      }}>
+      {/* All page content is mounted AFTER the opening completes so that
+          framer-motion `whileInView` observers fire correctly as the guest
+          scrolls — otherwise every section would already be "seen" while
+          hidden under the opacity-0 wrapper and skip its animation. */}
+      {openingDone && (
+      <>
       {/* Top controls */}
       <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-5 md:px-10 py-4"
         style={{
@@ -1017,6 +1204,17 @@ const CelebrationInvitationPreview = () => {
           <BlessingsWall token={token} accent={accent} />
         </section>
 
+        {/* LIVE PHOTO QR */}
+        <section className="px-5 md:px-12 py-16">
+          <LivePhotoQR token={token} accent={accent}
+            link={typeof window !== 'undefined' ? window.location.href : ''} />
+        </section>
+
+        {/* AI FACE MATCHING */}
+        <section className="px-5 md:px-12 py-16">
+          <AIFaceMatch token={token} accent={accent} />
+        </section>
+
         {/* CLOSING BLESSING — short cream card */}
         <section className="px-5 md:px-12 pt-8 pb-16">
           <div className="max-w-2xl mx-auto text-center px-6 py-10 rounded-2xl"
@@ -1077,7 +1275,8 @@ const CelebrationInvitationPreview = () => {
           Use this design <Sparkles className="w-3 h-3" />
         </button>
       </div>
-      </div>{/* end opacity-gated content wrapper */}
+      </>
+      )}
     </div>
   );
 };
