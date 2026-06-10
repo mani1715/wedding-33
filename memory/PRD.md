@@ -22,9 +22,12 @@
 - [10 Jun 2026] Updated `frontend/.env` REACT_APP_BACKEND_URL to the current container preview URL
 - [10 Jun 2026] supervisor restarted: backend + frontend RUNNING
 - [10 Jun 2026] Verified landing page loads: "MAJA Creations — Cinematic invitations for every celebration"
-- [10 Jun 2026] **Non-wedding full preview fix** — Previously, clicking the "PREVIEW" button on a baby birthday / half saree / puberty / dhoti design card opened only a small modal with a features list. Now it navigates (in a new tab, same UX as the wedding `DesignFullPreview` route) to `/preview/celebration/:category/:designId` which renders the full cinematic scrollable invitation page via `CelebrationInvitationPreview` → `CelebrationPublicView` (hero + name + nickname + parents + date + countdown + story + cherished-photos gallery + sticky "USE THIS DESIGN" CTA). The 1-credit Buy button now uses a separate handler that jumps straight to the purchase wizard.
-  - File: `/app/frontend/src/pages/LandingPage.jsx`
-  - Verified: HTTP 200 on all 4 categories' preview routes; e2e click test confirms new tab opens with full preview.
+- [10 Jun 2026] **Full preview redesign — matches wedding layout exactly** — Rewrote `/app/frontend/src/pages/CelebrationInvitationPreview.jsx`:
+  - Full-bleed blurred design image as fixed page background (SoftDesignBackdrop pattern, copied from `DesignFullPreview.jsx`)
+  - Centered "poster" invitation card with eyebrow + circular celebrant photo bubble + bottom cream/tinted panel containing family line + big serif celebrant name + nickname + date + venue + parents — visually identical pattern to wedding's `UniversalDesignRenderer` hero
+  - Top bar: ← Designs · "PREVIEW · {Category}" · USE THIS DESIGN
+  - Below hero: Our Story section, Cherished Photos gallery (3 sample photos per category), Closing Blessing section, sticky bottom CTA
+  - Verified visually for baby_birthday, half_saree, puberty, dhoti
 
 ## Known Things to Be Aware Of
 - Backend has `security_middleware` that blocks bot user-agents (curl etc.) on `/api/` root. Browser/frontend access works fine.
