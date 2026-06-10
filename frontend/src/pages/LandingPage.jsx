@@ -5,7 +5,8 @@ import axios from 'axios';
 import {
   Sparkles, Camera, Crown, Wallet, ShieldCheck, Layers, ArrowRight,
   Heart, Music, Image as ImageIcon, QrCode, Globe2, MessageCircle, Star, MapPin,
-  X as XIcon, IndianRupee, Coins, Check,
+  X as XIcon, IndianRupee, Coins, Check, ChevronDown, ScanFace, Users, Gift,
+  Zap, Lock, Headphones, Send, Smartphone,
 } from 'lucide-react';
 import '../styles/luxury.css';
 import HeroMandala3D from '../components/luxury/HeroMandala3D';
@@ -73,22 +74,25 @@ const MASTER_THEMES = [
 ];
 
 const FEATURES = [
-  { icon: Crown,       title: 'Locked Premium Themes',     copy: 'Photographers can never break design. Curated luxury layouts only.' },
-  { icon: Wallet,      title: 'Credit-Based Publishing',   copy: 'Drafts are free. Credits consume only on publish. Never expire.' },
-  { icon: Camera,      title: 'Live Photo Galleries',      copy: 'Stream wedding moments to guests in real-time, beautifully.' },
-  { icon: Sparkles,    title: 'AI Story Composer',         copy: 'Cinematic captions, vows, and event copy in seconds.' },
-  { icon: Music,       title: 'Persistent Ambient Music',  copy: 'Crossfaded between sections — never breaks the spell.' },
-  { icon: ImageIcon,   title: '3D Unfolding Invitation',   copy: 'Wax-seal opening, scroll storytelling, parallax depth.' },
-  { icon: QrCode,      title: 'QR + Digital Shagun',       copy: 'Frictionless RSVP, gifts and entry passes for every guest.' },
-  { icon: Globe2,      title: 'Multi-Language',            copy: 'Hindi, Tamil, Telugu, Bengali, Urdu, English & more.' },
-  { icon: ShieldCheck, title: 'Private & Secure',          copy: 'Passcode invites, anti-scraping, RBAC, audit trails.' },
+  { icon: Camera,      title: 'Live Photo Wall',           copy: 'Wedding photographers stream every moment to a real-time gallery your guests can scroll while sipping chai.' },
+  { icon: ScanFace,    title: 'AI Face Matching',          copy: 'Each guest uploads one selfie and instantly receives every photo they appear in — 99%+ accuracy, zero hunting.' },
+  { icon: Crown,       title: '10 Locked Luxury Themes',   copy: 'Royal Mughal, South Indian Temple, Bengali, Punjabi, Kerala Backwaters & more — handcrafted, never editable below the surface.' },
+  { icon: Layers,      title: '5 Invitation Categories',   copy: 'Weddings, Baby Birthdays, Half Saree, Puberty (Manjal Neerattu) & Dhoti (Vetti Kattum) ceremonies — one studio for every milestone.' },
+  { icon: Wallet,      title: 'Credit-Based Publishing',   copy: 'Drafts are 100% free. Credits never expire. You spend only when you publish a live invitation link.' },
+  { icon: ImageIcon,   title: '3D Wax-Seal Opening',       copy: 'Cinematic unfolding intro, parallax depth, scroll storytelling — guests open the invite like a film begins.' },
+  { icon: Sparkles,    title: 'AI Story Composer',         copy: 'Gemini-powered vows, captions, family stories and event copy generated in seconds, in your tone.' },
+  { icon: Music,       title: 'Ambient Music Library',     copy: '60+ curated tracks across 6 moods — crossfaded between sections so the spell is never broken.' },
+  { icon: QrCode,      title: 'QR + Digital Shagun',       copy: 'Per-guest QR entry passes, Razorpay/UPI gifting, RSVP form — all wired into one secure invite.' },
+  { icon: Globe2,      title: 'Multi-Language Invites',    copy: 'Render the same invitation in Hindi, Tamil, Telugu, Bengali, Urdu, Kannada, Malayalam and English.' },
+  { icon: Camera,      title: 'Photographer Panel',        copy: 'A separate studio panel for photographers — bulk drafts, branding, RBAC, audit logs, loyalty-tier credit discounts.' },
+  { icon: ShieldCheck, title: 'Private & Secure',          copy: 'Passcode-locked invites, anti-scraping, role-based access, full audit trails — built like enterprise software.' },
 ];
 
 const STATS = [
-  { value: '10',  label: 'Master Themes' },
-  { value: '60+', label: 'Premium Sections' },
-  { value: '8',   label: 'Indian Wedding Cultures' },
-  { value: '∞',   label: 'Drafts per Photographer' },
+  { value: '5',    label: 'Invitation Categories' },
+  { value: '10',   label: 'Luxury Wedding Themes' },
+  { value: '180+', label: 'Hand-Crafted Designs' },
+  { value: '99%+', label: 'AI Face-Match Accuracy' },
 ];
 
 const PLANS = [
@@ -117,6 +121,7 @@ const Nav = ({ onLogin, user, onOpenAuth, onLogout, onBuyCredits, onUserDashboar
       <a href="#themes" className="hover:text-[var(--lux-gold)] transition-colors">Themes</a>
       <a href="#features" className="hover:text-[var(--lux-gold)] transition-colors">Features</a>
       <a href="#pricing" className="hover:text-[var(--lux-gold)] transition-colors">Plans</a>
+      <a href="#faq" className="hover:text-[var(--lux-gold)] transition-colors">FAQ</a>
       <a href="#story" className="hover:text-[var(--lux-gold)] transition-colors">Story</a>
     </div>
     <div className="flex items-center gap-1.5 md:gap-3 shrink-0">
@@ -246,7 +251,7 @@ const Hero = ({ onLogin, user, userProfilesCount = 0 }) => {
         className="relative z-10 max-w-6xl"
       >
         <motion.span variants={fadeUp} initial="hidden" animate="visible" custom={0} className="lux-eyebrow inline-block mb-4 md:mb-6 text-[10px] md:text-xs">
-          ◆ Universal Event Invitations · Crafted in Code
+          ◆ Universal Event Invitations · Live Photo Wall · AI Face Match
         </motion.span>
 
         <motion.h1
@@ -262,11 +267,15 @@ const Hero = ({ onLogin, user, userProfilesCount = 0 }) => {
         <motion.p
           variants={fadeUp} initial="hidden" animate="visible" custom={2}
           className="mt-5 md:mt-8 max-w-2xl text-[0.95rem] md:text-[1.18rem] leading-[1.6] md:leading-[1.7]"
-          style={{ color: 'rgba(255,248,220,0.72)' }}
+          style={{ color: 'rgba(255,248,220,0.78)' }}
         >
-          Weddings · Baby Birthdays · Half Saree · Puberty · Dhoti Ceremonies — one luxury studio
-          for couples, families and the photographers who serve them.
-          You choose the story. We protect the design.
+          <span className="text-gold">Weddings</span> · <span className="text-gold">Baby Birthdays</span> · <span className="text-gold">Half Saree</span> · <span className="text-gold">Puberty</span> · <span className="text-gold">Dhoti Ceremonies</span>
+          {' '}— one luxury studio for couples, families and the photographers who serve them.
+          Cinematic wax-seal openings, a real-time photo wall every guest can scroll,
+          and AI face matching that hands each guest only the photos they appear in.
+          <span className="block mt-3 text-[0.88rem] md:text-[1rem]" style={{ color: 'rgba(255,248,220,0.6)' }}>
+            You choose the story. We protect the design.
+          </span>
         </motion.p>
 
         <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={3} className="mt-7 md:mt-10 flex flex-wrap items-center gap-3 md:gap-4">
@@ -891,16 +900,19 @@ const Story = () => (
       >
         <motion.span variants={fadeUp} className="lux-eyebrow block mb-5">◆ Our Philosophy</motion.span>
         <motion.h2 variants={fadeUp} className="font-display text-[2.4rem] md:text-[3.4rem] leading-[1.1] mb-7" style={{ color: '#FFF8DC' }}>
-          Indian weddings deserve <span className="text-gold italic font-script">cinema</span>, not templates.
+          Indian celebrations deserve <span className="text-gold italic font-script">cinema</span>, not templates.
         </motion.h2>
         <motion.p variants={fadeUp} className="text-[1.05rem] leading-[1.85] mb-6" style={{ color: 'rgba(255,248,220,0.7)' }}>
           We built MAJA Creations for the artist behind the camera — the photographer who has shot 200 weddings
-          and is tired of cheap, flashy invitation builders that ruin their brand.
+          and is tired of cheap, flashy invitation builders that ruin their brand — and for the families who
+          want their child&apos;s first birthday, a daughter&apos;s Half Saree or a son&apos;s Vetti Kattum Vizha to feel
+          just as cinematic as a wedding.
         </motion.p>
         <motion.p variants={fadeUp} className="text-[1.05rem] leading-[1.85]" style={{ color: 'rgba(255,248,220,0.7)' }}>
           Every theme here is curated like a Bollywood title sequence: slow, royal, immersive.
-          Wax-seal openings. Parallax stories. Glassmorphism. Mandalas that breathe.
-          Your couples will weep. Your competitors will scramble.
+          Wax-seal openings. Parallax stories. A live photo wall that updates as the ceremony unfolds.
+          AI face match that hands every guest only their photos. Glassmorphism. Mandalas that breathe.
+          Your guests will weep. Your competitors will scramble.
         </motion.p>
       </motion.div>
 
@@ -1270,6 +1282,192 @@ const PhotographerAdvantages = ({ onPhotographer }) => {
   );
 };
 
+/* ──────────────────────────────────────────────────────────────
+   FAQ — Frequently Asked Questions
+   Clarifies the most common doubts: how to publish, what credits are,
+   how the photographer panel works, what's free vs paid, AI face match
+   privacy, multi-language support, refunds, etc.
+   ────────────────────────────────────────────────────────────── */
+const FAQ_ITEMS = [
+  {
+    icon: Users,
+    q: 'What is MAJA Creations exactly?',
+    a: 'MAJA Creations is a luxury digital invitation studio for Indian celebrations. Couples and families create their own cinematic invitation link in minutes (weddings, baby birthdays, half saree, puberty / Manjal Neerattu, dhoti / Vetti Kattum Vizha). Wedding photographers also have a dedicated Photographer Panel to build invitations for their clients in bulk, with branding and loyalty tier discounts.',
+  },
+  {
+    icon: Wallet,
+    q: 'How does the credit system work? Will my credits expire?',
+    a: 'Everything you build is a free draft. You only spend credits when you publish a live invitation link or unlock a premium add-on (live photo wall, AI face match, multi-language, QR entry passes etc.). Credits NEVER expire — buy a pack once and use them across multiple invitations whenever you want.',
+  },
+  {
+    icon: Crown,
+    q: 'How is this different from Canva or other invitation makers?',
+    a: 'Three things: (1) Designs are locked-luxury — you cannot accidentally break the layout, only edit the content. (2) Every invitation includes optional cinematic features like 3D wax-seal opening, ambient music, live photo wall, AI face match, RSVP form, digital shagun, QR entry passes and venue maps. (3) Photographers get a separate professional panel with bulk drafts and white-label options.',
+  },
+  {
+    icon: Camera,
+    q: 'What is the Photographer Panel and how do I join?',
+    a: 'The Photographer Panel is a separate studio dashboard for wedding photographers and event studios. You can build unlimited drafts for your clients (free), manage couples in one place, co-brand the invitation footer with your studio name, and unlock loyalty tier discounts as you publish more links. Click "Photographer" or "Studio" in the top-right to sign up — admin approval is instant for verified studios.',
+  },
+  {
+    icon: Star,
+    q: 'What are photographer loyalty tiers? Do I get bonus credits?',
+    a: 'Yes. As you publish paid invitation links, you climb tiers (Starter → Silver → Gold → Platinum → Partner). Each milestone gives you a permanent percentage discount on every credit pack you ever buy, PLUS bonus credits added on top of every purchase. The exact tier thresholds and percentages are visible inside the Photographer Panel and are updated by the Super-Admin in real time.',
+  },
+  {
+    icon: ScanFace,
+    q: 'How does AI Face Matching work? Is my guests\' data safe?',
+    a: 'After the event, guests scan the invitation QR or open the "Find My Photos" button. They upload one selfie, our AI compares it against the live photo wall, and instantly returns the 99%+ matched photos for download. Selfies are processed in-memory and deleted within 24 hours — they\'re never used for any other purpose. You can also disable the feature per-invitation.',
+  },
+  {
+    icon: Camera,
+    q: 'What is the Live Photo Wall? Who can upload?',
+    a: 'The Live Photo Wall is a real-time gallery embedded in every published invitation. The couple/family/photographer uploads photos from the wedding (or events leading up to it), and guests see them appear live as they scroll the invite. You control privacy — public, passcode-locked, or guests-only. Guests can also upload their own photos with one tap if you enable guest uploads.',
+  },
+  {
+    icon: Globe2,
+    q: 'In which languages can the invitation be rendered?',
+    a: 'Hindi, Tamil, Telugu, Bengali, Marathi, Gujarati, Kannada, Malayalam, Urdu, Punjabi and English. The same invitation can be published in multiple languages with one toggle — guests pick their preferred language on entry. Multi-language is a paid add-on (typically 1 credit per invitation).',
+  },
+  {
+    icon: IndianRupee,
+    q: 'How do I receive digital shagun / gifts from guests?',
+    a: 'Connect your UPI ID or Razorpay account once in your account settings. Every invitation can show a "Send Shagun" button — guests pay directly to your UPI / bank instantly. We charge zero commission. You can also enable a gift registry where guests pick items from a curated list.',
+  },
+  {
+    icon: ShieldCheck,
+    q: 'Is my invitation private? Can outsiders open the link?',
+    a: 'You choose. Every invitation has three privacy modes: Public (anyone with the link), Passcode-Locked (only guests with the 4-digit code you share), or Guest-List (each guest gets a unique tokenised link). All published links are also protected against scraping with rate-limiting and anti-bot middleware.',
+  },
+  {
+    icon: Smartphone,
+    q: 'Do my guests need to download an app?',
+    a: 'No. The invitation opens in any modern browser — WhatsApp, Chrome, Safari, Instagram in-app browser, anything. No download, no account creation for guests. The AI face match, RSVP and shagun all work on a normal mobile browser.',
+  },
+  {
+    icon: Headphones,
+    q: 'What if I need help building my invitation?',
+    a: 'Every account gets in-studio help: the "How to create your link" guided tour (bottom-right floating button), live chat with our support team, and pre-filled sample data so you can publish in 12 minutes. Photographer Panel accounts on Gold and above get a dedicated relationship manager.',
+  },
+  {
+    icon: Send,
+    q: 'How do I share the invitation with guests once it\'s published?',
+    a: 'After you publish, you get a short shareable link (e.g. maja.in/anaya-vihaan) plus a beautiful WhatsApp-ready card with the link and a QR code. Share it on WhatsApp, Instagram, email, SMS — or download printable cards if you still want a paper version for elders.',
+  },
+];
+
+const FAQItem = ({ icon: Icon, q, a, isOpen, onToggle, idx }) => (
+  <motion.div
+    variants={fadeUp} custom={idx}
+    className="lux-glass overflow-hidden"
+    data-testid={`faq-item-${idx}`}
+  >
+    <button
+      type="button"
+      onClick={onToggle}
+      className="w-full flex items-start gap-4 p-5 md:p-6 text-left transition-colors hover:bg-[rgba(212,175,55,0.04)]"
+      aria-expanded={isOpen}
+    >
+      <span
+        className="shrink-0 w-10 h-10 rounded-xl grid place-items-center"
+        style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.18), rgba(139,0,0,0.18))', border: '1px solid var(--lux-border-strong)' }}
+      >
+        <Icon className="w-5 h-5" style={{ color: '#D4AF37' }} strokeWidth={1.6} />
+      </span>
+      <span className="flex-1 font-heading text-[1rem] md:text-[1.1rem] leading-snug pr-3" style={{ color: '#FFF8DC' }}>
+        {q}
+      </span>
+      <ChevronDown
+        className="shrink-0 mt-1 transition-transform duration-300"
+        style={{
+          color: '#D4AF37',
+          transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+        }}
+      />
+    </button>
+    <AnimatePresence initial={false}>
+      {isOpen && (
+        <motion.div
+          key="content"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <div className="px-5 md:px-6 pb-5 md:pb-6 pl-[4.5rem] text-[0.95rem] leading-[1.7]" style={{ color: 'rgba(255,248,220,0.78)' }}>
+            {a}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </motion.div>
+);
+
+const FAQSection = () => {
+  const [openIdx, setOpenIdx] = useState(0);
+  return (
+    <section id="faq" className="relative px-6 md:px-16 py-28 z-10" data-testid="faq-section">
+      <SectionHeader
+        eyebrow="Frequently Asked"
+        title="Your questions, answered."
+        kicker="Couples, families and photographers ask us these every week. If we haven't covered something, drop us a line — we read every message."
+      />
+      <motion.div
+        variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.05 }}
+        className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-6xl mx-auto"
+        data-testid="faq-grid"
+      >
+        {FAQ_ITEMS.map((item, i) => (
+          <FAQItem
+            key={i}
+            idx={i}
+            icon={item.icon}
+            q={item.q}
+            a={item.a}
+            isOpen={openIdx === i}
+            onToggle={() => setOpenIdx(openIdx === i ? -1 : i)}
+          />
+        ))}
+      </motion.div>
+
+      {/* Soft "still have questions" CTA */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.3 }}
+        transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+        className="max-w-2xl mx-auto mt-12 text-center lux-glass p-7 md:p-9"
+        data-testid="faq-still-have-questions"
+      >
+        <Zap className="w-7 h-7 mx-auto mb-3" style={{ color: '#D4AF37' }} />
+        <h3 className="font-display text-2xl md:text-3xl mb-3" style={{ color: '#FFF8DC' }}>
+          Still have a <span className="text-gold italic font-script">question?</span>
+        </h3>
+        <p className="text-sm md:text-base mb-5" style={{ color: 'rgba(255,248,220,0.7)' }}>
+          Photographers, couples, families — drop us a line and we&apos;ll get back within 24 hours.
+          Loyalty-tier studio partners get a dedicated WhatsApp line.
+        </p>
+        <div className="flex flex-wrap justify-center gap-3">
+          <a
+            href="mailto:hello@majacreations.in"
+            className="lux-btn"
+            data-testid="faq-email-cta"
+          >
+            <Send className="w-4 h-4" /> Email Us
+          </a>
+          <a
+            href="https://wa.me/919999999999"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="lux-btn lux-btn-ghost"
+            data-testid="faq-whatsapp-cta"
+          >
+            <MessageCircle className="w-4 h-4" /> WhatsApp
+          </a>
+        </div>
+      </motion.div>
+    </section>
+  );
+};
+
 const CTA = ({ onLogin }) => (
   <section className="relative px-6 md:px-16 py-32 z-10">
     <motion.div
@@ -1281,11 +1479,11 @@ const CTA = ({ onLogin }) => (
       <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(600px 300px at 50% 0%, rgba(212,175,55,0.18), transparent 70%)' }} />
       <span className="lux-eyebrow block mb-4">◆ Begin Your Studio</span>
       <h2 className="font-display text-[2.6rem] md:text-[4.2rem] leading-[1.05] mb-6" style={{ color: '#FFF8DC' }}>
-        Your next couple deserves <span className="text-gold italic font-script">a masterpiece.</span>
+        Your next celebration deserves <span className="text-gold italic font-script">a masterpiece.</span>
       </h2>
       <p className="max-w-xl mx-auto text-[1.05rem] mb-9" style={{ color: 'rgba(255,248,220,0.7)' }}>
-        Sign in to your studio. Build a wedding in 12 minutes. Publish in one credit.
-        Make couples cry the elegant way.
+        Sign in to your studio. Build an invitation in 12 minutes. Publish for a single credit.
+        Watch guests open it on WhatsApp and weep — the elegant way.
       </p>
       <div className="flex flex-wrap justify-center gap-4">
         <button onClick={onLogin} className="lux-btn" data-testid="footer-cta-login">
@@ -1310,6 +1508,7 @@ const Footer = ({ onSuperAdmin }) => (
         <span>© {new Date().getFullYear()} MAJA Creations · Made in India</span>
         <a href="#features" className="hover:text-[var(--lux-gold)] transition-colors">Features</a>
         <a href="#pricing" className="hover:text-[var(--lux-gold)] transition-colors">Plans</a>
+        <a href="#faq" className="hover:text-[var(--lux-gold)] transition-colors">FAQ</a>
         <button onClick={onSuperAdmin} className="hover:text-[var(--lux-gold)] transition-colors text-left" data-testid="footer-super-admin-link">
           Super Admin
         </button>
@@ -1593,6 +1792,7 @@ const LandingPage = () => {
       <Story />
       <Pricing />
       <PhotographerAdvantages onPhotographer={() => navigate('/admin/login')} />
+      <FAQSection />
       <CTA onLogin={enterUserStudio} />
       <Footer onSuperAdmin={() => navigate('/super-admin/login')} />
 

@@ -12,8 +12,12 @@
  *   • a soft cream / accent gradient band at the bottom containing
  *     "WITH BLESSINGS FROM OUR FAMILY", the celebrant name, date and venue.
  *
- * The styling, aspect ratio and motion timings match the wedding theme card
- * exactly so the two grids look like siblings.
+ * July 2026 fix:
+ *   1. Category-specific sample photos (no more babies in dhoti cards)
+ *   2. Circle bubble pushed deeper into the card so it sits in the visual
+ *      centre of the empty upper area instead of touching the eyebrow.
+ *   3. Eyebrow text wrapped in a translucent pill so it reads cleanly on
+ *      every design backdrop (light cream, dark temple, busy floral).
  */
 import React from 'react';
 import { motion } from 'framer-motion';
@@ -24,6 +28,15 @@ const resolveImg = (u) => {
   if (!u) return '';
   if (u.startsWith('http') || u.startsWith('data:') || u.startsWith('blob:')) return u;
   return `${API_URL}${u.startsWith('/') ? '' : '/'}${u}`;
+};
+
+/* Category-appropriate hero photos. Each subject's face is roughly centered
+   so the crop into a 96px circle keeps the face inside the frame. */
+const CATEGORY_PHOTOS = {
+  baby_birthday: 'https://images.unsplash.com/photo-1630304565858-642d53fa18ff?w=300&h=300&fit=crop&crop=faces&q=85',
+  half_saree:    'https://images.unsplash.com/photo-1619516388835-2b60acc4049e?w=300&h=300&fit=crop&crop=faces&q=85',
+  puberty:       'https://images.unsplash.com/photo-1676995229157-396a66e02c10?w=300&h=300&fit=crop&crop=faces&q=85',
+  dhoti:         'https://images.unsplash.com/photo-1561987446-f3bfc5de6edf?w=300&h=300&fit=crop&crop=faces&q=85',
 };
 
 /* Per-category sample data — written so each preview tells a complete
@@ -78,7 +91,7 @@ const CATEGORY_SAMPLES = {
       celebrant: 'Hasini',
       date: 'Sunday, 16 August 2026',
       venue: 'Padmavati Hall · Tirupati',
-      accent: '#FFD700',
+      accent: '#B8860B',
       panelTint: 'rgba(255,248,220,0.94)',
       panelText: '#3B2E14',
     },
@@ -90,7 +103,7 @@ const CATEGORY_SAMPLES = {
       celebrant: 'Anika',
       date: 'Sunday, 21 June 2026',
       venue: 'Andal Mahal · Madurai',
-      accent: '#FF8C00',
+      accent: '#C0392B',
       panelTint: 'rgba(255,240,224,0.94)',
       panelText: '#3B1F0F',
     },
@@ -100,7 +113,7 @@ const CATEGORY_SAMPLES = {
       celebrant: 'Vaishnavi',
       date: 'Saturday, 7 September 2026',
       venue: 'Lakshmi Vilas · Salem',
-      accent: '#D4AF37',
+      accent: '#B8860B',
       panelTint: 'rgba(255,248,220,0.94)',
       panelText: '#3B2814',
     },
@@ -112,7 +125,7 @@ const CATEGORY_SAMPLES = {
       celebrant: 'Arjun',
       date: 'Saturday, 16 May 2026',
       venue: 'Sri Sankara Hall · Coimbatore',
-      accent: '#7B68EE',
+      accent: '#4A148C',
       panelTint: 'rgba(232,232,255,0.94)',
       panelText: '#1A1A3B',
     },
@@ -122,25 +135,26 @@ const CATEGORY_SAMPLES = {
       celebrant: 'Karthik',
       date: 'Sunday, 28 June 2026',
       venue: 'Subramanya Hall · Madurai',
-      accent: '#D4AF37',
+      accent: '#B8860B',
       panelTint: 'rgba(255,248,220,0.94)',
       panelText: '#3B2814',
     },
   ],
 };
 
-/* Sample celebrant photo (single image used as the bubble photo for every
-   card — same pattern wedding cards use for the couple photo). */
-const SAMPLE_PHOTO = 'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=300&h=300&fit=crop&q=80';
+/* Universal fallback photo used only when the category isn't recognised. */
+const DEFAULT_PHOTO = 'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=300&h=300&fit=crop&crop=faces&q=80';
 
 const getSample = (category, index) => {
   const samples = CATEGORY_SAMPLES[category] || CATEGORY_SAMPLES.baby_birthday;
   return samples[index % samples.length];
 };
 
+const getCategoryPhoto = (category) => CATEGORY_PHOTOS[category] || DEFAULT_PHOTO;
+
 const NonWeddingDesignCard = ({ design, category, index = 0, photo }) => {
   const sample = getSample(category, index);
-  const heroPhoto = photo || SAMPLE_PHOTO;
+  const heroPhoto = photo || getCategoryPhoto(category);
   const accent = sample.accent;
   const panelBg = sample.panelTint;
   const panelText = sample.panelText;
@@ -162,42 +176,54 @@ const NonWeddingDesignCard = ({ design, category, index = 0, photo }) => {
 
       {/* Soft top wash so the eyebrow stays readable on busy art */}
       <div
-        className="absolute top-0 inset-x-0 h-24 pointer-events-none"
-        style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 100%)' }}
+        className="absolute top-0 inset-x-0 h-20 pointer-events-none"
+        style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0) 100%)' }}
       />
 
-      {/* Top eyebrow — diamond decorations match the wedding cards */}
+      {/* Top eyebrow — wrapped in a translucent pill so the text is always
+          readable regardless of the design backdrop (light, dark, busy). */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
-        className="absolute top-5 inset-x-0 text-center px-3 z-10"
+        className="absolute top-3.5 inset-x-0 flex justify-center px-3 z-10"
       >
         <span
-          className="font-display text-[11px] sm:text-xs tracking-[0.42em] uppercase"
-          style={{ color: panelText, textShadow: '0 1px 6px rgba(255,255,255,0.4)' }}
+          className="font-display text-[10px] sm:text-[11px] tracking-[0.36em] uppercase px-3 py-1 rounded-full whitespace-nowrap"
+          style={{
+            color: '#FFF8DC',
+            background: 'rgba(15,10,6,0.55)',
+            backdropFilter: 'blur(6px)',
+            border: `1px solid ${accent}66`,
+            textShadow: '0 1px 6px rgba(0,0,0,0.6)',
+            letterSpacing: '0.32em',
+          }}
         >
           ◇ {sample.eyebrow} ◇
         </span>
       </motion.div>
 
-      {/* Celebrant photo bubble — same circular framing the wedding cards use */}
+      {/* Celebrant photo bubble — positioned in the visual centre of the
+          card's upper half so the design's decorative top art (garlands,
+          arches, pillars) frames the circle nicely. */}
       <motion.div
         initial={{ opacity: 0, scale: 0.85 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.25 }}
         className="absolute z-10"
-        style={{ top: '22%', left: '50%', transform: 'translateX(-50%)' }}
+        style={{ top: '32%', left: '50%', transform: 'translate(-50%, -50%)' }}
       >
         <div
           className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden"
           style={{
             border: `3px solid ${accent}`,
             boxShadow: '0 6px 22px rgba(0,0,0,0.35), inset 0 0 0 3px rgba(255,255,255,0.85)',
-            background: `url(${heroPhoto}) center/cover`,
+            backgroundImage: `url(${heroPhoto})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center top',
           }}
         />
-        {/* Tiny decorative dots ringing the bubble — mimics wedding photo dial */}
+        {/* Tiny decorative ring around the bubble — mimics wedding photo dial */}
         <div
           className="absolute -inset-2 rounded-full pointer-events-none"
           style={{ border: `1px dashed ${accent}80` }}
@@ -216,7 +242,7 @@ const NonWeddingDesignCard = ({ design, category, index = 0, photo }) => {
       >
         <span
           className="block text-[9px] sm:text-[10px] tracking-[0.32em] uppercase mb-1.5"
-          style={{ color: `${panelText}AA` }}
+          style={{ color: `${panelText}CC` }}
         >
           {sample.familyLine}
         </span>
@@ -239,7 +265,7 @@ const NonWeddingDesignCard = ({ design, category, index = 0, photo }) => {
         </span>
         <span
           className="block text-[9px] sm:text-[10px] tracking-[0.22em] uppercase mt-1.5"
-          style={{ color: `${panelText}99` }}
+          style={{ color: `${panelText}BB` }}
         >
           {sample.venue}
         </span>
