@@ -23,8 +23,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import {
-  Calendar, MapPin, Heart, Sparkles, Radio, ExternalLink,
-  Image as ImageIcon, Clock, ArrowRight, X, QrCode, Search, KeyRound,
+  MapPin, Heart, Sparkles, Radio, ExternalLink,
+  Image as ImageIcon, ArrowRight, X, QrCode, Search, KeyRound,
 } from 'lucide-react';
 import WishesWallSection from '@/components/luxury/WishesWallSection';
 import MajaReferralCTA from '@/components/luxury/MajaReferralCTA';
@@ -49,8 +49,16 @@ const CATEGORY_THEME = {
     label_traditional: '',
     icon: '🎂',
     eyebrow: 'A Joyful Celebration',
+    /* card-style eyebrow + family line + panel tint mirror the home page
+       NonWeddingDesignCard so the published invitation hero looks IDENTICAL
+       in composition to the preview the photographer picked. */
+    eyebrowShort: 'First Birthday',
+    familyLine: 'With Blessings From Our Family',
+    panelTint: 'rgba(255,235,243,0.95)',
+    panelText: '#3B1E2B',
     primary: '#FF8FBF',            // hero accent
     accent: '#FFD27D',
+    cardAccent: '#FF69B4',         // circle bubble border on the card hero
     heroGradient: 'linear-gradient(135deg,#3a1727 0%,#7a3052 45%,#FFB6C1 100%)',
     sectionBg: '#0b0908',
     softBg: 'rgba(255,143,191,0.07)',
@@ -67,8 +75,13 @@ const CATEGORY_THEME = {
     label_traditional: 'Langa Voni · Pavadai Daavani',
     icon: '👗',
     eyebrow: 'A Coming-of-Age Tradition',
+    eyebrowShort: 'Half Saree Ceremony',
+    familyLine: 'Together With Our Family',
+    panelTint: 'rgba(255,232,243,0.95)',
+    panelText: '#3B0F2B',
     primary: '#E84393',
     accent: '#FFD700',
+    cardAccent: '#C71585',
     heroGradient: 'linear-gradient(135deg,#3a0e23 0%,#8B0A50 45%,#FFD700 100%)',
     sectionBg: '#0b0908',
     softBg: 'rgba(232,67,147,0.07)',
@@ -85,8 +98,13 @@ const CATEGORY_THEME = {
     label_traditional: 'Manjal Neerattu Vizha',
     icon: '🌸',
     eyebrow: 'A Sacred Threshold',
+    eyebrowShort: 'Manjal Neerattu',
+    familyLine: 'With Blessings From Our Family',
+    panelTint: 'rgba(255,240,224,0.95)',
+    panelText: '#3B1F0F',
     primary: '#FF8C00',
     accent: '#FFD700',
+    cardAccent: '#C0392B',
     heroGradient: 'linear-gradient(135deg,#321906 0%,#9b5302 45%,#FFD700 100%)',
     sectionBg: '#0b0908',
     softBg: 'rgba(255,140,0,0.07)',
@@ -103,8 +121,13 @@ const CATEGORY_THEME = {
     label_traditional: 'Vetti Kattum Vizha',
     icon: '👔',
     eyebrow: 'A Boy Becomes a Young Man',
+    eyebrowShort: 'Vetti Kattum Vizha',
+    familyLine: 'Together With Our Family',
+    panelTint: 'rgba(232,232,255,0.95)',
+    panelText: '#1A1A3B',
     primary: '#9F86FF',
     accent: '#FFD700',
+    cardAccent: '#4A148C',
     heroGradient: 'linear-gradient(135deg,#1a0a3a 0%,#3a1d7a 45%,#FFD700 100%)',
     sectionBg: '#0b0908',
     softBg: 'rgba(159,134,255,0.07)',
@@ -789,6 +812,7 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
   const venue = data?.venue || '';
   const city = data?.city || '';
   const mapLink = data?.map_settings?.map_link || '';
+  const venueLine = [venue, city].filter(Boolean).join(' · '); // single-line label for the hero panel
   const videoLink = ci.video_link || '';
   const liveLink = ci.live_link || '';
   const closingMsg = ci.closing_message || theme.closing;
@@ -834,7 +858,21 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
         )}
       </AnimatePresence>
 
-      {/* ── HERO — middle banner with celebrant name ────────────────── */}
+      {/* ── HERO — card-style invitation banner ─────────────────────
+          REQUESTED CHANGE (Jul 2026): the published invitation hero must
+          look IDENTICAL in composition to the small preview card the
+          photographer/family chose on the home page (NonWeddingDesignCard).
+          That card has 4 layers:
+              1. design backdrop, full-bleed
+              2. eyebrow pill at the top ("First Birthday", "Vetti Kattum
+                 Vizha", "Manjal Neerattu", etc.) in a dark translucent pill
+              3. circular celebrant photo bubble in the upper middle, with
+                 a coloured accent border + dashed outer ring
+              4. cream/tinted invitation panel at the bottom holding the
+                 family line, celebrant name, date and venue
+          We reproduce all four — scaled up to a full hero height — while
+          keeping the rest of the page (story, events, gallery, RSVP) as
+          its own dedicated sections below. */}
       <motion.section
         className="relative overflow-hidden"
         initial={{ opacity: 0 }}
@@ -842,151 +880,236 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
         transition={{ duration: 0.8 }}
         data-testid="celebration-hero"
         data-design-id={selectedDesign?.design_id || ''}
+        style={{ minHeight: '100vh' }}
       >
-        {/* BUG FIX: render the SELECTED DESIGN as the primary hero
-            backdrop. The gradient is kept underneath as a base color
-            and as a fallback tint for designs with transparent corners.
-            The user's uploaded coverPhoto is no longer used as the hero
-            background — it still appears in the photo showcase section
-            below. */}
+        {/* L1 — base gradient (fallback / tint base) */}
         <div className="absolute inset-0" style={{ background: theme.heroGradient }} />
 
-        {designBackdrop ? (
-          /* Selected design — rendered at high opacity so the artwork
-             dominates the banner exactly like the gallery preview the
-             photographer chose. A subtle Ken-Burns zoom adds life. */
-          <div className="absolute inset-0 overflow-hidden">
-            <motion.img
-              src={designBackdrop}
-              alt={selectedDesign?.name || theme.label}
-              initial={{ scale: 1.08 }}
-              animate={{ scale: 1 }}
-              transition={{ duration: 10, ease: 'easeOut' }}
-              className="w-full h-full object-cover"
-              style={{ opacity: 0.92 }}
-              data-testid="hero-design-backdrop"
-              onError={(e) => { e.currentTarget.style.display = 'none'; }}
-            />
-            {/* Soft gradient tint over the design to add depth while keeping
-                the artwork legible. */}
-            <div
-              className="absolute inset-0 pointer-events-none"
-              style={{ background: theme.heroGradient, opacity: 0.18 }}
-            />
-          </div>
-        ) : coverPhoto ? (
-          /* Fallback when no design is selected (legacy invitations) —
-             use the celebrant photo with a darker overlay like before. */
-          <div className="absolute inset-0 overflow-hidden">
-            <motion.img
-              src={resolveUrl(coverPhoto)}
-              alt={celebrantName}
-              initial={{ scale: 1.12 }}
-              animate={{ scale: 1 }}
-              transition={{ duration: 8, ease: 'easeOut' }}
-              className="w-full h-full object-cover"
-              style={{ opacity: 0.5 }}
-            />
-          </div>
-        ) : null}
+        {/* L1b — selected design backdrop (the artwork the photographer picked) */}
+        {designBackdrop && (
+          <motion.img
+            src={designBackdrop}
+            alt={selectedDesign?.name || theme.label}
+            initial={{ scale: 1.08 }}
+            animate={{ scale: 1 }}
+            transition={{ duration: 14, ease: 'easeOut' }}
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ opacity: 0.95 }}
+            data-testid="hero-design-backdrop"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        )}
 
-        <div className="absolute inset-0" style={{
-          background: designBackdrop
-            ? 'linear-gradient(180deg, rgba(11,9,8,0.08) 0%, rgba(11,9,8,0.78) 100%)'
-            : 'linear-gradient(180deg, rgba(11,9,8,0.25) 0%, rgba(11,9,8,0.85) 100%)',
-        }} />
+        {/* L1c — soft top wash so the eyebrow is always readable on busy art */}
+        <div
+          className="absolute top-0 inset-x-0 h-32 pointer-events-none"
+          style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0) 100%)' }}
+        />
 
-        {/* monogram corners — purely decorative, gives the wedding-grade feel */}
-        <div className="absolute top-6 left-6 sm:top-10 sm:left-10 text-2xl sm:text-4xl opacity-80"
+        {/* monogram corners — purely decorative */}
+        <div className="absolute top-6 left-6 sm:top-10 sm:left-10 text-xl sm:text-3xl opacity-80 z-10"
           style={{ color: theme.accent }}>✦</div>
-        <div className="absolute top-6 right-6 sm:top-10 sm:right-10 text-2xl sm:text-4xl opacity-80"
-          style={{ color: theme.accent }}>✦</div>
-        <div className="absolute bottom-6 left-6 sm:bottom-10 sm:left-10 text-2xl sm:text-4xl opacity-80"
-          style={{ color: theme.accent }}>✦</div>
-        <div className="absolute bottom-6 right-6 sm:bottom-10 sm:right-10 text-2xl sm:text-4xl opacity-80"
+        <div className="absolute top-6 right-6 sm:top-10 sm:right-10 text-xl sm:text-3xl opacity-80 z-10"
           style={{ color: theme.accent }}>✦</div>
 
-        <div className="relative z-10 px-6 sm:px-12 py-24 sm:py-36 max-w-5xl mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: previewMode && opening ? 0 : 1, y: 0 }}
-            transition={{ duration: 1.1, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
+        {/* L2 — Top eyebrow pill (mirrors home card layer 2) */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
+          className="absolute top-16 sm:top-20 inset-x-0 flex justify-center px-4 z-20"
+          data-testid="hero-eyebrow-pill"
+        >
+          <span
+            className="font-display text-[11px] sm:text-[13px] tracking-[0.36em] uppercase px-4 sm:px-5 py-1.5 sm:py-2 rounded-full whitespace-nowrap"
+            style={{
+              color: '#FFF8DC',
+              background: 'rgba(15,10,6,0.55)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              border: `1px solid ${theme.cardAccent}88`,
+              textShadow: '0 1px 6px rgba(0,0,0,0.6)',
+              letterSpacing: '0.32em',
+            }}
           >
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6 backdrop-blur"
+            ◇ {theme.eyebrowShort || theme.label} ◇
+          </span>
+        </motion.div>
+
+        {/* L3 — Circle celebrant photo bubble (mirrors home card layer 3) */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.82 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1], delay: 0.4 }}
+          className="absolute z-20"
+          style={{
+            top: '32%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+          }}
+          data-testid="hero-photo-bubble"
+        >
+          {coverPhoto ? (
+            <>
+              <div
+                className="w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 rounded-full overflow-hidden"
+                style={{
+                  border: `4px solid ${theme.cardAccent}`,
+                  boxShadow: '0 12px 38px rgba(0,0,0,0.45), inset 0 0 0 4px rgba(255,255,255,0.9)',
+                  backgroundImage: `url(${resolveUrl(coverPhoto)})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center top',
+                }}
+              />
+              <div
+                className="absolute -inset-3 sm:-inset-4 rounded-full pointer-events-none"
+                style={{ border: `1.5px dashed ${theme.cardAccent}88` }}
+              />
+            </>
+          ) : (
+            /* If no photo uploaded, show a tasteful initial bubble instead
+               of a broken empty circle. */
+            <div
+              className="w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 rounded-full overflow-hidden grid place-items-center"
               style={{
-                background: 'rgba(11,9,8,0.45)',
-                border: `1px solid ${theme.accent}66`,
-                color: theme.accent,
+                border: `4px solid ${theme.cardAccent}`,
+                boxShadow: '0 12px 38px rgba(0,0,0,0.45), inset 0 0 0 4px rgba(255,255,255,0.9)',
+                background: `linear-gradient(135deg, ${theme.cardAccent}, ${theme.accent})`,
               }}
-              data-testid="hero-category-pill">
-              <span className="text-lg">{theme.icon}</span>
-              <span className="text-xs uppercase tracking-[0.32em] font-medium">
-                {theme.label}
+            >
+              <span
+                className="font-display text-5xl sm:text-6xl"
+                style={{ color: '#FFF8DC', textShadow: '0 2px 12px rgba(0,0,0,0.4)' }}
+              >
+                {(firstName || 'A')[0].toUpperCase()}
               </span>
             </div>
+          )}
+        </motion.div>
 
-            {theme.label_traditional && (
-              <p className="text-xs sm:text-sm tracking-[0.32em] uppercase mb-3"
-                style={{ color: theme.accent, opacity: 0.85 }}>
-                {theme.label_traditional}
-              </p>
-            )}
+        {/* L4 — Bottom cream/tinted invitation panel (mirrors home card layer 4) */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.55 }}
+          className="absolute bottom-0 inset-x-0 px-6 sm:px-12 pt-20 sm:pt-28 pb-12 sm:pb-16 text-center"
+          style={{
+            background: `linear-gradient(180deg, rgba(255,255,255,0) 0%, ${theme.panelTint} 40%, ${theme.panelTint} 100%)`,
+          }}
+          data-testid="hero-invitation-panel"
+        >
+          <div className="max-w-3xl mx-auto">
+            <span
+              className="block text-[10px] sm:text-[12px] tracking-[0.32em] uppercase mb-2 sm:mb-3"
+              style={{ color: `${theme.panelText}CC` }}
+              data-testid="hero-family-line"
+            >
+              {theme.familyLine}
+            </span>
 
-            <p className="text-sm sm:text-base uppercase tracking-[0.28em] mb-5"
-              style={{ color: '#FFF8DC', opacity: 0.85, textShadow: '0 2px 12px rgba(0,0,0,0.45)' }}
-              data-testid="hero-subtitle">
-              {subtitle}
-            </p>
-
-            <h1 className="font-display text-6xl sm:text-8xl md:text-9xl mb-3 leading-[0.95] tracking-tight"
+            <h1
+              className="font-display leading-tight"
               style={{
-                color: '#FFF8DC',
-                textShadow: '0 8px 38px rgba(0,0,0,0.45)',
-                letterSpacing: '-0.01em',
+                color: theme.panelText,
+                fontFamily: '"Cormorant Garamond", serif',
+                fontSize: 'clamp(2.4rem, 7vw, 5rem)',
+                fontWeight: 600,
+                letterSpacing: '-0.005em',
               }}
-              data-testid="hero-celebrant-name">
+              data-testid="hero-celebrant-name"
+            >
               {celebrantName}
             </h1>
 
             {nickname && (
-              <p className="text-lg sm:text-2xl italic mb-4 opacity-95"
-                style={{ color: theme.accent, fontFamily: 'cursive' }}
-                data-testid="hero-nickname">
+              <p
+                className="italic mt-1.5"
+                style={{
+                  color: `${theme.panelText}DD`,
+                  fontFamily: 'cursive',
+                  fontSize: 'clamp(1.1rem, 2vw, 1.5rem)',
+                }}
+                data-testid="hero-nickname"
+              >
                 {`"${nickname}"`}
               </p>
             )}
 
             {parents && (
-              <p className="text-sm sm:text-base mb-6 opacity-90"
-                style={{ color: '#FFF8DC', textShadow: '0 2px 10px rgba(0,0,0,0.4)' }}
-                data-testid="hero-parents">
-                Beloved child of <span className="font-medium">{parents}</span>
+              <p
+                className="mt-2 text-[11px] sm:text-[13px] tracking-[0.16em] uppercase"
+                style={{ color: `${theme.panelText}AA` }}
+                data-testid="hero-parents"
+              >
+                Beloved child of <span className="font-medium" style={{ color: theme.panelText }}>{parents}</span>
               </p>
             )}
 
+            {/* Decorative divider */}
+            <div
+              className="w-20 h-px mx-auto my-4 sm:my-5"
+              style={{ background: `linear-gradient(90deg, transparent, ${theme.cardAccent}, transparent)` }}
+            />
+
             {eventDate && (
-              <div className="flex flex-col items-center gap-5 mt-8">
-                <div className="flex items-center gap-3 px-4 py-2 rounded-full backdrop-blur"
-                  style={{
-                    background: 'rgba(11,9,8,0.55)',
-                    border: '1px solid rgba(255,248,220,0.18)',
-                    color: '#FFF8DC',
-                  }}
-                  data-testid="hero-date">
-                  <Calendar className="w-5 h-5" style={{ color: theme.accent }} />
-                  <span className="text-base sm:text-lg font-medium">{formattedDate}</span>
-                  {formattedTime && <>
-                    <span className="opacity-70">·</span>
-                    <Clock className="w-5 h-5" style={{ color: theme.accent }} />
-                    <span>{formattedTime}</span>
-                  </>}
-                </div>
-                <Countdown targetDate={data?.event_date} accent={theme.accent} />
-              </div>
+              <p
+                className="block text-[11px] sm:text-[13px] tracking-[0.28em] uppercase font-medium"
+                style={{ color: theme.panelText }}
+                data-testid="hero-date"
+              >
+                {formattedDate}
+                {formattedTime && (
+                  <>
+                    <span className="mx-2 opacity-60">·</span>
+                    {formattedTime}
+                  </>
+                )}
+              </p>
             )}
-          </motion.div>
-        </div>
+
+            {venueLine && (
+              <p
+                className="block text-[10px] sm:text-[11px] tracking-[0.22em] uppercase mt-1.5"
+                style={{ color: `${theme.panelText}BB` }}
+                data-testid="hero-venue"
+              >
+                {venueLine}
+              </p>
+            )}
+
+            {subtitle && (
+              <p
+                className="block text-[10px] sm:text-[11px] tracking-[0.32em] uppercase mt-3 italic"
+                style={{ color: `${theme.panelText}99`, fontFamily: 'serif' }}
+                data-testid="hero-subtitle"
+              >
+                {subtitle}
+              </p>
+            )}
+          </div>
+        </motion.div>
       </motion.section>
+
+      {/* ── Countdown band (kept separate so the hero stays card-clean) ── */}
+      {eventDate && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+          className="relative px-6 py-10 text-center"
+          style={{ background: theme.sectionBg }}
+          data-testid="celebration-countdown-band"
+        >
+          <span
+            className="block text-[10px] sm:text-[12px] tracking-[0.32em] uppercase mb-3"
+            style={{ color: theme.accent }}
+          >
+            Counting Down To The Joy
+          </span>
+          <Countdown targetDate={data?.event_date} accent={theme.accent} />
+        </motion.div>
+      )}
 
       {/* ── CELEBRANT PHOTO SHOWCASE (3 large cards) ─────────────── */}
       {allPhotos.length > 0 && (
