@@ -450,12 +450,22 @@ const Themes = ({ navigate, requireUserAuth, userSignedIn }) => {
     }
   };
 
+  // 2026 — Clicking a non-wedding design card (or its "Preview" pill) opens
+  // the full cinematic scrollable invitation preview page — mirrors what
+  // wedding designs do via /themes/:themeId/events/:event/design/:idx.
+  // Route: /preview/celebration/:category/:designId  (CelebrationInvitationPreview)
   const handleNonWeddingDesignClick = (catId, design) => {
-    setPreviewState({ open: true, category: catId, design });
+    const target = `/preview/celebration/${catId}/${encodeURIComponent(design.design_id)}`;
+    try {
+      window.open(target, '_blank', 'noopener,noreferrer');
+    } catch (_) {
+      navigate(target);
+    }
   };
 
-  const handleUseDesignFromPreview = (catId, design) => {
-    setPreviewState({ open: false, category: null, design: null });
+  // Direct "Buy / Use this design" path — bypasses the preview and jumps
+  // straight to the purchase wizard.
+  const handleNonWeddingDesignBuy = (catId, design) => {
     const target = `/user/buy-celebration/${catId}/${encodeURIComponent(design.design_id)}`;
     if (userSignedIn) {
       navigate(target);
@@ -464,6 +474,11 @@ const Themes = ({ navigate, requireUserAuth, userSignedIn }) => {
     } else {
       navigate(`/?signin=1&return=${encodeURIComponent(target)}`);
     }
+  };
+
+  const handleUseDesignFromPreview = (catId, design) => {
+    setPreviewState({ open: false, category: null, design: null });
+    handleNonWeddingDesignBuy(catId, design);
   };
 
   // Subscribe to the global design cache so cards re-render once each
@@ -789,8 +804,8 @@ const Themes = ({ navigate, requireUserAuth, userSignedIn }) => {
                   <Sparkles className="w-3 h-3" /> Preview
                 </button>
                 <div role="button" tabIndex={0}
-                  onClick={(e) => { e.stopPropagation(); handleNonWeddingDesignClick(activeCat, d); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); handleNonWeddingDesignClick(activeCat, d); } }}
+                  onClick={(e) => { e.stopPropagation(); handleNonWeddingDesignBuy(activeCat, d); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); handleNonWeddingDesignBuy(activeCat, d); } }}
                   className="lux-btn justify-center !text-[11px]"
                   data-testid={`cat-design-buy-${d.design_id}`}>
                   <Coins className="w-3.5 h-3.5" /> {d.credit_cost || 1} credit{(d.credit_cost || 1) > 1 ? 's' : ''}
