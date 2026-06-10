@@ -144,7 +144,7 @@ def _build_urls(wedding_id: str, folder: str, meta: dict) -> dict:
 # ----------------------------------------------------------------------------
 # Router builder
 # ----------------------------------------------------------------------------
-def build_live_gallery_router(db, require_admin) -> APIRouter:
+def build_live_gallery_router(db, require_admin, get_current_user=None) -> APIRouter:
     router = APIRouter(tags=["live-gallery"])
 
     # ---- Helpers -----------------------------------------------------------
@@ -155,6 +155,17 @@ def build_live_gallery_router(db, require_admin) -> APIRouter:
         admin_id = admin_data.get("admin_id") or admin_data.get("id")
         if admin_data.get("role") not in ("super_admin", "superadmin") and p.get("admin_id") and p.get("admin_id") != admin_id:
             raise HTTPException(403, "Not your wedding")
+        return p
+
+    async def _get_profile_owned_by_user(profile_id: str, user_data: dict) -> dict:
+        """User-facing variant: profile must belong to the calling end user.
+        Used by host-side live photo management for non-admin users."""
+        p = await db.profiles.find_one({"$or": [{"id": profile_id}, {"slug": profile_id}]}, {"_id": 0})
+        if not p:
+            raise HTTPException(404, "Profile not found")
+        uid = user_data.get("user_id") or user_data.get("id")
+        if not uid or p.get("user_id") != uid:
+            raise HTTPException(403, "Not your invitation")
         return p
 
     async def _get_profile_by_slug(slug: str) -> dict:
@@ -352,5 +363,91 @@ def build_live_gallery_router(db, require_admin) -> APIRouter:
             raise HTTPException(404, "File not found")
         media_type = "image/webp" if filename.endswith(".webp") else "image/jpeg"
         return FileResponse(path, media_type=media_type)
+
+    # ---- USER (host): same-as-admin endpoints, but auth'd by user JWT and
+    #      scoped to invitations owned by the calling user. This lets a
+    #      regular logged-in host upload / list / delete live photos for
+    #      their own invitations from the user dashboard.
+    if get_current_user is not None:
+        from fastapi import Depends as _Dep
+
+        @router.post("/api/users/profiles/{profile_id}/live-gallery/upload")
+        async def user_upload_live(
+            profile_id: str,
+            files: List[UploadFile] = File(...),
+            user_data: dict = _Dep(get_current_user),
+        ):
+            profile = await _get_profile_owned_by_user(profile_id, user_data)
+            wedding_id = profile["id"]
+            folder = "gallery"
+            dest_dir = UPLOAD_ROOT / wedding_id / folder
+
+            results = []
+            for upload in files:
+                try:
+                    raw = await upload.read()
+                    if not raw:
+                        continue
+                    if len(raw) > MAX_FILE_SIZE:
+                        continue
+                    base = uuid.uuid4().hex
+                    meta = _save_image_with_thumbs(raw, dest_dir, base)
+                    urls = _build_urls(wedding_id, folder, meta)
+                    doc = {
+                        "id": uuid.uuid4().hex,
+                        "profile_id": wedding_id,
+                        "wedding_id": wedding_id,
+                        "source": "host",
+                        "guest_name": None,
+                        "caption": None,
+                        "width": meta["width"],
+                        "height": meta["height"],
+                        "file_size": meta["file_size"],
+                        "created_at": _now_iso(),
+                        **urls,
+                    }
+                    await db.live_gallery_photos.insert_one(doc)
+                    _strip(doc)
+                    results.append(doc)
+                    await manager.broadcast(wedding_id, {"type": "photo_added", "photo": doc})
+                except Exception as e:
+                    logger.exception("[user-live-gallery] upload failed: %s", e)
+                    continue
+
+            return {"uploaded": len(results), "photos": results}
+
+        @router.get("/api/users/profiles/{profile_id}/live-gallery/photos")
+        async def user_list_live(profile_id: str, user_data: dict = _Dep(get_current_user)):
+            profile = await _get_profile_owned_by_user(profile_id, user_data)
+            wedding_id = profile["id"]
+            cursor = db.live_gallery_photos.find({"wedding_id": wedding_id}, {"_id": 0}).sort("created_at", -1).limit(1000)
+            photos = await cursor.to_list(1000)
+            total_bytes = sum((p.get("file_size") or 0) for p in photos)
+            return {
+                "photos": photos,
+                "total": len(photos),
+                "storage_bytes": total_bytes,
+                "host_count":     sum(1 for p in photos if p.get("source") in ("host", "photographer")),
+                "guest_count":    sum(1 for p in photos if p.get("source") == "guest"),
+            }
+
+        @router.delete("/api/users/profiles/{profile_id}/live-gallery/{photo_id}")
+        async def user_delete_live(profile_id: str, photo_id: str, user_data: dict = _Dep(get_current_user)):
+            profile = await _get_profile_owned_by_user(profile_id, user_data)
+            wedding_id = profile["id"]
+            photo = await db.live_gallery_photos.find_one({"id": photo_id, "wedding_id": wedding_id}, {"_id": 0})
+            if not photo:
+                raise HTTPException(404, "Photo not found")
+            for url_key in ("url", "thumb_url", "micro_url"):
+                try:
+                    rel = (photo.get(url_key) or "").split("/api/uploads/", 1)[-1]
+                    full = Path("/app/uploads") / rel
+                    if full.exists():
+                        full.unlink()
+                except Exception:
+                    pass
+            await db.live_gallery_photos.delete_one({"id": photo_id})
+            await manager.broadcast(wedding_id, {"type": "photo_deleted", "photo_id": photo_id})
+            return {"success": True}
 
     return router

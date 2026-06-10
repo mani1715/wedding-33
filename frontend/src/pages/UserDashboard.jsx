@@ -4,7 +4,7 @@ import axios from 'axios';
 import { motion } from 'framer-motion';
 import {
   Sparkles, Plus, Wallet, ArrowRight, ExternalLink, Calendar, MapPin, Copy, Check,
-  Home as HomeIcon,
+  Home as HomeIcon, Camera,
 } from 'lucide-react';
 import { useUserAuth } from '@/context/UserAuthContext';
 import '../styles/luxury.css';
@@ -201,6 +201,14 @@ export default function UserDashboard() {
                   {copied === p.slug ? 'Copied' : 'Copy Link'}
                 </button>
               </div>
+              <button
+                onClick={() => navigate(`/user/profile/${p.id}/live-gallery`)}
+                className="lux-btn w-full justify-center !text-[10px] mt-2"
+                style={{ background: 'rgba(212,175,55,0.18)', border: '1px solid rgba(212,175,55,0.55)', color: '#FFF8DC' }}
+                data-testid={`user-profile-manage-live-${p.id}`}
+              >
+                <Camera className="w-3 h-3" /> Manage Live Photos
+              </button>
               {p.credits_charged != null && (
                 <div className="mt-3 text-[10px] tracking-[0.2em] uppercase" style={{ color: 'rgba(255,248,220,0.4)' }}>
                   · {p.credits_charged} credit{p.credits_charged === 1 ? '' : 's'} used

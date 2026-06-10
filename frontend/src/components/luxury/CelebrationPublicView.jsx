@@ -18,19 +18,21 @@
  *                  false (live public viewing) those overlays are hidden.
  *   previewExitTo — optional override for the sticky CTA target URL.
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import {
   Calendar, MapPin, Heart, Sparkles, Radio, ExternalLink,
-  Image as ImageIcon, Clock, ArrowRight, X,
+  Image as ImageIcon, Clock, ArrowRight, X, QrCode, Search, KeyRound,
 } from 'lucide-react';
 import WishesWallSection from '@/components/luxury/WishesWallSection';
 import MajaReferralCTA from '@/components/luxury/MajaReferralCTA';
 import ScrollSection from '@/components/luxury/ScrollSection';
 import WatermarkOverlay from '@/components/luxury/WatermarkOverlay';
 import PetalConfetti from '@/components/luxury/PetalConfetti';
+import GuestUploadButton from '@/components/luxury/GuestUploadButton';
+import FindMyPhotosModal from '@/components/luxury/FindMyPhotosModal';
 import '@/styles/luxury.css';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
@@ -471,6 +473,183 @@ const PhotoGallery = ({ photos, accent, title }) => {
         </div>
       </div>
     </section>
+  );
+};
+
+/* ── LIVE PHOTO WALL ──────────────────────────────────────────────
+   Real-time photo wall section for the published invitation. Pulls
+   /api/public/gallery/{slug}/photos for an initial paint, then
+   subscribes to /ws/gallery/{wedding_id} for live `photo_added` events
+   exactly like the wedding viewer. Provides two side-by-side guest
+   entry points: scan QR or enter passkey to find their own photos via
+   AI face match.
+*/
+const LivePhotoWallSection = ({ slug, accent, primary, softBg, softBorder, eventLabel, celebrantFirst }) => {
+  const [photos, setPhotos] = useState([]);
+  const [showQR, setShowQR] = useState(false);
+  const [showFind, setShowFind] = useState(false);
+  const wsRef = useRef(null);
+
+  // Initial paint
+  useEffect(() => {
+    let alive = true;
+    axios.get(`${API_URL}/api/public/gallery/${slug}/photos?limit=30`)
+      .then((r) => { if (alive) setPhotos(r.data?.photos || []); })
+      .catch(() => { /* live wall is optional */ });
+    return () => { alive = false; };
+  }, [slug]);
+
+  // Live websocket subscription
+  useEffect(() => {
+    if (!slug || typeof window === 'undefined') return undefined;
+    let cancelled = false;
+    axios.get(`${API_URL}/api/public/invitation/${slug}`)
+      .then((r) => {
+        if (cancelled) return;
+        const weddingId = r.data?.id;
+        if (!weddingId) return;
+        const wsBase = API_URL.replace(/^https/, 'wss').replace(/^http/, 'ws');
+        try {
+          const ws = new WebSocket(`${wsBase}/ws/gallery/${weddingId}`);
+          wsRef.current = ws;
+          ws.onmessage = (ev) => {
+            try {
+              const msg = JSON.parse(ev.data);
+              if (msg.type === 'photo_added' && msg.photo) {
+                setPhotos((arr) => [msg.photo, ...arr].slice(0, 60));
+              } else if (msg.type === 'photo_deleted') {
+                setPhotos((arr) => arr.filter((p) => p.id !== msg.photo_id));
+              }
+            } catch (_) { /* ignore */ }
+          };
+        } catch (_) { /* websocket optional */ }
+      })
+      .catch(() => { /* swallow */ });
+    return () => {
+      cancelled = true;
+      try { wsRef.current?.close?.(); } catch (_) { /* ignore */ }
+    };
+  }, [slug]);
+
+  const publicLink = useMemo(
+    () => (typeof window !== 'undefined' ? `${window.location.origin}/i/${slug}` : ''),
+    [slug],
+  );
+  const qrSrc = useMemo(
+    () => `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=2&color=${
+      accent.replace('#', '')}&bgcolor=FFF8DC&data=${encodeURIComponent(publicLink)}`,
+    [accent, publicLink],
+  );
+
+  return (
+    <ScrollSection className="px-6 md:px-12 py-16" data-testid="celebration-live-wall">
+      <div className="max-w-5xl mx-auto">
+        <span className="block text-[10px] tracking-[0.42em] uppercase mb-3 text-center" style={{ color: accent }}>
+          ◆ Live Photo Wall
+        </span>
+        <h3 className="text-center font-display text-3xl md:text-4xl leading-tight mb-3"
+          style={{ color: '#FFF8DC', fontFamily: '"Cormorant Garamond", serif' }}>
+          Photos appear{' '}
+          <em className="font-script not-italic" style={{ color: accent }}>live</em>
+          {' '}as the {eventLabel.toLowerCase()} unfolds.
+        </h3>
+        <p className="text-center text-sm md:text-base mb-8 max-w-2xl mx-auto"
+          style={{ color: 'rgba(255,248,220,0.7)' }}>
+          Every photo posted by {celebrantFirst}&apos;s family streams here in real time. Scan the QR or tap{' '}
+          <strong style={{ color: '#FFF8DC' }}>“Get my photos”</strong>{' '}
+          and our AI will find every shot you appear in.
+        </p>
+
+        {/* Photo grid */}
+        {photos.length > 0 ? (
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 mb-8">
+            {photos.slice(0, 12).map((p) => (
+              <div key={p.id} className="aspect-square rounded-lg overflow-hidden"
+                style={{ border: `1px solid ${softBorder}`, background: softBg }}>
+                <img src={`${API_URL}${p.thumb_url || p.url}`} alt="" loading="lazy"
+                  className="w-full h-full object-cover" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl px-6 py-10 text-center mb-8"
+            style={{ background: softBg, border: `1px dashed ${softBorder}`, color: 'rgba(255,248,220,0.6)' }}>
+            <ImageIcon className="w-7 h-7 mx-auto mb-2" style={{ color: accent }} />
+            <p className="text-sm">The wall is waiting for its first photo.</p>
+          </div>
+        )}
+
+        {/* Dual CTAs — Scan QR + Get my photos */}
+        <div className="grid sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
+          <button type="button" onClick={() => setShowQR(true)}
+            className="rounded-xl px-5 py-4 inline-flex items-center justify-center gap-2 text-[11px] tracking-[0.3em] uppercase font-medium"
+            style={{ background: '#FFF8DC', color: '#1A130B', border: `1px solid ${accent}` }}
+            data-testid="celebration-live-wall-qr-btn">
+            <QrCode className="w-4 h-4" /> Scan QR
+          </button>
+          <button type="button" onClick={() => setShowFind(true)}
+            className="rounded-xl px-5 py-4 inline-flex items-center justify-center gap-2 text-[11px] tracking-[0.3em] uppercase font-medium"
+            style={{ background: accent, color: '#1A130B', border: `1px solid ${accent}` }}
+            data-testid="celebration-live-wall-find-btn">
+            <Search className="w-4 h-4" /> Get my photos
+          </button>
+        </div>
+        <p className="text-center text-[11px] tracking-[0.25em] uppercase mt-3"
+          style={{ color: 'rgba(255,248,220,0.45)' }}>
+          No QR scanner handy? Tap the second button — enter the passkey from the host.
+        </p>
+
+        {/* QR modal */}
+        <AnimatePresence>
+          {showQR && (
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[110] flex items-center justify-center px-6"
+              style={{ background: 'rgba(8,5,3,0.85)', backdropFilter: 'blur(8px)' }}
+              onClick={() => setShowQR(false)} data-testid="celebration-qr-modal"
+            >
+              <motion.div
+                initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92 }}
+                className="rounded-2xl px-8 py-9 text-center max-w-md w-full relative"
+                style={{ background: '#1A130B', border: `1px solid ${accent}44` }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button onClick={() => setShowQR(false)}
+                  className="absolute top-3 right-3 p-2 rounded-full"
+                  style={{ color: 'rgba(255,248,220,0.7)' }} data-testid="celebration-qr-close">
+                  <X className="w-4 h-4" />
+                </button>
+                <span className="block text-[10px] tracking-[0.4em] uppercase mb-3" style={{ color: accent }}>
+                  ◆ Live Photo Wall
+                </span>
+                <h4 className="font-display text-2xl mb-4"
+                  style={{ color: '#FFF8DC', fontFamily: '"Cormorant Garamond", serif' }}>
+                  Scan to open on your phone.
+                </h4>
+                <div className="p-4 inline-block rounded-xl mb-4" style={{ background: '#FFF8DC' }}>
+                  <img src={qrSrc} alt="Open this invitation on phone"
+                    width={240} height={240} style={{ display: 'block' }} />
+                </div>
+                <button type="button"
+                  onClick={() => { try { navigator.clipboard?.writeText(publicLink); } catch (_) { /* ignore */ } }}
+                  className="block w-full px-4 py-2.5 rounded-md text-[10px] tracking-[0.3em] uppercase"
+                  style={{ color: accent, border: `1px solid ${accent}55`, background: 'transparent' }}>
+                  Copy invitation link
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Find my photos modal — reuses wedding-side AI face match flow */}
+        <FindMyPhotosModal
+          isOpen={showFind}
+          onClose={() => setShowFind(false)}
+          slug={slug}
+          accent={accent}
+        />
+      </div>
+    </ScrollSection>
   );
 };
 
@@ -997,6 +1176,25 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
         </div>
       </ScrollSection>
 
+      {/* ── LIVE PHOTO WALL ───────────────────────────────────────
+          Same logic as wedding side: the host (logged in) uploads
+          photos from their dashboard which appear here in real time.
+          Guests get two ways to find / take their own photos:
+            ① scan the QR  (good for guests next to the screen)
+            ② tap "Get my photos" → passkey → selfie → AI match
+       */}
+      {!previewMode && data?.slug && (
+        <LivePhotoWallSection
+          slug={data.slug}
+          accent={theme.accent}
+          primary={theme.primary}
+          softBg={theme.softBg}
+          softBorder={theme.softBorder}
+          eventLabel={theme.label}
+          celebrantFirst={firstName}
+        />
+      )}
+
       {/* ── MAJA FOOTER ──────────────────────────────────────────── */}
       <div className="px-6 md:px-12 pb-10">
         <MajaReferralCTA />
@@ -1021,6 +1219,15 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
         <UseThisDesignCTA
           accent={theme.accent}
           targetUrl={previewExitTo}
+        />
+      )}
+
+      {/* ── Floating GUEST UPLOAD button — real flow only.
+          Same wedding-side component; backend route is category-agnostic. */}
+      {!previewMode && data?.slug && (
+        <GuestUploadButton
+          slug={data.slug}
+          accent={theme.accent}
         />
       )}
     </div>

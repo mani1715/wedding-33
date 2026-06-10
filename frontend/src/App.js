@@ -62,6 +62,7 @@ const ThemeSettingsPage = lazy(() => import('./pages/ThemeSettingsPage'));
 // Premium features - Lazy loaded
 const LivePhotoWall = lazy(() => import('./pages/LivePhotoWall'));
 const LiveGalleryManagement = lazy(() => import('./pages/LiveGalleryManagement'));
+const UserLiveGalleryManagement = lazy(() => import('./pages/UserLiveGalleryManagement'));
 const AIStudio = lazy(() => import('./pages/AIStudio'));
 const WhatsAppManager = lazy(() => import('./pages/WhatsAppManager'));
 const DigitalShagunSettings = lazy(() => import('./pages/DigitalShagunSettings'));
@@ -215,6 +216,7 @@ function App() {
                 <Route path="/user/buy-theme/:themeId" element={<PurchaseOptionsWizard />} />
                 <Route path="/user/buy-design/:themeId/:event/:designId" element={<PurchaseOptionsWizard />} />
                 <Route path="/user/buy-celebration/:category/:designId" element={<CelebrationPurchaseWizard />} />
+                <Route path="/user/profile/:profileId/live-gallery" element={<UserLiveGalleryManagement />} />
               </Routes>
               </Suspense>
               </BrowserRouter>

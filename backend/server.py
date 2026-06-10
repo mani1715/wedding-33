@@ -13880,8 +13880,8 @@ app.include_router(guest_router, prefix="/api")
 # Prompt 05 + 13 — Live Photo Gallery with WebSocket
 # =====================================================================
 from live_gallery_features import build_live_gallery_router
-live_gallery_router = build_live_gallery_router(db=db, require_admin=require_admin)
-app.include_router(live_gallery_router)
+# Built later, after user_auth defines get_current_public_user so the host-side
+# (user) live-gallery routes can be auth'd. See block below.
 
 # =====================================================================
 # Prompt 07 — Guest Wishes Wall + Moderation
@@ -13928,6 +13928,13 @@ user_auth_router, get_current_public_user = build_user_auth_router(
     password_verifier=verify_password,
 )
 app.include_router(user_auth_router)
+
+# Now that get_current_public_user exists, build the live-gallery router so
+# user-facing (host) live-photo endpoints can authenticate the calling user.
+live_gallery_router = build_live_gallery_router(
+    db=db, require_admin=require_admin, get_current_user=get_current_public_user,
+)
+app.include_router(live_gallery_router)
 
 # =====================================================================
 # User Features — design-pricing, user credit purchase, user-created invitations

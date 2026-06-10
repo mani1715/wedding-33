@@ -40,7 +40,22 @@
   - **Cinematic closing** (`CelebrationClosing`) — in-flow reverse Ken-Burns on the design image + falling accent-colored petals + new copy "**Your presence is enough for us. Thank you.**" + celebrant signature with glow animation + date · venue strapline
   - **Footer** with celebrant signature + "Crafted with reverence · MAJA Creations"
 - [10 Jun 2026] **Photo bubble centering fix** — outer absolute wrapper does the `left:50% + translateX(-50%)` math; the framer-motion child only animates scale/opacity, so transform never gets overridden. Confirmed via DOM probe: cardCenter=960, bubbleCenter=960.
-- [10 Jun 2026] **Scroll reveal animations fix** — all page content is now conditionally rendered (`{openingDone && …}`) instead of opacity-gated, so framer-motion `whileInView` IntersectionObservers fire properly as the guest scrolls (instead of marking everything "seen" while hidden).
+- [10 Jun 2026] **Live Photo Wall + AI Face Match wired end-to-end for non-wedding invitations** (matches wedding logic 1:1)
+  - **Backend** (`live_gallery_features.py`): Added 3 user-auth'd routes that mirror the admin/photographer ones, scoped to the invitation owner via JWT user_id check:
+    - `POST /api/users/profiles/{profile_id}/live-gallery/upload`  (multipart, broadcasts WebSocket `photo_added`)
+    - `GET  /api/users/profiles/{profile_id}/live-gallery/photos`
+    - `DELETE /api/users/profiles/{profile_id}/live-gallery/{photo_id}`
+  - **`UserDashboard.jsx`**: Each invitation card now has a **📸 Manage Live Photos** button below View/Copy-Link that opens the new route.
+  - **`UserLiveGalleryManagement.jsx`** (new — `/user/profile/:profileId/live-gallery`): drag-and-drop dropzone (3 parallel uploads, per-file progress bar), 4 stat tiles (Photos / By you / By guests / Storage), live photo grid (hover-to-delete), and a deep link to the public invitation page.
+  - **`CelebrationPublicView.jsx`** (non-wedding public invite): new `LivePhotoWallSection` near the closing:
+    - Pulls `/api/public/gallery/{slug}/photos` for first paint, then subscribes to `/ws/gallery/{wedding_id}` for live `photo_added` / `photo_deleted` events — same WebSocket the wedding viewer uses.
+    - Renders the last 12 photos in a grid.
+    - **Two side-by-side guest CTAs**:
+      - **Scan QR** → modal with QR pointing at the public invitation URL (uses `api.qrserver.com`, themed with category accent).
+      - **Get my photos** → opens existing `FindMyPhotosModal` (gallery passkey → selfie upload → AI face match → 99 %+ matches with download).
+    - Floating **`GuestUploadButton`** on the page so guests can also post their own shots to the wall.
+  - All endpoints already category-agnostic; no schema changes needed.
+- [10 Jun 2026] **Server.py:** moved `build_live_gallery_router` call to AFTER `build_user_auth_router` so `get_current_public_user` is in scope when constructing the user-side routes.
 
 ## Known Things to Be Aware Of
 - Backend has `security_middleware` that blocks bot user-agents (curl etc.) on `/api/` root. Browser/frontend access works fine.
