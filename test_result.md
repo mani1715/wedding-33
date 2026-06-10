@@ -350,6 +350,48 @@ agent_communication:
         showcase section below. OpeningCurtain also gets the design
         image so the cinematic intro matches the chosen artwork.
         Lint clean, frontend compiles successfully.
+    - agent: "main"
+      message: |
+        DESIGN-PARITY BUG (Jul 2026 round-3): Published celebration
+        invitation HERO did NOT visually match the home-page PREVIEW
+        even though they shared most components. Concrete repro from
+        user: https://nuptial-hub-87.preview.emergentagent.com/invite/
+        manvith-bharath-1yoyzc (baby_birthday + baby_birthday_design_4)
+        — preview shows the design's floral corners at the top of a
+        portrait CARD, but the published page stretched the same
+        portrait artwork edge-to-edge across 100vh which CROPPED OUT
+        every decorative corner (florals/balloons/cake), leaving just
+        the flat dark middle of the artwork visible.
+
+        ROOT CAUSE: CelebrationPublicView.jsx hero used
+        `minHeight: 100vh` + `object-cover` on the design backdrop —
+        on a 16:9 viewport the 9:16 design image fills width by
+        scaling 1.78x, so the top/bottom 40% of the artwork (where
+        all the decoration lives) is off-screen.
+
+        FIX (file edited: /app/frontend/src/components/luxury/
+        CelebrationPublicView.jsx, hero section only):
+          • L0 — added a BLURRED, page-wide design backdrop (matches
+            CelebrationInvitationPreview's SoftDesignBackdrop)
+          • Replaced full-bleed hero with a CONTAINED portrait card
+            (width min(580px,92vw), aspect-ratio 3/4) centered in the
+            viewport — same composition as the preview card.
+          • Sharp design artwork now sits INSIDE that card so the
+            floral/cake/balloon corners are always visible.
+          • Eyebrow pill, dashed photo bubble, cream/tinted invitation
+            panel at the bottom — all kept and re-positioned inside
+            the card.
+          • Added "Scroll for the full story" indicator below the card
+            (matches preview).
+          • All sections BELOW the hero (countdown, story, gallery,
+            venue, RSVP, etc.) — untouched.
+        Verified end-to-end: seeded test profile
+        /invite/manvith-test-bday on local dev → screenshots confirm
+        the published card now visually matches the preview card.
+        Wedding flow (LuxuryPublicInvitation hero for category=wedding)
+        NOT touched yet — awaiting user confirmation that celebration
+        fix is acceptable before applying same approach to wedding.
+
     - agent: "testing"
       message: |
         ✅ BUG 3 SERVER-SIDE GUARD VERIFIED AND WORKING
