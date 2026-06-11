@@ -14,6 +14,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Save, Plus, Trash2, ChevronLeft, Clock, Coins, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -22,6 +23,10 @@ const slugify = (s) =>
 
 const SuperAdminExpiryTiers = () => {
   const nav = useNavigate();
+  // BUG M FIX: previously this page had no auth handling and accessed the
+  // tiers endpoint without verifying the visitor was a super_admin. Add the
+  // standard "wait-for-hydration, redirect non-super-admins" guard.
+  const { admin, loading: authLoading } = useAuth();
   const [tiers, setTiers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -32,7 +37,16 @@ const SuperAdminExpiryTiers = () => {
     setTimeout(() => setToast(null), 2500);
   };
 
-  const token = () => localStorage.getItem('admin_token') || localStorage.getItem('super_admin_token') || '';
+  // The legacy fallback to `super_admin_token` is dead code (the key is never
+  // written anywhere). Keep the lookup of `admin_token` only.
+  const token = () => localStorage.getItem('admin_token') || '';
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!admin) { nav('/super-admin/login', { replace: true }); return; }
+    const role = (admin.role || '').toLowerCase();
+    if (role !== 'super_admin') { nav('/admin/dashboard', { replace: true }); return; }
+  }, [authLoading, admin, nav]);
 
   useEffect(() => {
     let cancelled = false;

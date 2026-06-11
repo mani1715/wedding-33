@@ -4,9 +4,18 @@ import axios from 'axios';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Trash2, ArchiveRestore, Calendar, AlertTriangle } from 'lucide-react';
 import BulkActionBar from '@/components/dashboard/BulkActionBar';
+import { useAuth } from '@/context/AuthContext';
 import '@/styles/luxury.css';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+// BUG A FIX: all trash endpoints are photographer-only — they fail with
+// 401 when called without a Bearer token. Build it once here so every axios
+// call below carries it.
+const authHeaders = () => {
+  const tok = localStorage.getItem('admin_token');
+  return tok ? { Authorization: `Bearer ${tok}` } : {};
+};
 
 /**
  * TrashBinPage — lists soft-deleted weddings within 30-day retention window.
@@ -14,6 +23,9 @@ const API_URL = process.env.REACT_APP_BACKEND_URL || '';
  */
 const TrashBinPage = () => {
   const navigate = useNavigate();
+  // BUG A FIX: previously this page had zero auth handling — a logged-out
+  // visitor saw a blank page (silent 401). Redirect to /admin/login.
+  const { admin, loading: authLoading } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(new Set());
@@ -23,15 +35,23 @@ const TrashBinPage = () => {
     return () => document.body.classList.remove('luxe', 'luxe-grain', 'luxe-vignette');
   }, []);
 
+  useEffect(() => {
+    if (authLoading) return;
+    if (!admin) navigate('/admin/login', { replace: true });
+  }, [authLoading, admin, navigate]);
+
   const load = async () => {
     setLoading(true);
     try {
-      const r = await axios.get(`${API_URL}/api/admin/profiles/trash`);
+      const r = await axios.get(`${API_URL}/api/admin/profiles/trash`, { headers: authHeaders() });
       setItems(r.data?.items || []);
     } catch (_) { setItems([]); }
     finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (!authLoading && admin) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, admin]);
 
   const toggleSel = (id) => {
     const s = new Set(selected);
@@ -41,24 +61,24 @@ const TrashBinPage = () => {
   const clearSel = () => setSelected(new Set());
 
   const restoreOne = async (id) => {
-    await axios.post(`${API_URL}/api/admin/profiles/${id}/restore-trash`);
+    await axios.post(`${API_URL}/api/admin/profiles/${id}/restore-trash`, {}, { headers: authHeaders() });
     load();
   };
   const purgeOne = async (id) => {
     if (!window.confirm('Permanently delete this wedding? This cannot be undone.')) return;
-    await axios.delete(`${API_URL}/api/admin/profiles/${id}/purge`);
+    await axios.delete(`${API_URL}/api/admin/profiles/${id}/purge`, { headers: authHeaders() });
     load();
   };
 
   const bulkRestore = async () => {
     const ids = Array.from(selected);
-    await axios.post(`${API_URL}/api/admin/profiles/bulk-action`, { ids, action: 'restore' });
+    await axios.post(`${API_URL}/api/admin/profiles/bulk-action`, { ids, action: 'restore' }, { headers: authHeaders() });
     clearSel(); load();
   };
   const bulkPurge = async () => {
     if (!window.confirm(`Permanently delete ${selected.size} weddings? This cannot be undone.`)) return;
     const ids = Array.from(selected);
-    await axios.post(`${API_URL}/api/admin/profiles/bulk-action`, { ids, action: 'purge' });
+    await axios.post(`${API_URL}/api/admin/profiles/bulk-action`, { ids, action: 'purge' }, { headers: authHeaders() });
     clearSel(); load();
   };
 

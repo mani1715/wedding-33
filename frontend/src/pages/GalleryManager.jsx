@@ -292,6 +292,15 @@ const UploadMethodsTab = ({ creds, onUpdate, onRegen, onCopy, copied }) => {
   const m = creds.upload_methods || {};
   const toggle = (key) => onUpdate({ ...m, [key]: !m[key] });
 
+  // BUG K FIX: backend builds `live_upload_url` as `${FRONTEND_URL}/live/...`,
+  // but when FRONTEND_URL is unset the value comes back as a relative path
+  // (`/live/{id}?token=...`). The QR code library renders a blank/invalid QR
+  // for relative URLs, and the "Copy" button copies an unusable link. Prefix
+  // with the current origin so the QR is always scan-able even without env.
+  const liveRaw = creds.live_upload_url || '';
+  const liveUrl = liveRaw && liveRaw.startsWith('/')
+    ? `${window.location.origin}${liveRaw}`
+    : liveRaw;
   return (
     <div className="space-y-5">
       {/* Phone Live */}
@@ -301,16 +310,16 @@ const UploadMethodsTab = ({ creds, onUpdate, onRegen, onCopy, copied }) => {
         {m.phone_live_enabled && (
           <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-5 pt-3">
             <div className="bg-white p-3 rounded-lg flex items-center justify-center">
-              <QRCodeSVG value={creds.live_upload_url || ''} size={170} level="M" />
+              <QRCodeSVG value={liveUrl} size={170} level="M" />
             </div>
             <div className="space-y-2">
               <div className="text-[10px] tracking-[0.3em] uppercase" style={{ color: 'rgba(255,248,220,0.55)' }}>Live URL (24h)</div>
               <div className="flex gap-2 items-center">
                 <code className="text-xs flex-1 px-3 py-2 rounded-lg overflow-x-auto font-mono"
                   style={{ background: 'rgba(255,248,220,0.04)', border: '1px solid var(--lux-border)', color: '#FFF8DC' }}>
-                  {creds.live_upload_url}
+                  {liveUrl}
                 </code>
-                <button onClick={() => onCopy(creds.live_upload_url, 'live')} className="lux-btn-ghost inline-flex items-center gap-1 text-xs" data-testid="copy-live-url">
+                <button onClick={() => onCopy(liveUrl, 'live')} className="lux-btn-ghost inline-flex items-center gap-1 text-xs" data-testid="copy-live-url">
                   {copied === 'live' ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
               </div>

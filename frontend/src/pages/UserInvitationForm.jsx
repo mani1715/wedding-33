@@ -153,6 +153,9 @@ export default function UserInvitationForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
+  // BUG P FIX: track which add-ons failed to activate after the invitation
+  // was created so the success screen can surface a clear warning.
+  const [addonFailures, setAddonFailures] = useState([]);
   const [topUpOpen, setTopUpOpen] = useState(false);
   const pricing = usePricing('normal_user');
 
@@ -295,6 +298,12 @@ export default function UserInvitationForm() {
       // selected add-ons against this freshly-created profile so they
       // show up as "purchased" in `profile.add_ons`.
       const newProfile = data?.profile;
+      // BUG P FIX: collect (instead of silently swallowing) any add-on
+      // purchase failures so the success screen can surface a clear
+      // "your invitation was created but add-on X could not be activated"
+      // banner. Previously every failure was caught with `catch (_e) {}`,
+      // leaving users wondering why their paid add-on never appeared.
+      const failedAddons = [];
       if (newProfile?.id && purchasedAddonIds.length > 0) {
         for (const addonId of purchasedAddonIds) {
           try {
@@ -303,11 +312,21 @@ export default function UserInvitationForm() {
               { addon_id: addonId },
               { withCredentials: true },
             );
-          } catch (_e) {
-            // Silently swallow — if balance ran out mid-flow we'll still
-            // show the success screen for the invitation itself.
+          } catch (e) {
+            const detail = e?.response?.data?.detail;
+            failedAddons.push({
+              id: addonId,
+              reason: (typeof detail === 'string'
+                ? detail
+                : detail?.error || detail?.message)
+                || e?.message
+                || 'unknown error',
+            });
           }
         }
+      }
+      if (failedAddons.length > 0) {
+        setAddonFailures(failedAddons);
       }
 
       await refresh?.();
@@ -341,7 +360,14 @@ export default function UserInvitationForm() {
   if (success) {
     const link = success.invitation_link;
     const fullUrl = `${window.location.origin}${link}`;
-    return <InvitationSuccessScreen fullUrl={fullUrl} link={link} navigate={navigate} />;
+    return (
+      <InvitationSuccessScreen
+        fullUrl={fullUrl}
+        link={link}
+        navigate={navigate}
+        addonFailures={addonFailures}
+      />
+    );
   }
 
   return (
@@ -764,7 +790,7 @@ const UserFeaturePackUpsell = ({ pricing }) => {
 };
 
 
-function InvitationSuccessScreen({ fullUrl, link, navigate }) {
+function InvitationSuccessScreen({ fullUrl, link, navigate, addonFailures = [] }) {
   const [copied, setCopied] = useState(false);
 
   const copyLink = async () => {
@@ -819,6 +845,36 @@ function InvitationSuccessScreen({ fullUrl, link, navigate }) {
         <p className="text-sm mb-8" style={{ color: 'rgba(255,248,220,0.7)' }}>
           Share the link or QR with your loved ones.
         </p>
+
+        {/* BUG P FIX: surface any add-on activation failures so users aren't
+            wondering why a paid add-on never appeared on their invitation.
+            Previously these were silently swallowed. */}
+        {addonFailures.length > 0 && (
+          <div
+            className="mb-7 px-4 py-3 rounded-md text-left text-xs"
+            style={{
+              background: 'rgba(190, 120, 30, 0.15)',
+              border: '1px solid rgba(190, 120, 30, 0.55)',
+              color: '#FFE9C9',
+            }}
+            data-testid="user-invitation-addon-failures"
+          >
+            <div className="font-medium mb-1">
+              Your invitation is live, but {addonFailures.length === 1 ? 'one add-on' : `${addonFailures.length} add-ons`} could not be activated:
+            </div>
+            <ul className="list-disc pl-5 space-y-0.5">
+              {addonFailures.map((f) => (
+                <li key={f.id}>
+                  <span className="font-mono">{f.id}</span>
+                  {f.reason && <span> — {f.reason}</span>}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 opacity-90">
+              Check your credit balance and re-purchase from the dashboard, or contact support if credits were already deducted.
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-7 items-stretch">
           {/* QR Code */}

@@ -21,11 +21,16 @@ const fadeUp = {
 const PostWeddingManagement = () => {
   const { profileId } = useParams();
   const navigate = useNavigate();
-  const { admin } = useAuth();
+  // BUG L FIX: include `loading` so we don't bounce the photographer to
+  // /admin/login while the auth context is still hydrating from localStorage.
+  // Without this, every page-load briefly saw `admin === null` and redirected
+  // before the JWT was parsed.
+  const { admin, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    if (!admin) navigate('/admin/login');
-  }, [admin, navigate]);
+    if (authLoading) return;
+    if (!admin) navigate('/admin/login', { replace: true });
+  }, [admin, authLoading, navigate]);
 
   return (
     <div className="luxe min-h-screen relative" data-testid="post-wedding-management">

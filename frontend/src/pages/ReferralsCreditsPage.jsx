@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Gift, Wallet, Sparkles, Crown, TrendingUp } from 'lucide-react';
 import ReferralDashboard from '../components/ReferralDashboard';
 import CreditWallet from '../components/CreditWallet';
+import { useAuth } from '@/context/AuthContext';
 import '@/styles/luxury.css';
 
 const fadeUp = {
@@ -20,12 +21,21 @@ const fadeUp = {
 const ReferralsCreditsPage = () => {
   const { profileId } = useParams();
   const navigate = useNavigate();
+  // BUG N FIX: previously this page had ZERO auth checks. Anyone could load
+  // /admin/profile/.../referrals-credits and see an empty CreditWallet shell.
+  // Standard photographer guard now applied.
+  const { admin, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('credits');
 
   useEffect(() => {
     document.body.classList.add('luxe', 'luxe-grain', 'luxe-vignette');
     return () => {};
   }, []);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!admin) navigate('/admin/login', { replace: true });
+  }, [authLoading, admin, navigate]);
 
   return (
     <div className="luxe min-h-screen relative" data-testid="referrals-credits-page">

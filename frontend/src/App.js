@@ -79,6 +79,10 @@ const UserDashboard = lazy(() => import('./pages/UserDashboard'));
 const UserProfile = lazy(() => import('./pages/UserProfile'));
 const UserDesignPicker = lazy(() => import('./pages/UserDesignPicker'));
 const UserInvitationForm = lazy(() => import('./pages/UserInvitationForm'));
+// BUG J — Normal-user wedding-invitation edit page (PATCH /api/users/profiles/{id}).
+const UserWeddingEditPage = lazy(() => import('./pages/UserWeddingEditPage'));
+// June 2026 — Studio backup storage (photographer side).
+const StudioStoragePage = lazy(() => import('./pages/StudioStoragePage'));
 const PurchaseOptionsWizard = lazy(() => import('./pages/PurchaseOptionsWizard'));
 const PublicPricingPage = lazy(() => import('./pages/PublicPricingPage'));
 
@@ -160,6 +164,9 @@ function App() {
                 <Route path="/super-admin/credits" element={<SuperAdminPricingHub />} />
                 <Route path="/super-admin/expiry-tiers" element={<SuperAdminExpiryTiers />} />
 
+                {/* June 2026 — Studio backup storage (photographer dashboard). */}
+                <Route path="/admin/studio-storage" element={<StudioStoragePage />} />
+
                 {/* Photographer Admin */}
                 <Route path="/admin/login" element={<AdminLogin />} />
                 <Route path="/admin/signup" element={<AdminSignup />} />
@@ -169,6 +176,8 @@ function App() {
                 <Route path="/admin/celebration/:profileId/edit" element={<CelebrationProfileForm />} />
                 <Route path="/user/celebration/new" element={<CelebrationProfileForm />} />
                 <Route path="/user/celebration/:profileId/edit" element={<CelebrationProfileForm />} />
+                {/* BUG J — Normal user wedding edit (uses PATCH /api/users/profiles/{id}). */}
+                <Route path="/user/profile/:profileId/edit" element={<UserWeddingEditPage />} />
                 <Route path="/admin/dashboard/trash" element={<TrashBinPage />} />
 
                 {/* Wedding Editor (luxury wizard) */}

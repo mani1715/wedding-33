@@ -4,18 +4,26 @@ import axios from 'axios';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Clock, User, FileText, Copy, Trash2, Save } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 const AuditLogsPage = () => {
   const navigate = useNavigate();
+  // BUG N FIX: page used to be accessible without any auth handling, leaving
+  // logged-out visitors on a 401-shaped error screen. Bounce them to
+  // /admin/login instead.
+  const { admin, loading: authLoading } = useAuth();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!admin) { navigate('/admin/login', { replace: true }); return; }
     fetchAuditLogs();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, admin]);
 
   const fetchAuditLogs = async () => {
     try {

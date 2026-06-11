@@ -317,6 +317,11 @@ const LuxuryDashboard = () => {
               data-testid="dashboard-credits">
               <Sparkles className="w-4 h-4" /> Credits
             </button>
+            {/* June 2026 — Studio backup storage entry point */}
+            <button onClick={() => navigate('/admin/studio-storage')} className="lux-btn lux-btn-ghost"
+              data-testid="dashboard-studio-storage">
+              <Camera className="w-4 h-4" /> Store my photos
+            </button>
           </div>
           <div className="relative w-full md:w-72">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4"

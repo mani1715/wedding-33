@@ -14137,6 +14137,25 @@ monetization_router = build_monetization_router(
 app.include_router(monetization_router)
 
 # =====================================================================
+# Studio Backup Storage — June 2026 feature
+# Lets photographers store studio backups (10 GB / 100 GB / 1 TB plans
+# defined and edited by super admin). See /app/backend/studio_storage.py
+# for full flow + grace-window logic.
+# =====================================================================
+try:
+    import logging as _logging
+    _studio_log = _logging.getLogger("studio_storage_mount")
+    import studio_storage as _studio_storage
+    _studio_storage.init(database=db, razorpay_client=razorpay_client)
+    app.include_router(_studio_storage.router, prefix="/api")
+    _studio_log.info("[startup] studio_storage router mounted under /api")
+except Exception as e:
+    import logging as _logging
+    _logging.getLogger("studio_storage_mount").exception(
+        "[startup] studio_storage router failed to mount: %s", e
+    )
+
+# =====================================================================
 # Public-user Auth — normal end-users (wedding guests) signup/login + Google
 # =====================================================================
 from user_auth import build_user_auth_router

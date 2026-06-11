@@ -1433,6 +1433,11 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
       )}
 
       {/* ── RSVP ──────────────────────────────────────────────────── */}
+      {/* BUG Q FIX (matches Bug 27 on wedding view): honour the
+          sections_enabled.rsvp toggle. Default to "show" so existing
+          celebrations created before this toggle was enforced keep their
+          RSVP form visible. */}
+      {(data?.sections_enabled?.rsvp !== false) && (
       <ScrollSection
         as="section"
         className="px-6 md:px-12 py-20"
@@ -1462,6 +1467,7 @@ const CelebrationPublicView = ({ data, previewMode = false, previewExitTo = null
           </div>
         </div>
       </ScrollSection>
+      )}
 
       {/* ── BLESSINGS / WISHES WALL ───────────────────────────────── */}
       <ScrollSection

@@ -6,7 +6,9 @@ import {
   ArrowLeft, Save, Sparkles, ChevronRight, ChevronLeft, Check,
   Heart, Calendar, MapPin, User, Image as ImageIcon, Video, Radio,
   Trash2, Plus, Eye, ExternalLink, Music, Languages, Loader2, AlertCircle,
+  Copy, Download as DownloadIcon, Share2,
 } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { useAuth } from '@/context/AuthContext';
 import { useUserAuth } from '@/context/UserAuthContext';
 import MusicPresetPicker from '@/components/luxury/MusicPresetPicker';
@@ -928,14 +930,13 @@ const CelebrationProfileForm = () => {
           )}
         </div>
 
+        {/* BUG O FIX: previously a one-line `<a>View public link</a>` was the
+            only post-save share affordance. Photographers and users alike had
+            to right-click, copy, then assemble the full URL by hand. Mirror
+            the LuxuryProfileForm "Publish" panel here — full URL, copy
+            button, native share, and a downloadable QR. */}
         {isEdit && profile?.slug && (
-          <div className="text-center mt-6">
-            <a href={`/invite/${profile.slug}`} target="_blank" rel="noreferrer"
-              className="inline-flex items-center gap-2 text-xs"
-              style={{ color: '#D4AF37' }}>
-              <ExternalLink className="w-3.5 h-3.5" /> View public link
-            </a>
-          </div>
+          <CelebrationShareLinkPanel slug={profile.slug} />
         )}
       </div>
     </div>
@@ -961,5 +962,105 @@ const Row = ({ k, v }) => (
     </span>
   </div>
 );
+
+/**
+ * BUG O FIX — Share Link panel rendered after the celebration invitation
+ * is saved. Mirrors the look of the LuxuryProfileForm "Publish" step:
+ *   • Full URL (with origin) shown in a copyable code box.
+ *   • One-click "Copy", "Open", "Share" (native share API where available),
+ *     and "Download QR" actions.
+ *   • QR code rendered to a canvas so it can be downloaded as PNG.
+ */
+const CelebrationShareLinkPanel = ({ slug }) => {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const fullUrl = `${origin}/invite/${slug}`;
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (_e) { /* ignore */ }
+  };
+
+  const share = async () => {
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({ title: 'Invitation', text: 'You\u2019re invited!', url: fullUrl });
+      } catch (_e) { /* user cancelled */ }
+    } else {
+      copy();
+    }
+  };
+
+  const downloadQR = () => {
+    // Pull the canvas the QRCodeCanvas component renders and offer a PNG.
+    const canvas = document.getElementById('celebration-share-qr');
+    if (!canvas || !canvas.toDataURL) return;
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `invitation-${slug}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  return (
+    <div
+      className="mt-8 p-5 rounded-2xl"
+      style={{ background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.28)' }}
+      data-testid="celebration-share-panel"
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <Share2 className="w-4 h-4" style={{ color: '#D4AF37' }} />
+        <span className="text-[10px] tracking-[0.3em] uppercase font-medium" style={{ color: '#D4AF37' }}>
+          Share your invitation
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-5 items-center">
+        <div className="space-y-3">
+          <code
+            className="block px-3 py-2 rounded-md text-xs overflow-x-auto font-mono"
+            style={{ background: 'rgba(10,7,4,0.6)', border: '1px solid rgba(212,175,55,0.25)', color: '#FFF8DC' }}
+            data-testid="celebration-share-url"
+          >
+            {fullUrl}
+          </code>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={copy} className="lux-btn-ghost inline-flex items-center gap-2 text-xs" data-testid="celebration-share-copy">
+              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? 'Copied' : 'Copy link'}
+            </button>
+            <a
+              href={fullUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="lux-btn-ghost inline-flex items-center gap-2 text-xs"
+              data-testid="celebration-share-open"
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> Open
+            </a>
+            <button onClick={share} className="lux-btn-ghost inline-flex items-center gap-2 text-xs" data-testid="celebration-share-native">
+              <Share2 className="w-3.5 h-3.5" /> Share
+            </button>
+            <button onClick={downloadQR} className="lux-btn-ghost inline-flex items-center gap-2 text-xs" data-testid="celebration-share-qr-download">
+              <DownloadIcon className="w-3.5 h-3.5" /> Download QR
+            </button>
+          </div>
+        </div>
+
+        <div
+          className="bg-white p-3 rounded-lg flex items-center justify-center"
+          style={{ alignSelf: 'center' }}
+        >
+          <QRCodeCanvas id="celebration-share-qr" value={fullUrl} size={150} level="M" includeMargin={false} />
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default CelebrationProfileForm;

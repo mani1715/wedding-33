@@ -4,7 +4,7 @@ import axios from 'axios';
 import { motion } from 'framer-motion';
 import {
   Sparkles, Plus, Wallet, ArrowRight, ExternalLink, Calendar, MapPin, Copy, Check,
-  Home as HomeIcon, Camera,
+  Home as HomeIcon, Camera, Edit3,
 } from 'lucide-react';
 import { useUserAuth } from '@/context/UserAuthContext';
 import '../styles/luxury.css';
@@ -167,11 +167,28 @@ export default function UserDashboard() {
               data-testid={`user-profile-card-${p.id}`}
             >
               <div className="text-[10px] tracking-[0.25em] uppercase mb-1" style={{ color: 'rgba(255,248,220,0.55)' }}>
-                {p.event_type}
+                {p.event_type || p.invitation_category || 'invitation'}
               </div>
-              <h3 className="font-display text-xl mb-3 leading-tight" style={{ color: '#FFF8DC' }}>
-                {p.bride_name} <span className="font-script italic text-gold">&amp;</span> {p.groom_name}
-              </h3>
+              {/* BUG I FIX: celebration profiles (baby birthday / half saree /
+                  puberty / dhoti) don't have bride_name + groom_name — the
+                  name lives in celebrant_info.name. Rendering the wedding
+                  shape produced "undefined & undefined". */}
+              {(() => {
+                const cat = p.invitation_category || 'wedding';
+                if (cat !== 'wedding') {
+                  const name = p.celebrant_info?.name || p.bride_name || 'Celebration';
+                  return (
+                    <h3 className="font-display text-xl mb-3 leading-tight" style={{ color: '#FFF8DC' }}>
+                      {name}
+                    </h3>
+                  );
+                }
+                return (
+                  <h3 className="font-display text-xl mb-3 leading-tight" style={{ color: '#FFF8DC' }}>
+                    {p.bride_name} <span className="font-script italic text-gold">&amp;</span> {p.groom_name}
+                  </h3>
+                );
+              })()}
               <div className="space-y-1.5 mb-4 text-xs" style={{ color: 'rgba(255,248,220,0.7)' }}>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-3 h-3 text-gold" />
@@ -191,6 +208,24 @@ export default function UserDashboard() {
                   data-testid={`user-profile-view-${p.id}`}
                 >
                   <ExternalLink className="w-3 h-3" /> View
+                </button>
+                {/* BUG J FIX: normal users had no way to edit a typo/venue/date
+                    once their invitation was created. Celebration profiles
+                    have an existing edit form; wedding profiles use the new
+                    UserWeddingEditPage registered at /user/profile/:id/edit. */}
+                <button
+                  onClick={() => {
+                    const cat = p.invitation_category || 'wedding';
+                    if (cat !== 'wedding') {
+                      navigate(`/user/celebration/${p.id}/edit?category=${cat}`);
+                    } else {
+                      navigate(`/user/profile/${p.id}/edit`);
+                    }
+                  }}
+                  className="lux-btn lux-btn-ghost flex-1 justify-center !text-[10px]"
+                  data-testid={`user-profile-edit-${p.id}`}
+                >
+                  <Edit3 className="w-3 h-3" /> Edit
                 </button>
                 <button
                   onClick={() => copyLink(p.slug)}

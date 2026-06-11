@@ -41,7 +41,15 @@ import '@/styles/luxury.css';
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 const LuxuryPublicInvitation = () => {
-  const { slug } = useParams();
+  // BUG H FIX: the per-event share link is /invite/:slug/:eventType (the QR
+  // codes on event invitation cards point here). Previously the component
+  // ignored `eventType` entirely, so scanning a Reception-specific QR opened
+  // the full wedding invitation with no acknowledgement of the event. We now
+  // read the param and, after the invitation finishes loading, scroll the
+  // matching event section into view so the guest lands on the right
+  // ceremony details. The other sections remain accessible by scrolling so
+  // we don't break the full-invitation reading experience.
+  const { slug, eventType } = useParams();
   const [searchParams] = useSearchParams();
   const guestToken = searchParams.get('g');
   const navigate = useNavigate();
@@ -146,6 +154,28 @@ const LuxuryPublicInvitation = () => {
       }
     } finally { setLoading(false); }
   };
+
+  // BUG H FIX: when the URL includes /:eventType (per-event QR scan),
+  // scroll the matching event card into view a beat after the invitation
+  // finishes loading. We look for a section / element marked with either
+  // `data-event-type` or the standard `testid="section-event-{type}"`
+  // pattern. Fail silently if no match exists (the invitation may not have
+  // events that match a stale QR).
+  useEffect(() => {
+    if (!eventType || !data || loading) return;
+    const norm = String(eventType).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const target = setTimeout(() => {
+      const el =
+        document.querySelector(`[data-event-type="${norm}"]`) ||
+        document.querySelector(`[data-testid="section-event-${norm}"]`) ||
+        document.querySelector(`[data-testid="event-${norm}"]`) ||
+        document.getElementById(`event-${norm}`);
+      if (el && typeof el.scrollIntoView === 'function') {
+        try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_e) {}
+      }
+    }, 900); // wait for hero / opening to settle
+    return () => clearTimeout(target);
+  }, [eventType, data, loading]);
 
   // Prompt 02 — Cinematic opening hooks (must be called unconditionally)
   // Opening animation is automatically skipped on:
@@ -589,6 +619,10 @@ const LuxuryPublicInvitation = () => {
           const maja = data.custom_text?._maja || {};
           const extras = Array.isArray(maja.couple_photos) ? maja.couple_photos.filter(Boolean) : [];
           if (extras.length === 0) return null;
+          // BUG F FIX: respect sections_enabled.photos toggle — default
+          // "show" (existing invitations without the field continue to
+          // display their gallery).
+          if (data?.sections_enabled?.photos === false) return null;
           return (
             <ScrollSection className="px-6 md:px-16 py-16 max-w-5xl mx-auto" testid="section-couple-extra-photos">
               <span className="lux-eyebrow block mb-4 text-center">◆ Moments</span>
@@ -715,7 +749,8 @@ const LuxuryPublicInvitation = () => {
         )}
 
         {/* Countdown */}
-        {weddingDate && <Countdown date={weddingDate} />}
+        {/* BUG B FIX: honour sections_enabled.countdown — default "show". */}
+        {weddingDate && (data?.sections_enabled?.countdown !== false) && <Countdown date={weddingDate} />}
 
         {/* Pre-wedding shoot (Google Drive / YouTube / Vimeo embed) */}
         <PreWeddingSection preWeddingLinks={preWeddingLinks} />
@@ -753,7 +788,8 @@ const LuxuryPublicInvitation = () => {
         <SongRequestSection slug={slug} settings={data.song_requests_settings} />
 
         {/* Wishes — Prompt 07: moderated wishes wall with featured spotlight */}
-        <WishesWallSection slug={slug} />
+        {/* BUG D FIX: honour sections_enabled.greetings — default "show". */}
+        {(data?.sections_enabled?.greetings !== false) && <WishesWallSection slug={slug} />}
 
         {/* Phase 38 — Live Photo Wall teaser */}
         <LivePhotoWallTeaser slug={slug} />
@@ -810,7 +846,12 @@ const LuxuryPublicInvitation = () => {
           </div>
         </footer>
 
-        {musicUrl && <AmbientMusicPlayer src={musicUrl} defaultVolume={0.35} />}
+        {/* BUG E FIX: respect background_music.enabled (and the legacy
+            sections_enabled.music alias) — photographers who disabled music
+            in the Features panel were still getting it played to guests. */}
+        {musicUrl && (data?.background_music?.enabled !== false) && (data?.sections_enabled?.music !== false) && (
+          <AmbientMusicPlayer src={musicUrl} defaultVolume={0.35} />
+        )}
         <PetalConfetti trigger={rsvpDone ? Date.now() : false} count={42} duration={5200} />
         <PetalConfetti trigger={wishDone ? Date.now() : false} count={26} duration={4200} />
         <FindMyPhotosModal slug={slug} open={findOpen} onClose={() => setFindOpen(false)} />
