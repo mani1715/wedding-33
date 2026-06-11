@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import QRCodeDisplay from '@/components/QRCodeDisplay';
+import { useAuth } from '@/context/AuthContext';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
@@ -19,18 +20,31 @@ const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 const QRCodeManagement = () => {
   const { profileId } = useParams();
   const navigate = useNavigate();
+  // BUG 15 FIX: guard the page so logged-out visitors are bounced to /admin/login
+  // instead of seeing a blank/silently-401'd screen.
+  const { admin, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchProfile();
-  }, [profileId]);
+    if (!authLoading && !admin) {
+      navigate('/admin/login', { replace: true });
+    }
+  }, [authLoading, admin, navigate]);
+
+  useEffect(() => {
+    if (!authLoading && admin) fetchProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId, authLoading, admin]);
 
   const fetchProfile = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('adminToken');
+      // BUG 13 FIX: AuthContext stores the photographer JWT under `admin_token`.
+      // Using a different key sent null in the Authorization header and the API
+      // silently 401'd — page rendered blank instead of redirecting to login.
+      const token = localStorage.getItem('admin_token');
       const response = await axios.get(
         `${API_URL}/api/admin/profiles/${profileId}`,
         {

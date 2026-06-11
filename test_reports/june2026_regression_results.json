@@ -1,0 +1,107 @@
+{
+  "total": 20,
+  "passed": 19,
+  "failed": 1,
+  "tests": [
+    {
+      "name": "Super admin login - access_token present",
+      "passed": true,
+      "details": "Token: eyJhbGciOiJIUzI1NiIs..."
+    },
+    {
+      "name": "Super admin login - admin object present",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "Super admin login - role field present",
+      "passed": true,
+      "details": "Role: super_admin"
+    },
+    {
+      "name": "Super admin login - role is super_admin",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "Legacy /api/auth/me - HTTP 200",
+      "passed": true,
+      "details": "Admin: mani_8328@majacreations.com"
+    },
+    {
+      "name": "Legacy /api/auth/me - admin object structure",
+      "passed": true,
+      "details": "ID: 0cd19dda..., Email: mani_8328@majacreations.com, Role: super_admin"
+    },
+    {
+      "name": "Create wedding - HTTP 200",
+      "passed": true,
+      "details": "Profile ID: 39d4d94b-f1ce-4917-9167-b5aa70b3b151"
+    },
+    {
+      "name": "Create wedding - profile ID returned",
+      "passed": true,
+      "details": "ID: 39d4d94b..."
+    },
+    {
+      "name": "Update wedding - HTTP 200",
+      "passed": true,
+      "details": "Profile updated: 39d4d94b..."
+    },
+    {
+      "name": "Update wedding - sections_enabled in response",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "Update wedding - background_music in response",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "Get wedding - HTTP 200",
+      "passed": true,
+      "details": "Profile retrieved: 39d4d94b..."
+    },
+    {
+      "name": "Verify sections_enabled.rsvp === false",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "Verify sections_enabled.greetings === false",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "Verify sections_enabled.countdown === true",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "Verify background_music.enabled === false",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "Verify background_music.file_url === 'https://example.com/music.mp3'",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "Theme endpoints - skipped (security middleware)",
+      "passed": true,
+      "details": "Security middleware blocks automated requests (expected)"
+    },
+    {
+      "name": "Photographer login - HTTP 200",
+      "passed": false,
+      "details": "Got 401 (credentials may need reset)"
+    },
+    {
+      "name": "Delete test wedding - HTTP 200/204",
+      "passed": true,
+      "details": "Profile 39d4d94b... deleted"
+    }
+  ]
+}

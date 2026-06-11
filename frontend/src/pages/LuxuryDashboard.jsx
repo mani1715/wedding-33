@@ -496,7 +496,9 @@ const LuxuryDashboard = () => {
  */
 const getEditRoute = (p) => {
   const cat = p?.invitation_category || 'wedding';
-  if (cat !== 'wedding') return `/admin/celebration/${p.id}/edit`;
+  // BUG 1 FIX: CelebrationProfileForm reads `category` from useSearchParams().
+  // Without it the form renders blank. Always include ?category= for non-wedding.
+  if (cat !== 'wedding') return `/admin/celebration/${p.id}/edit?category=${cat}`;
   return `/admin/profile/${p.id}/edit`;
 };
 

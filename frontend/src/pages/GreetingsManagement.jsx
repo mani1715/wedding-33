@@ -2,21 +2,30 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ArrowLeft, Check, X, Trash2, Filter, MessageSquare } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 function GreetingsManagement() {
   const { profileId } = useParams();
   const navigate = useNavigate();
+  // BUG 15 FIX: redirect logged-out visitors to /admin/login.
+  const { admin, loading: authLoading } = useAuth();
   const [greetings, setGreetings] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all'); // all, pending, approved, rejected
   const [stats, setStats] = useState({ pending: 0, approved: 0, rejected: 0, total: 0 });
 
+  useEffect(() => {
+    if (!authLoading && !admin) {
+      navigate('/admin/login', { replace: true });
+    }
+  }, [authLoading, admin, navigate]);
+
   const fetchProfileAndGreetings = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('admin_token');
       
       // Fetch profile
       const profileRes = await axios.get(`${BACKEND_URL}/api/admin/profiles/${profileId}`, {
@@ -59,7 +68,7 @@ function GreetingsManagement() {
 
   const handleApprove = async (greetingId) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('admin_token');
       await axios.put(`${BACKEND_URL}/api/admin/greetings/${greetingId}/approve`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -72,7 +81,7 @@ function GreetingsManagement() {
 
   const handleReject = async (greetingId) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('admin_token');
       await axios.put(`${BACKEND_URL}/api/admin/greetings/${greetingId}/reject`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -89,7 +98,7 @@ function GreetingsManagement() {
     }
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('admin_token');
       await axios.delete(`${BACKEND_URL}/api/admin/greetings/${greetingId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });

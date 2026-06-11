@@ -7,6 +7,7 @@ import {
   ArrowLeft, Camera, Upload, Loader2, Trash2, HardDrive,
   Image as ImageIcon, Users, CheckCircle2,
 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 import '@/styles/luxury.css';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
@@ -27,13 +28,22 @@ const fmtBytes = (b) => {
 const LiveGalleryManagement = () => {
   const { profileId } = useParams();
   const navigate = useNavigate();
+  // BUG 15 FIX: redirect logged-out visitors to /admin/login.
+  const { admin, loading: authLoading } = useAuth();
   const [photos, setPhotos] = useState([]);
   const [stats, setStats] = useState({ total: 0, storage_bytes: 0, photographer_count: 0, guest_count: 0 });
   const [loading, setLoading] = useState(true);
   const [uploads, setUploads] = useState([]); // [{id, name, progress, done, error}]
 
+  useEffect(() => {
+    if (!authLoading && !admin) {
+      navigate('/admin/login', { replace: true });
+    }
+  }, [authLoading, admin, navigate]);
+
   const getAuth = () => {
-    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+    // BUG 13 FIX: AuthContext stores the photographer JWT under `admin_token`.
+    const token = localStorage.getItem('admin_token');
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 

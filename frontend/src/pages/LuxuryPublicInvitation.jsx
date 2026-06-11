@@ -724,15 +724,20 @@ const LuxuryPublicInvitation = () => {
         <FindMyRoomSection slug={slug} hasRooms={guestRooms.length > 0} variant="popup" />
 
         {/* RSVP */}
-        <ScrollSection className="px-6 md:px-16 py-24" testid="section-rsvp">
-          <div className="max-w-2xl mx-auto">
-            <span className="lux-eyebrow block mb-5">◆ Will you be there?</span>
-            <h2 className="font-display text-[2.4rem] md:text-[3.4rem] leading-[1.05] mb-8" style={{ color: '#FFF8DC' }}>
-              Kindly <span className="text-gold italic font-script">respond.</span>
-            </h2>
-            <RSVPForm slug={slug} rsvpSettings={data.rsvp_settings} onSuccess={() => setRsvpDone(true)} />
-          </div>
-        </ScrollSection>
+        {/* BUG 27 FIX: respect the sections_enabled.rsvp toggle. Default to
+            "shown" when the field is missing (existing invitations created
+            before the toggle existed must keep working). */}
+        {(data?.sections_enabled?.rsvp !== false) && (
+          <ScrollSection className="px-6 md:px-16 py-24" testid="section-rsvp">
+            <div className="max-w-2xl mx-auto">
+              <span className="lux-eyebrow block mb-5">◆ Will you be there?</span>
+              <h2 className="font-display text-[2.4rem] md:text-[3.4rem] leading-[1.05] mb-8" style={{ color: '#FFF8DC' }}>
+                Kindly <span className="text-gold italic font-script">respond.</span>
+              </h2>
+              <RSVPForm slug={slug} rsvpSettings={data.rsvp_settings} onSuccess={() => setRsvpDone(true)} />
+            </div>
+          </ScrollSection>
+        )}
 
         {/* Phase 1H — Honeymoon Fund (UPI / QR) — shown only when couple has enabled it */}
         <HoneymoonFundSection fund={data.honeymoon_fund} couple={`${bride} & ${groom}`} />

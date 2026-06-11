@@ -6,6 +6,7 @@ import {
   ArrowLeft, Check, X, Star, MessageSquare, Trash2, Loader2,
   Inbox, ShieldCheck, ShieldOff, Sparkles,
 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 import '@/styles/luxury.css';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
@@ -21,14 +22,23 @@ const fadeUp = {
 function WishesManagement() {
   const { profileId } = useParams();
   const navigate = useNavigate();
+  // BUG 15 FIX: redirect logged-out visitors to /admin/login.
+  const { admin, loading: authLoading } = useAuth();
   const [tab, setTab] = useState('pending');
   const [wishes, setWishes] = useState([]);
   const [counts, setCounts] = useState({ pending: 0, approved: 0, rejected: 0, featured: 0 });
   const [loading, setLoading] = useState(true);
   const [bulkBusy, setBulkBusy] = useState(false);
 
+  useEffect(() => {
+    if (!authLoading && !admin) {
+      navigate('/admin/login', { replace: true });
+    }
+  }, [authLoading, admin, navigate]);
+
   const getAuth = () => {
-    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+    // BUG 13 FIX: AuthContext stores the photographer JWT under `admin_token`.
+    const token = localStorage.getItem('admin_token');
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 

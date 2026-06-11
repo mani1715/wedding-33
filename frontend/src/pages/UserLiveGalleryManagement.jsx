@@ -25,6 +25,7 @@ import {
   ArrowLeft, Camera, Upload, Loader2, Trash2, HardDrive,
   Image as ImageIcon, Users, CheckCircle2, ExternalLink,
 } from 'lucide-react';
+import { useUserAuth } from '@/context/UserAuthContext';
 import '@/styles/luxury.css';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
@@ -46,11 +47,21 @@ const fmtBytes = (b) => {
 const UserLiveGalleryManagement = () => {
   const { profileId } = useParams();
   const navigate = useNavigate();
+  // BUG 15 FIX: redirect logged-out users back to the landing page sign-in.
+  // BUG 25 FIX (bonus): align the back-button target with the actual entry
+  // point (/user/dashboard) — handled in the JSX below.
+  const { user, loading: authLoading } = useUserAuth();
   const [photos, setPhotos] = useState([]);
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState({ total: 0, storage_bytes: 0, host_count: 0, guest_count: 0 });
   const [loading, setLoading] = useState(true);
   const [uploads, setUploads] = useState([]);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/?signin=1&return=' + encodeURIComponent(window.location.pathname), { replace: true });
+    }
+  }, [authLoading, user, navigate]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -141,7 +152,7 @@ const UserLiveGalleryManagement = () => {
   return (
     <div className="luxe min-h-screen" data-testid="user-live-gallery-management">
       <div className="px-4 md:px-12 py-8 md:py-10 max-w-[1500px] mx-auto">
-        <button onClick={() => navigate('/user/profile')} className="lux-btn lux-btn-ghost mb-6 inline-flex items-center gap-2" data-testid="ulg-back">
+        <button onClick={() => navigate('/user/dashboard')} className="lux-btn lux-btn-ghost mb-6 inline-flex items-center gap-2" data-testid="ulg-back">
           <ArrowLeft className="w-4 h-4" /> Back to my invitations
         </button>
 

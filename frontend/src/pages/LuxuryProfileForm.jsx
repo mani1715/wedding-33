@@ -346,7 +346,22 @@ const LuxuryProfileForm = () => {
           hero_photo_url: e.hero_photo_url || '',
           visible: e.visible !== false,
         })),
-        feature_flags: { ...DEFAULT_FORM.feature_flags, ...(d.sections_enabled || {}) },
+        // BUG 26 FIX (load side): the backend persists `sections_enabled.rsvp`
+        // / `sections_enabled.greetings` / `sections_enabled.countdown`, but
+        // the Features panel UI reads from `feature_flags.show_rsvp` /
+        // `show_wishes` / `show_countdown`. Translate the backend keys into
+        // their UI counterparts on load so toggles render the saved state.
+        // `show_music` mirrors `background_music.enabled` (separate field).
+        feature_flags: (() => {
+          const se = d.sections_enabled || {};
+          const bgm = d.background_music || {};
+          const merged = { ...DEFAULT_FORM.feature_flags, ...se };
+          if (typeof se.rsvp === 'boolean')      merged.show_rsvp = se.rsvp;
+          if (typeof se.greetings === 'boolean') merged.show_wishes = se.greetings;
+          if (typeof se.countdown === 'boolean') merged.show_countdown = se.countdown;
+          if (typeof bgm.enabled === 'boolean')  merged.show_music = bgm.enabled;
+          return merged;
+        })(),
         sections_enabled: { ...DEFAULT_FORM.sections_enabled, ...(d.sections_enabled || {}) },
         passcode: d.passcode || '',
         // Photos + extras (from custom_text._maja or top-level)
@@ -453,8 +468,35 @@ const LuxuryProfileForm = () => {
           .map((l) => String(l).toLowerCase())),
         love_story: form.story || '',
         events:     [],   // strict per-event validation skipped; we persist extended events under custom_text._maja
-        background_music: form.background_music_url ? { enabled: true, url: form.background_music_url, autoplay: false } : { enabled: false, url: '', autoplay: false },
-        sections_enabled: form.sections_enabled || {},
+        background_music: (() => {
+          // BUG 26 FIX: also honour the show_music toggle from the Features
+          // panel. Previously the music section was always on whenever a URL
+          // existed — even if the photographer flipped show_music off.
+          const wantMusic = form.feature_flags?.show_music !== false;
+          if (!wantMusic) return { enabled: false, url: form.background_music_url || '', autoplay: false };
+          if (form.background_music_url) return { enabled: true, url: form.background_music_url, autoplay: false };
+          return { enabled: false, url: '', autoplay: false };
+        })(),
+        // BUG 26 FIX: the Features step writes to `form.feature_flags`
+        // (show_rsvp, show_wishes, show_countdown, …) but the backend
+        // persists toggles under `sections_enabled` with different key names
+        // (rsvp, greetings, countdown, …). Previously only
+        // `form.sections_enabled` was sent, so every flag the photographer
+        // flipped in the Features panel was silently lost after a page
+        // refresh — and used solely to compute the publish cost. Map the
+        // overlapping flags here so the database now actually reflects what
+        // the photographer chose. (background_music is handled above; the
+        // remaining feature_flags — show_live_gallery, show_ai_story,
+        // show_digital_shagun, show_translations, … — have their own
+        // dedicated endpoints/fields and don't live on SectionsEnabled.)
+        sections_enabled: (() => {
+          const base = { ...(form.sections_enabled || {}) };
+          const ff = form.feature_flags || {};
+          if (typeof ff.show_rsvp === 'boolean')      base.rsvp = ff.show_rsvp;
+          if (typeof ff.show_wishes === 'boolean')    base.greetings = ff.show_wishes;
+          if (typeof ff.show_countdown === 'boolean') base.countdown = ff.show_countdown;
+          return base;
+        })(),
         map_settings: form.venue_google_map_link ? { embed_enabled: true, map_link: form.venue_google_map_link } : { embed_enabled: false },
         link_expiry_type: 'permanent',
         // Find My Room + Pre-wedding shoot links

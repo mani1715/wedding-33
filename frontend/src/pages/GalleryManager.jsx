@@ -9,6 +9,7 @@ import {
   Copy, Check, RefreshCw, Trash2, ExternalLink, Loader2, AlertCircle, BarChart3,
   ImageIcon, Sparkles, Clock, Shield, Eye, Settings,
 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 import '@/styles/luxury.css';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
@@ -16,6 +17,9 @@ const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 const GalleryManager = () => {
   const { profileId } = useParams();
   const navigate = useNavigate();
+  // BUG 15 FIX: redirect logged-out visitors to /admin/login instead of
+  // letting the page hang on silent 401s.
+  const { admin, loading: authLoading } = useAuth();
   const [tab, setTab] = useState('photos');
   const [config, setConfig] = useState(null);
   const [creds, setCreds] = useState(null);
@@ -31,6 +35,12 @@ const GalleryManager = () => {
     document.body.classList.add('luxe', 'luxe-grain');
     return () => document.body.classList.remove('luxe', 'luxe-grain');
   }, []);
+
+  useEffect(() => {
+    if (!authLoading && !admin) {
+      navigate('/admin/login', { replace: true });
+    }
+  }, [authLoading, admin, navigate]);
 
   const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('admin_token')}` });
 

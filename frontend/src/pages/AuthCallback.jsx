@@ -44,9 +44,21 @@ const AuthCallback = () => {
         // FEB 2026 FIX: pull fresh /me NOW so the homepage header re-renders
         // signed-in without forcing a manual refresh.
         try { await refresh(); } catch (_e) {}
+        // BUG 18 FIX: restore the pre-OAuth return path (stashed by
+        // loginWithGoogle in UserAuthContext) so users land back on the page
+        // they tried to reach (e.g. /user/buy-design/…) instead of always
+        // being dumped on the homepage.
+        let nextRoute = '/';
+        try {
+          const saved = sessionStorage.getItem('oauth_return');
+          if (saved && saved.startsWith('/') && !saved.startsWith('//')) {
+            nextRoute = saved;
+          }
+          sessionStorage.removeItem('oauth_return');
+        } catch (_e) { /* sessionStorage unavailable */ }
         // Drop the fragment then navigate
-        window.history.replaceState({}, '', '/');
-        navigate('/', { replace: true });
+        window.history.replaceState({}, '', nextRoute);
+        navigate(nextRoute, { replace: true });
       } catch (e) {
         setStatus('Sign-in failed. Returning home…');
         setTimeout(() => navigate('/'), 1200);

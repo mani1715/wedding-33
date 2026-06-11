@@ -275,14 +275,28 @@ export default function AccountCreditsPage() {
                 Total {fmt(balance.total_credits)} · Used {fmt(balance.used_credits)}
               </div>
             </div>
-            <a
-              href={returnTo ? `/user/buy-credits?return=${encodeURIComponent(returnTo)}${needCredits ? `&need=${needCredits}` : ''}` : "/user/buy-credits"}
+            <button
+              type="button"
+              onClick={() => {
+                // BUG 19 FIX: previously a raw <a href> caused a full page
+                // reload, dropping any in-flight Razorpay/wizard state. For
+                // photographers, open the in-page top-up modal directly. For
+                // normal users, use React Router navigate (no reload).
+                if (isPhotographer) {
+                  setTopUpOpen(true);
+                  return;
+                }
+                const url = returnTo
+                  ? `/user/buy-credits?return=${encodeURIComponent(returnTo)}${needCredits ? `&need=${needCredits}` : ''}`
+                  : '/user/buy-credits';
+                navigate(url);
+              }}
               data-testid="buy-credits-btn"
               className="px-5 py-2.5 rounded-lg text-[11px] tracking-[0.3em] uppercase font-medium"
-              style={{ background: '#D4AF37', color: '#1A0F08' }}
+              style={{ background: '#D4AF37', color: '#1A0F08', border: 'none', cursor: 'pointer' }}
             >
               Buy credits
-            </a>
+            </button>
           </div>
         </motion.div>
 
@@ -394,21 +408,28 @@ export default function AccountCreditsPage() {
                     </div>
                     <button
                       type="button"
+                      disabled={!isPhotographer}
                       onClick={() => {
-                        // BUG 7 FIX: photographers → Razorpay credit
+                        // BUG 20 FIX: photographers → in-page Razorpay credit
                         // purchase modal (correct endpoint + tier-aware
-                        // pricing). Normal users → /purchase design flow.
+                        // pricing). Normal users used to be sent to /purchase
+                        // (the design buy flow) which has no credit-pack
+                        // checkout — they ended up on a broken page. Hide the
+                        // button for normal users until a dedicated Razorpay
+                        // flow exists (tracked as Bug 20 "Coming soon").
                         if (isPhotographer) {
                           setTopUpOpen(true);
-                        } else {
-                          navigate(`/purchase?pack=${p.credits}&audience=${audience}`);
                         }
                       }}
                       className="mt-3 px-3 py-2 rounded-lg text-[10px] tracking-[0.3em] uppercase font-medium"
-                      style={{ background: 'linear-gradient(135deg,#D4AF37,#B8941F)', color: '#1A0F08' }}
+                      style={{
+                        background: isPhotographer ? 'linear-gradient(135deg,#D4AF37,#B8941F)' : 'rgba(212,175,55,0.18)',
+                        color: isPhotographer ? '#1A0F08' : 'rgba(255,248,220,0.6)',
+                        cursor: isPhotographer ? 'pointer' : 'not-allowed',
+                      }}
                       data-testid={`pack-buy-${p.credits}`}
                     >
-                      Buy now
+                      {isPhotographer ? 'Buy now' : 'Coming soon'}
                     </button>
                   </div>
                 );

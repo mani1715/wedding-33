@@ -80,3 +80,26 @@ See `/app/memory/test_credentials.md`:
 ## Open Items
 - Frontend was FATAL on session start (missing `node_modules`); reinstalled via `yarn install`.
 - Stale `REACT_APP_BACKEND_URL` in `frontend/.env` updated to current preview URL.
+
+## June 2026 — Frontend 12-bug Sprint (Continuation) — ✅ COMPLETE
+Fixed remaining bugs from the 30-bug audit that the previous chat left
+untouched. All changes are frontend-only; Bug 26 modifies the publish payload
+but the keys (`sections_enabled.rsvp/greetings/countdown`,
+`background_music.enabled`) already exist on the corresponding Pydantic models.
+- Bug 1: `getEditRoute()` now appends `?category=` for celebration profiles.
+- Bug 2 / 17: `window.open` now uses `${window.location.origin}…` (User
+  dashboard + Event invitation wizard).
+- Bug 13: `admin_token` is now the only localStorage key used by
+  QR / Wishes / Greetings / LiveGallery management.
+- Bug 14: ThemeSettingsPage URLs corrected (`/api/admin/profiles/:id`
+  for profile fetch, `/api/profiles/:id/theme` for theme settings).
+- Bug 15: Auth guards added to 7 sub-pages (admin + user side).
+- Bug 16: SuperAdminLogin checks role after login.
+- Bug 18: Google OAuth return URL preserved via `sessionStorage`.
+- Bug 19: AccountCreditsPage "Buy credits" no longer reloads the page.
+- Bug 20: Normal users see "Coming soon" instead of being routed to the
+  broken `/purchase` design flow.
+- Bug 26: `feature_flags` are merged into `sections_enabled` /
+  `background_music.enabled` on save; reverse mapping on load.
+- Bug 27: RSVP section on public invitation respects
+  `sections_enabled.rsvp` (defaults to "show" for backward compat).

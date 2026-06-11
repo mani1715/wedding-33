@@ -5,8 +5,9 @@ import axios from 'axios';
 import ThemeSelector from '../components/ThemeSelector';
 import ThemePreview from '../components/ThemePreview';
 import { getThemeById, getPlanLabel } from '../themes/masterThemes';
+import { useAuth } from '@/context/AuthContext';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001/api';
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
 
 /**
  * PHASE 34: Theme Settings Page
@@ -15,6 +16,8 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001/
 const ThemeSettingsPage = () => {
   const { profileId } = useParams();
   const navigate = useNavigate();
+  // BUG 15 FIX: redirect logged-out visitors to /admin/login.
+  const { admin, loading: authLoading } = useAuth();
   
   const [profile, setProfile] = useState(null);
   const [currentTheme, setCurrentTheme] = useState(null);
@@ -24,21 +27,28 @@ const ThemeSettingsPage = () => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchProfileAndTheme();
-  }, [profileId]);
+    if (!authLoading && !admin) {
+      navigate('/admin/login', { replace: true });
+    }
+  }, [authLoading, admin, navigate]);
+
+  useEffect(() => {
+    if (!authLoading && admin) fetchProfileAndTheme();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId, authLoading, admin]);
 
   const fetchProfileAndTheme = async () => {
     try {
       const token = localStorage.getItem('admin_token');
       
       const profileResponse = await axios.get(
-        `${BACKEND_URL}/profiles/${profileId}`,
+        `${BACKEND_URL}/api/admin/profiles/${profileId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setProfile(profileResponse.data);
 
       const themeResponse = await axios.get(
-        `${BACKEND_URL}/profiles/${profileId}/theme`,
+        `${BACKEND_URL}/api/profiles/${profileId}/theme`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setThemeSettings(themeResponse.data.theme_settings);
@@ -56,7 +66,7 @@ const ThemeSettingsPage = () => {
       const token = localStorage.getItem('admin_token');
       
       await axios.put(
-        `${BACKEND_URL}/profiles/${profileId}/theme`,
+        `${BACKEND_URL}/api/profiles/${profileId}/theme`,
         { theme_id: themeId },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -80,7 +90,7 @@ const ThemeSettingsPage = () => {
       const token = localStorage.getItem('admin_token');
       
       await axios.put(
-        `${BACKEND_URL}/profiles/${profileId}/theme`,
+        `${BACKEND_URL}/api/profiles/${profileId}/theme`,
         { [key]: value },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -98,7 +108,7 @@ const ThemeSettingsPage = () => {
       const token = localStorage.getItem('admin_token');
       
       await axios.put(
-        `${BACKEND_URL}/profiles/${profileId}/theme`,
+        `${BACKEND_URL}/api/profiles/${profileId}/theme`,
         settings,
         { headers: { Authorization: `Bearer ${token}` } }
       );

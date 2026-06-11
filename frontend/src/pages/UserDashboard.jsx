@@ -186,7 +186,7 @@ export default function UserDashboard() {
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() => window.open(p.invitation_link, '_blank')}
+                  onClick={() => window.open(`${window.location.origin}${p.invitation_link}`, '_blank')}
                   className="lux-btn lux-btn-ghost flex-1 justify-center !text-[10px]"
                   data-testid={`user-profile-view-${p.id}`}
                 >

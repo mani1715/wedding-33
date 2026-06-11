@@ -91,7 +91,23 @@ const UserAuthModal = ({ open, onClose, initialMode = 'login' }) => {
           {/* Google CTA */}
           <button
             type="button"
-            onClick={loginWithGoogle}
+            onClick={() => {
+              // BUG 18 FIX: pass the current URL (pathname + search) so the
+              // OAuth callback can restore where the user came from. Strips
+              // any ?signin=1 helper flag and unwraps a nested ?return= when
+              // the modal was opened from the landing page.
+              try {
+                const params = new URLSearchParams(window.location.search);
+                const nestedReturn = params.get('return');
+                let target = nestedReturn && nestedReturn.startsWith('/') && !nestedReturn.startsWith('//')
+                  ? nestedReturn
+                  : (window.location.pathname || '/');
+                if (target === '/auth/callback') target = '/';
+                loginWithGoogle(target);
+              } catch (_e) {
+                loginWithGoogle();
+              }
+            }}
             className="w-full mb-4 inline-flex items-center justify-center gap-3 px-4 py-3 rounded-lg transition-all"
             style={{ background: '#FFF8DC', color: '#16110C', fontWeight: 600 }}
             data-testid="user-auth-google"

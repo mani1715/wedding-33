@@ -32,6 +32,17 @@ const SuperAdminLogin = () => {
     setLoading(true);
     const result = await login(email, password);
     if (result.success) {
+      // BUG 16 FIX: validate the returned admin's role BEFORE navigating to
+      // the super-admin dashboard. Without this, a regular photographer who
+      // mistypes the URL gets bounced /super-admin/login → /super-admin/dashboard
+      // → /admin/dashboard (the dashboard's own guard kicks them out). Catch
+      // the wrong-role case here with a clear error message instead.
+      const role = (result.admin?.role || '').toLowerCase();
+      if (role !== 'super_admin') {
+        setError('You do not have super admin access. Please use the regular admin login.');
+        setLoading(false);
+        return;
+      }
       navigate('/super-admin/dashboard');
     } else {
       setError(result.error || 'Invalid credentials');

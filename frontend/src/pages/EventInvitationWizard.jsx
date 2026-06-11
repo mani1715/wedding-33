@@ -326,7 +326,7 @@ const EventInvitationWizard = () => {
 
                     <div className="mt-4 flex flex-wrap gap-2">
                       <ActionBtn icon={copiedId === inv.id ? Check : Copy} label={copiedId === inv.id ? 'Copied' : 'Copy Link'} onClick={() => copyLink(inv.invitation_link, inv.id)} testid={`copy-${inv.event_type}`} primary={copiedId === inv.id} />
-                      <ActionBtn icon={ExternalLink} label="Open" onClick={() => window.open(inv.invitation_link, '_blank')} testid={`open-${inv.event_type}`} />
+                      <ActionBtn icon={ExternalLink} label="Open" onClick={() => window.open(`${window.location.origin}${inv.invitation_link}`, '_blank')} testid={`open-${inv.event_type}`} />
                       {inv.qr_image && (
                         <ActionBtn icon={QrCode} label="QR" onClick={() => setQrPreview(inv)} testid={`qr-${inv.event_type}`} />
                       )}

@@ -68,7 +68,16 @@ export const UserAuthProvider = ({ children }) => {
     return data;
   };
 
-  const loginWithGoogle = () => {
+  const loginWithGoogle = (returnPath) => {
+    // BUG 18 FIX: Persist the desired post-login route through Emergent's
+    // hosted Google OAuth flow. The provider strips query params from our
+    // redirect URL, so we stash the return path in sessionStorage and read it
+    // back inside AuthCallback after the session is exchanged.
+    try {
+      if (returnPath && typeof returnPath === 'string') {
+        sessionStorage.setItem('oauth_return', returnPath);
+      }
+    } catch (_e) { /* sessionStorage may be unavailable in private mode */ }
     // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
     const redirectUrl = window.location.origin + '/auth/callback';
     window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
