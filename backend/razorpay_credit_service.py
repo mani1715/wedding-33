@@ -162,7 +162,7 @@ def build_razorpay_credit_router(
         request: VerifyPaymentRequest,
         current_admin: dict = Depends(get_current_admin)
     ):
-        """Verify Razorpay payment signature and add credits"""
+        """Verify Razorpay payment signature and add credits (atomic, idempotent)"""
         try:
             if not razorpay_client:
                 raise HTTPException(
@@ -192,42 +192,63 @@ def build_razorpay_credit_router(
             if not payment_record:
                 raise HTTPException(status_code=404, detail="Payment record not found")
             
-            # Check if already processed
+            # Fast path: already processed (idempotent sequential replay).
             if payment_record.get("status") == "paid":
                 return {
                     "success": True,
                     "message": "Payment already processed",
-                    "credits_added": payment_record["credits_purchased"]
+                    "credits_added": payment_record["credits_purchased"],
+                    "payment_id": payment_record.get("razorpay_payment_id"),
                 }
             
-            # Add credits to admin account
+            # ATOMIC race-safe flip: only one concurrent request can move the
+            # record from "created" → "paid". The other parallel request will
+            # receive None and skip credit addition.
+            updated_payment = await db.payment_records.find_one_and_update(
+                {
+                    "order_id": request.razorpay_order_id,
+                    "admin_id": current_admin['id'],
+                    "status": "created",
+                },
+                {
+                    "$set": {
+                        "status": "paid",
+                        "razorpay_payment_id": request.razorpay_payment_id,
+                        "razorpay_signature": request.razorpay_signature,
+                        "paid_at": datetime.now(timezone.utc),
+                    }
+                },
+                return_document=True,
+            )
+            
+            if not updated_payment:
+                # Another concurrent request already won the race.
+                return {
+                    "success": True,
+                    "message": "Payment already processed (concurrent request)",
+                    "credits_added": payment_record["credits_purchased"],
+                    "payment_id": request.razorpay_payment_id,
+                }
+            
+            # Reached exactly once — safe to add credits.
             credits_to_add = payment_record["credits_purchased"]
             
-            await credit_service.add_credits(
+            credit_result = await credit_service.add_credits(
                 admin_id=current_admin['id'],
                 amount=credits_to_add,
                 reason=f"Credit purchase - Package: {payment_record['package_id']} - Payment: {request.razorpay_payment_id}",
                 performed_by=current_admin['id']
             )
             
-            # Update payment record
-            await db.payment_records.update_one(
-                {"order_id": request.razorpay_order_id},
-                {
-                    "$set": {
-                        "status": "paid",
-                        "razorpay_payment_id": request.razorpay_payment_id,
-                        "razorpay_signature": request.razorpay_signature,
-                        "paid_at": datetime.now(timezone.utc)
-                    }
-                }
-            )
-            
             return {
                 "success": True,
                 "message": "Payment verified successfully",
                 "credits_added": credits_to_add,
-                "payment_id": request.razorpay_payment_id
+                "payment_id": request.razorpay_payment_id,
+                "balance": {
+                    "total_credits": credit_result.get("total_credits"),
+                    "available_credits": credit_result.get("available_credits"),
+                },
             }
         
         except HTTPException:

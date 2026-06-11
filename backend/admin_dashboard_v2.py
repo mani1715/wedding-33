@@ -27,9 +27,19 @@ from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel, Field
 import csv
 import io
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-def build_admin_dashboard_v2_router(db, require_admin, log_audit_action):
+def build_admin_dashboard_v2_router(
+    db,
+    require_admin,
+    log_audit_action,
+    wedding_lifecycle_service=None,
+    credit_service=None,
+    aws_service=None,
+):
     router = APIRouter(prefix="/api/admin", tags=["admin-dashboard-v2"])
 
     # ---------- helpers ----------
@@ -139,6 +149,7 @@ def build_admin_dashboard_v2_router(db, require_admin, log_audit_action):
         matched: int
         modified: int
         action: str
+        details: Optional[Dict[str, Any]] = None
 
     @router.post("/profiles/bulk-action", response_model=BulkActionResponse)
     async def bulk_action(req: BulkActionRequest, admin_data: dict = Depends(require_admin)):
@@ -159,26 +170,142 @@ def build_admin_dashboard_v2_router(db, require_admin, log_audit_action):
         elif action == "unarchive":
             update = {"$unset": {"archived_at": ""}, "$set": {"updated_at": now_iso}}
         elif action == "publish":
-            update = {"$set": {"status": "PUBLISHED", "is_published": True,
-                               "published_at": now_iso, "updated_at": now_iso}}
+            # ── Route bulk publish through the lifecycle service so credits
+            # are deducted exactly like a single publish. Each profile is
+            # processed independently — failures don't roll back successes.
+            if wedding_lifecycle_service is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Publish service not configured. Please use /api/weddings/{id}/publish.",
+                )
+            results = {"success": 0, "failed": 0, "errors": []}
+            # Resolve ownership for non-super admins.
+            scoped_ids = req.ids
+            if not _is_super(admin_data):
+                # Restrict to profiles owned by this admin to avoid silent skips.
+                owned = await db.profiles.find(
+                    {"id": {"$in": req.ids}, "admin_id": admin_data["admin_id"]},
+                    {"id": 1, "_id": 0},
+                ).to_list(len(req.ids))
+                scoped_ids = [d["id"] for d in owned]
+                results["failed"] += len(req.ids) - len(scoped_ids)
+                if len(req.ids) != len(scoped_ids):
+                    not_owned = set(req.ids) - set(scoped_ids)
+                    for pid in not_owned:
+                        results["errors"].append({"profile_id": pid, "error": "Not owned"})
+
+            for profile_id in scoped_ids:
+                # For bulk, the publisher must be the owner of the row
+                # (super admin is allowed to publish anyone's). We pass the
+                # admin_id stored on the profile when super-admin acts.
+                owner_admin_id = admin_data["admin_id"]
+                if _is_super(admin_data):
+                    p = await db.profiles.find_one({"id": profile_id}, {"admin_id": 1})
+                    if p:
+                        owner_admin_id = p.get("admin_id") or admin_data["admin_id"]
+                try:
+                    await wedding_lifecycle_service.publish_wedding(
+                        wedding_id=profile_id,
+                        admin_id=owner_admin_id,
+                    )
+                    results["success"] += 1
+                except ValueError as e:
+                    results["failed"] += 1
+                    results["errors"].append({"profile_id": profile_id, "error": str(e)})
+                except Exception as e:
+                    results["failed"] += 1
+                    results["errors"].append({"profile_id": profile_id, "error": f"unexpected: {e}"})
+            try:
+                await log_audit_action(
+                    action="profile_bulk_publish",
+                    admin_id=admin_data["admin_id"],
+                    profile_id=",".join(req.ids[:10]),
+                    profile_slug="bulk",
+                    details={"results": results, "ids": req.ids},
+                )
+            except Exception:
+                pass
+            return BulkActionResponse(
+                matched=len(req.ids),
+                modified=results["success"],
+                action=action,
+                details=results,
+            )
         elif action == "unpublish":
             update = {"$set": {"status": "DRAFT", "is_published": False, "updated_at": now_iso}}
         elif action == "purge":
-            # Hard delete — only if currently in trash
+            # Hard delete — only if currently in trash.
+            # NEW: refund credits for any profile that was previously published
+            # AND clean up S3 files for that profile.
             scope_purge = dict(scope)
             scope_purge["deleted_at"] = {"$exists": True, "$ne": None}
+
+            # Fetch full docs first so we can compute refunds + collect S3 keys.
+            profiles_to_purge = await db.profiles.find(scope_purge).to_list(1000)
+
+            details = {
+                "deleted": 0,
+                "refunded_total": 0,
+                "refunded_count": 0,
+                "s3_cleanup_attempted": 0,
+                "s3_cleanup_failed": 0,
+                "errors": [],
+            }
+
+            for profile in profiles_to_purge:
+                pid = profile.get("id")
+                # ── Refund: only for profiles that were paid-published. ──
+                try:
+                    cost = int(profile.get("total_credit_cost") or 0)
+                    status_lower = str(profile.get("status") or "").lower()
+                    was_published = (
+                        status_lower == "published"
+                        or bool(profile.get("published_at"))
+                    )
+                    if cost > 0 and was_published and credit_service is not None:
+                        await credit_service.refund_credits(
+                            admin_id=profile["admin_id"],
+                            amount=cost,
+                            reason=f"Refund: permanently deleted invitation '{profile.get('title', pid)}'",
+                            performed_by=admin_data["admin_id"],
+                            related_wedding_id=pid,
+                            metadata={"trigger": "bulk_purge"},
+                        )
+                        details["refunded_total"] += cost
+                        details["refunded_count"] += 1
+                except Exception as e:
+                    details["errors"].append({"profile_id": pid, "error": f"refund_failed: {e}"})
+                    logger.warning(f"Refund failed on purge for {pid}: {e}")
+
+                # ── S3 cleanup: best-effort, uses delete_prefix on profile key. ──
+                try:
+                    if aws_service is not None and hasattr(aws_service, "delete_prefix"):
+                        details["s3_cleanup_attempted"] += 1
+                        # All profile-owned files live under profiles/{id}/
+                        aws_service.delete_prefix(f"profiles/{pid}/")
+                except Exception as e:
+                    details["s3_cleanup_failed"] += 1
+                    logger.warning(f"S3 cleanup failed for {pid}: {e}")
+
             res = await db.profiles.delete_many(scope_purge)
+            details["deleted"] = res.deleted_count
+
             try:
                 await log_audit_action(
                     action="profile_bulk_purge",
                     admin_id=admin_data["admin_id"],
                     profile_id=",".join(req.ids[:10]),
                     profile_slug="bulk",
-                    details={"count": res.deleted_count, "ids": req.ids},
+                    details={"count": res.deleted_count, "ids": req.ids, **details},
                 )
             except Exception:
                 pass
-            return BulkActionResponse(matched=res.deleted_count, modified=res.deleted_count, action=action)
+            return BulkActionResponse(
+                matched=res.deleted_count,
+                modified=res.deleted_count,
+                action=action,
+                details=details,
+            )
         else:
             raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
 

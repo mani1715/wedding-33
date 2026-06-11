@@ -115,6 +115,111 @@ user_problem_statement: |
     8. Dashboard cards don't show invitation category label
 
 backend:
+  - task: "BATCH A — Financial safety: Bulk-publish backdoor closed (admin_dashboard_v2 'publish' action now routes through wedding_lifecycle_service.publish_wedding)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/admin_dashboard_v2.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            POST /api/admin/profiles/bulk-action with action="publish" used to
+            do a raw update_many setting status=PUBLISHED — bypassing credit
+            deduction (free publish backdoor). It now loops each id through
+            wedding_lifecycle_service.publish_wedding() so credits are
+            deducted exactly like the single-publish endpoint, and partial
+            failures are reported in response.details = {success, failed, errors}.
+            Non-super admins are restricted to their own profile ids.
+
+  - task: "BATCH A — Financial safety: Bulk-purge now refunds credits + deletes S3 files"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/admin_dashboard_v2.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            POST /api/admin/profiles/bulk-action with action="purge" now,
+            for each profile in trash:
+              1. Refunds total_credit_cost via credit_service.refund_credits
+                 (only if status was published and cost > 0)
+              2. Calls aws_service.delete_prefix("profiles/{id}/") to clean S3
+              3. Then hard-deletes from db.profiles
+            Response includes details.refunded_total / refunded_count and
+            S3 cleanup stats. server.py: wired credit_service + aws_service +
+            wedding_lifecycle_service into the router builder.
+
+  - task: "BATCH A — Atomic publish (lock-and-flip wedding row + atomic credit deduction)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/wedding_lifecycle_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            Replaced publish_wedding(). Now uses two-tier race protection:
+              1. find_one_and_update claim on the profile row (sets
+                 _publish_lock=True only when status not in
+                 [published, PUBLISHED, archived, ARCHIVED] and no
+                 existing lock). Only one concurrent caller wins.
+              2. After claim, find_one_and_update on admins collection
+                 with $inc on used_credits, guarded by
+                 used_credits <= total_credits - total_cost (atomic
+                 wallet deduct that detects races with other publishes).
+            On ANY exception the lock is released ($unset _publish_lock)
+            so the row is never stuck.
+
+  - task: "BATCH A — Razorpay verify-payment is atomic + idempotent"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/razorpay_credit_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            Replaced verify-payment endpoint. Race fix:
+              - find_one_and_update flips status from "created" → "paid"
+                atomically; only one parallel caller succeeds, others get
+                None and return "already processed (concurrent)" without
+                adding credits.
+              - Sequential replay still hits the early-return at the
+                first read (status already "paid").
+            Also added unique sparse index on payment_records.razorpay_payment_id
+            in server.py startup as belt-and-suspenders.
+
+  - task: "BATCH A — Gift code redemption is atomic via unique compound index"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/gift_code_routes.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            Replaced /api/account/redeem-code with reserve-first pattern:
+              1. Insert redemption row → unique index on
+                 gift_code_redemptions.(code, admin_id) atomically blocks
+                 second concurrent attempt with DuplicateKeyError → 400.
+              2. Only AFTER successful insert do we add credits.
+              3. Then stamp ledger_id + redeemed_at on the row.
+            Prevents the prior order-of-operations bug where credits were
+            added before the audit insert. server.py creates the unique
+            index on startup.
+
   - task: "BUG 3 server-side guard — PATCH /admin/profiles/{id}/quick must reject status=PUBLISHED on a non-published profile"
     implemented: true
     working: true

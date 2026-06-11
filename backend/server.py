@@ -13850,10 +13850,14 @@ app.include_router(premium_router)
 # quick-edit, quick-stats, CSV export, notifications)
 # =====================================================================
 from admin_dashboard_v2 import build_admin_dashboard_v2_router
+import aws_service
 app.include_router(build_admin_dashboard_v2_router(
     db=db,
     require_admin=require_admin,
     log_audit_action=log_audit_action,
+    wedding_lifecycle_service=wedding_lifecycle_service,
+    credit_service=credit_service,
+    aws_service=aws_service,
 ))
 
 # Bucket 2 — Super Admin v2 (revenue/leaderboard/coupons/broadcast/settings/CMS/
@@ -14199,6 +14203,39 @@ async def _seed_credit_system_defaults():
             logger.info("[credit-system] seeded default mixed-theme pricing")
     except Exception as e:
         logger.warning("[credit-system] default seed failed: %s", e)
+
+
+@app.on_event("startup")
+async def _ensure_financial_safety_indexes():
+    """
+    Create unique indexes that backstop the atomic financial fixes
+    (Razorpay verify-payment, gift-code redeem). Idempotent.
+    """
+    try:
+        # Razorpay: prevent the same payment_id from being credited twice
+        # under any code path. Sparse so historical rows without the field
+        # don't all collide.
+        await db.payment_records.create_index(
+            [("razorpay_payment_id", 1)],
+            unique=True,
+            sparse=True,
+            name="uniq_razorpay_payment_id",
+        )
+        logger.info("[indexes] payment_records.razorpay_payment_id unique index ready")
+    except Exception as e:
+        logger.warning("[indexes] payment_records index failed: %s", e)
+
+    try:
+        # Gift codes: per-account redemption uniqueness (atomic per_account_limit=1).
+        await db.gift_code_redemptions.create_index(
+            [("code", 1), ("admin_id", 1)],
+            unique=True,
+            name="uniq_gift_redemption_per_account",
+        )
+        logger.info("[indexes] gift_code_redemptions.(code,admin_id) unique index ready")
+    except Exception as e:
+        logger.warning("[indexes] gift_code_redemptions index failed: %s", e)
+
 
 @app.on_event("startup")
 async def _seed_super_admin_pricing_defaults():

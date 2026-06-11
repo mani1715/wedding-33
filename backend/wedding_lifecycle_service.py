@@ -5,6 +5,7 @@ Handles draft, publish, archive workflow with credit estimation and deduction
 
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
+import logging
 from models import WeddingStatus, CreditActionType, CreditLedger
 from feature_registry import FeatureRegistry
 from credit_service import CreditService
@@ -28,6 +29,7 @@ class WeddingLifecycleService:
         self.admins_collection = db['admins']
         self.ledger_collection = db['credit_ledger']
         self.feature_registry = FeatureRegistry()
+        self.logger = logging.getLogger(__name__)
     
     def calculate_credit_cost(
         self,
@@ -252,158 +254,213 @@ class WeddingLifecycleService:
         admin_id: str
     ) -> Dict[str, any]:
         """
-        Publish a wedding with atomic credit deduction
-        
-        This is the core publish workflow with transaction support
-        
+        Publish a wedding with atomic credit deduction.
+
+        Race-safety design:
+          1. Atomically *claim* the wedding row with find_one_and_update,
+             setting `_publish_lock=True` only when the wedding is not
+             already published, archived, or being published. This is the
+             single point of mutual exclusion — only ONE concurrent caller
+             passes this step, every other parallel publish attempt fails
+             fast with "already published or being published".
+          2. Atomically deduct credits with $inc, guarded by a
+             `used_credits <= total_credits - total_cost` condition (so
+             a wallet that races toward empty is detected even after the
+             lock is acquired).
+          3. Insert ledger + flip status to PUBLISHED + release the lock.
+          4. On ANY exception after step 1, release the lock so the row
+             is not stuck.
+
         Returns:
-            Dict with result or raises exception
+            Dict with publication result, or raises ValueError.
         """
-        # Step 1: Get wedding and validate ownership
-        wedding = await self.profiles_collection.find_one({
-            'id': wedding_id,
-            'admin_id': admin_id
-        })
-        
-        if not wedding:
-            raise ValueError("Wedding not found or you don't have permission to publish it")
-        
-        # Step 2: Check if already published
-        if wedding.get('status') == WeddingStatus.PUBLISHED.value:
-            raise ValueError("Wedding is already published")
-        
-        # Step 3: Validate ready status
-        is_ready, missing_fields = await self.check_ready_status(wedding)
-        if not is_ready:
-            raise ValueError(f"Wedding not ready to publish. Missing: {', '.join(missing_fields)}")
-        
-        # Step 4: Calculate credit cost (including expiry-tier add-on)
-        design_key = wedding.get('selected_design_key', wedding.get('design_id', ''))
-        selected_features = wedding.get('selected_features', [])
-
-        # Resolve expiry-tier credits — saved by the form under
-        # theme_settings.maja.expiry_tier (and/or top-level expiry_tier)
-        ts_maja = (wedding.get('theme_settings') or {}).get('maja') or {}
-        expiry_tier_id = (
-            ts_maja.get('expiry_tier')
-            or wedding.get('expiry_tier')
-            or '6_months'
-        )
-        expiry_tier_credits = 0
+        # ── STEP 1: Atomic claim ─────────────────────────────────────────
+        # Match status both lowercase ("published") and uppercase ("PUBLISHED")
+        # because the codebase has historically written both.
         try:
-            tier_doc = await self.db['expiry_tiers'].find_one({'id': expiry_tier_id})
-            if tier_doc and isinstance(tier_doc.get('credits'), (int, float)):
-                expiry_tier_credits = int(tier_doc['credits'])
-        except Exception:
+            wedding = await self.profiles_collection.find_one_and_update(
+                {
+                    'id': wedding_id,
+                    'admin_id': admin_id,
+                    'status': {'$nin': ['published', 'PUBLISHED', 'archived', 'ARCHIVED']},
+                    '$or': [
+                        {'_publish_lock': {'$exists': False}},
+                        {'_publish_lock': False},
+                    ],
+                },
+                {
+                    '$set': {
+                        '_publish_lock': True,
+                        '_publish_lock_at': datetime.now(timezone.utc),
+                    }
+                },
+                return_document=True,
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to acquire publish lock for {wedding_id}: {e}")
+            wedding = None
+
+        if not wedding:
+            # Distinguish causes for a clearer message.
+            existing = await self.profiles_collection.find_one({
+                'id': wedding_id, 'admin_id': admin_id,
+            })
+            if not existing:
+                raise ValueError("Wedding not found or you don't have permission to publish it")
+            if existing.get('status') in ('published', 'PUBLISHED'):
+                raise ValueError("Wedding is already published")
+            if existing.get('status') in ('archived', 'ARCHIVED'):
+                raise ValueError("Wedding is archived and cannot be published")
+            raise ValueError("Another publish request is in progress. Please try again.")
+
+        try:
+            # ── STEP 2: Validate ready ──────────────────────────────────
+            is_ready, missing_fields = await self.check_ready_status(wedding)
+            if not is_ready:
+                raise ValueError(f"Wedding not ready to publish. Missing: {', '.join(missing_fields)}")
+
+            # ── STEP 3: Calculate cost (incl. expiry-tier add-on) ───────
+            design_key = wedding.get('selected_design_key', wedding.get('design_id', ''))
+            selected_features = wedding.get('selected_features', [])
+
+            ts_maja = (wedding.get('theme_settings') or {}).get('maja') or {}
+            expiry_tier_id = (
+                ts_maja.get('expiry_tier')
+                or wedding.get('expiry_tier')
+                or '6_months'
+            )
             expiry_tier_credits = 0
+            try:
+                tier_doc = await self.db['expiry_tiers'].find_one({'id': expiry_tier_id})
+                if tier_doc and isinstance(tier_doc.get('credits'), (int, float)):
+                    expiry_tier_credits = int(tier_doc['credits'])
+            except Exception:
+                expiry_tier_credits = 0
 
-        # 2026-09 — Category-aware cost so non-wedding invitations
-        # (baby_birthday / half_saree / puberty / dhoti) deduct credits
-        # the same way a wedding does, just from event_category_pricing.
-        cost_breakdown = await self.calculate_cost_for_wedding(
-            wedding,
-            expiry_tier_credits=expiry_tier_credits,
-            user_type="photographer",
-        )
-        total_cost = cost_breakdown['total']
-        
-        # Step 5: Get admin credits
-        admin = await self.admins_collection.find_one({'id': admin_id})
-        if not admin:
-            raise ValueError("Admin not found")
-        
-        # CHECK: Super Admin Bypass - No credit cost for super admin
-        is_super_admin = admin.get('role') == 'super_admin'
-        
-        if is_super_admin:
-            # Super admin publishes for FREE - no credit deduction
-            total_cost = 0
-            cost_breakdown['total'] = 0
-            cost_breakdown['note'] = "Super Admin - Free publishing"
-        else:
-            # Regular admin/photographer - check credits
-            total_credits = admin.get('total_credits', 0)
-            used_credits = admin.get('used_credits', 0)
-            available_credits = total_credits - used_credits
-            
-            # Step 6: Check sufficient credits
-            if available_credits < total_cost:
-                raise ValueError(
-                    f"Insufficient credits. Required: {total_cost}, Available: {available_credits}. "
-                    f"Please purchase more credits to publish this wedding."
-                )
-            
-            # Step 7: Deduct credits atomically (transaction simulation)
-            new_used_credits = used_credits + total_cost
-            
-            # Update admin credits
-            update_result = await self.admins_collection.update_one(
-                {'id': admin_id},
-                {'$set': {'used_credits': new_used_credits}}
+            cost_breakdown = await self.calculate_cost_for_wedding(
+                wedding,
+                expiry_tier_credits=expiry_tier_credits,
+                user_type="photographer",
             )
-            
-            if update_result.modified_count == 0:
-                raise ValueError("Failed to deduct credits. Please try again.")
-            
-            # Step 8: Create ledger entry
-            ledger_entry = CreditLedger(
-                admin_id=admin_id,
-                action_type=CreditActionType.USED,
-                amount=total_cost,
-                balance_before=total_credits - used_credits,
-                balance_after=total_credits - new_used_credits,
-                reason=f"Published wedding: {wedding.get('title', 'Untitled')}",
-                related_wedding_id=wedding_id,
-                performed_by=admin_id,
-                metadata={
-                    'wedding_id': wedding_id,
-                    'design_key': design_key,
-                    'features': selected_features,
-                    'breakdown': cost_breakdown['breakdown']
-                }
-            )
-            
-            await self.ledger_collection.insert_one(ledger_entry.model_dump())
+            total_cost = cost_breakdown['total']
 
-            # Loyalty tier — increment the photographer's paid-links counter
-            # only when credits were actually deducted (i.e. this is a real
-            # paid publish, not a super-admin freebie). Loyalty tiers unlock
-            # automatically once the photographer hits the next threshold.
-            if total_cost > 0:
-                await self.admins_collection.update_one(
-                    {'id': admin_id},
-                    {'$inc': {'paid_links_count': 1}},
+            # ── STEP 4: Admin lookup + super-admin bypass ───────────────
+            admin = await self.admins_collection.find_one({'id': admin_id})
+            if not admin:
+                raise ValueError("Admin not found")
+
+            is_super_admin = admin.get('role') == 'super_admin'
+
+            if is_super_admin:
+                total_cost = 0
+                cost_breakdown['total'] = 0
+                cost_breakdown['note'] = "Super Admin - Free publishing"
+                total_credits = admin.get('total_credits', 0)
+                used_credits = admin.get('used_credits', 0)
+                new_used_credits = used_credits  # unchanged
+            else:
+                total_credits = admin.get('total_credits', 0)
+                used_credits = admin.get('used_credits', 0)
+                available_credits = total_credits - used_credits
+
+                if available_credits < total_cost:
+                    raise ValueError(
+                        f"Insufficient credits. Required: {total_cost}, Available: {available_credits}. "
+                        f"Please purchase more credits to publish this wedding."
+                    )
+
+                # ── STEP 5: Atomic credit deduction ─────────────────────
+                # Only succeeds if used_credits is still low enough that
+                # adding total_cost won't exceed total_credits. If another
+                # request has eaten credits since we read `admin`, this
+                # query will not match → updated_admin is None.
+                if total_cost > 0:
+                    updated_admin = await self.admins_collection.find_one_and_update(
+                        {
+                            'id': admin_id,
+                            'used_credits': {'$lte': total_credits - total_cost},
+                        },
+                        {'$inc': {'used_credits': total_cost}},
+                        return_document=True,
+                    )
+                    if not updated_admin:
+                        # Wallet shrunk between read and deduct.
+                        current = await self.admins_collection.find_one({'id': admin_id})
+                        cur_avail = (current or {}).get('total_credits', 0) - (current or {}).get('used_credits', 0)
+                        raise ValueError(
+                            f"Insufficient credits at deduction time (wallet race). "
+                            f"Required: {total_cost}, Available: {cur_avail}."
+                        )
+                    new_used_credits = updated_admin.get('used_credits', used_credits + total_cost)
+                else:
+                    new_used_credits = used_credits
+
+                # ── STEP 6: Ledger entry ────────────────────────────────
+                ledger_entry = CreditLedger(
+                    admin_id=admin_id,
+                    action_type=CreditActionType.USED,
+                    amount=total_cost,
+                    balance_before=total_credits - used_credits,
+                    balance_after=total_credits - new_used_credits,
+                    reason=f"Published wedding: {wedding.get('title', 'Untitled')}",
+                    related_wedding_id=wedding_id,
+                    performed_by=admin_id,
+                    metadata={
+                        'wedding_id': wedding_id,
+                        'design_key': design_key,
+                        'features': selected_features,
+                        'breakdown': cost_breakdown['breakdown'],
+                    },
                 )
-        
-        # Step 9: Update wedding status
-        published_at = datetime.now(timezone.utc)
-        await self.profiles_collection.update_one(
-            {'id': wedding_id},
-            {
-                '$set': {
-                    'status': WeddingStatus.PUBLISHED.value,
-                    'total_credit_cost': total_cost,
-                    'published_at': published_at,
-                    'updated_at': datetime.now(timezone.utc)
-                }
+                await self.ledger_collection.insert_one(ledger_entry.model_dump())
+
+                # ── STEP 7: Loyalty increment (only on real paid publish) ──
+                if total_cost > 0:
+                    await self.admins_collection.update_one(
+                        {'id': admin_id},
+                        {'$inc': {'paid_links_count': 1}},
+                    )
+
+            # ── STEP 8: Flip status to PUBLISHED + release lock ──────────
+            published_at = datetime.now(timezone.utc)
+            await self.profiles_collection.update_one(
+                {'id': wedding_id},
+                {
+                    '$set': {
+                        'status': WeddingStatus.PUBLISHED.value,
+                        'total_credit_cost': total_cost,
+                        'published_at': published_at,
+                        'updated_at': datetime.now(timezone.utc),
+                    },
+                    '$unset': {'_publish_lock': '', '_publish_lock_at': ''},
+                },
+            )
+
+            remaining_credits = (
+                "Unlimited (Super Admin)" if is_super_admin
+                else admin.get('total_credits', 0) - new_used_credits
+            )
+
+            return {
+                'success': True,
+                'wedding_id': wedding_id,
+                'credits_deducted': total_cost,
+                'remaining_credits': remaining_credits,
+                'published_at': published_at.isoformat(),
+                'cost_breakdown': cost_breakdown,
+                'is_super_admin': is_super_admin,
             }
-        )
-        
-        # Calculate remaining credits
-        if is_super_admin:
-            remaining_credits = "Unlimited (Super Admin)"
-        else:
-            remaining_credits = admin.get('total_credits', 0) - (admin.get('used_credits', 0) + total_cost)
-        
-        return {
-            'success': True,
-            'wedding_id': wedding_id,
-            'credits_deducted': total_cost,
-            'remaining_credits': remaining_credits,
-            'published_at': published_at.isoformat(),
-            'cost_breakdown': cost_breakdown,
-            'is_super_admin': is_super_admin
-        }
+
+        except Exception:
+            # Always release the lock so the row is not stuck.
+            try:
+                await self.profiles_collection.update_one(
+                    {'id': wedding_id},
+                    {'$unset': {'_publish_lock': '', '_publish_lock_at': ''}},
+                )
+            except Exception as unlock_err:
+                self.logger.error(f"Failed to release publish lock on error: {unlock_err}")
+            raise
     
     async def upgrade_wedding_features(
         self,

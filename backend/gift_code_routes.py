@@ -45,6 +45,7 @@ from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from motor.motor_asyncio import AsyncIOMotorDatabase
+import pymongo.errors
 
 from credit_service import CreditService
 
@@ -247,14 +248,43 @@ def build_gift_code_router(
     # ─── Self-service: redeem ────────────────────────────────────────────
     @router.post("/api/account/redeem-code")
     async def redeem_code(req: _RedeemReq, actor=Depends(get_current_admin)):
+        """
+        Redeem gift code with atomic per-account limit enforcement.
+
+        Race-safety design:
+          1. Insert redemption record FIRST. Unique compound index on
+             (code, admin_id) — created on startup — atomically blocks
+             concurrent duplicate redemptions.
+          2. Only on successful insert do we add credits.
+          3. Finally we patch the redemption row with the ledger_id.
+        If credit addition fails after the reservation, the row stays
+        as evidence of the attempt and prevents re-attempts (intentional
+        for safety; ops can manually clean up).
+        """
         admin_id = await _actor_id(actor)
         if not admin_id:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
         gift = await _validate_code_for_redemption(db, req.code, admin_id)
 
-        # Grant credits through CreditService — single source of truth for the
-        # ledger. Reason includes the code itself for auditability.
+        # STEP 1: Atomic reservation via unique index.
+        redemption_id = str(uuid.uuid4())
+        reservation_doc = {
+            "id": redemption_id,
+            "code": gift["code"],
+            "admin_id": admin_id,
+            "credits": int(gift["credits"]),
+            "reserved_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            await db.gift_code_redemptions.insert_one(reservation_doc)
+        except pymongo.errors.DuplicateKeyError:
+            raise HTTPException(
+                status_code=400,
+                detail="You have already redeemed this code",
+            )
+
+        # STEP 2: Credit the account (only reachable after reservation succeeds).
         try:
             credit_result = await svc.add_credits(
                 admin_id=admin_id,
@@ -268,21 +298,34 @@ def build_gift_code_router(
                 },
             )
         except ValueError as e:
+            # Reservation kept (prevents re-attempts) — ops can investigate.
             raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to credit after reservation: {e}",
+            )
 
-        # Increment counter + append redemption audit row.
-        await db.gift_codes.update_one(
-            {"code": gift["code"]},
-            {"$inc": {"redeemed_count": 1}},
-        )
-        await db.gift_code_redemptions.insert_one({
-            "id": str(uuid.uuid4()),
-            "code": gift["code"],
-            "admin_id": admin_id,
-            "credits": int(gift["credits"]),
-            "redeemed_at": datetime.now(timezone.utc).isoformat(),
-            "ledger_id": credit_result.get("ledger_id"),
-        })
+        # STEP 3: Stamp ledger_id + redeemed_at on the reservation row.
+        try:
+            await db.gift_code_redemptions.update_one(
+                {"id": redemption_id},
+                {"$set": {
+                    "ledger_id": credit_result.get("ledger_id"),
+                    "redeemed_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+        except Exception:
+            pass  # non-fatal — credit already granted
+
+        # STEP 4: Increment global counter (best-effort).
+        try:
+            await db.gift_codes.update_one(
+                {"code": gift["code"]},
+                {"$inc": {"redeemed_count": 1}},
+            )
+        except Exception:
+            pass
 
         return {
             "success": True,
