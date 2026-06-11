@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
-import { Crown, ArrowLeft, Gift, Heart, Sparkles } from 'lucide-react';
+import { Crown, ArrowLeft, Gift, Heart, Sparkles, Mail, Lock, Wand2 } from 'lucide-react';
 import '../styles/luxury.css';
 
 const fadeUp = {
@@ -15,11 +15,13 @@ const fadeUp = {
 
 const AdminLogin = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, sendMagicLink, supabaseConfigured } = useAuth();
   const [searchParams] = useSearchParams();
+  const [mode, setMode] = useState('password'); // 'password' | 'magic'
   const [email, setEmail] = useState('');  // accepts email OR username
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [referralCode, setReferralCode] = useState('');
   const [referralMessage, setReferralMessage] = useState('');
@@ -41,6 +43,7 @@ const AdminLogin = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setLoading(true);
     const result = await login(email, password);
     if (result.success) {
@@ -54,6 +57,24 @@ const AdminLogin = () => {
       navigate('/admin/dashboard');
     } else {
       setError(result.error || 'Invalid credentials');
+    }
+    setLoading(false);
+  };
+
+  const handleMagicLink = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    if (!email || !email.includes('@')) {
+      setError('Enter a valid email address to receive your magic link.');
+      return;
+    }
+    setLoading(true);
+    const result = await sendMagicLink(email);
+    if (result.success) {
+      setSuccess(`We sent a sign-in link to ${email}. Open the link from your email to continue.`);
+    } else {
+      setError(result.error || 'Could not send magic link. Try password sign-in instead.');
     }
     setLoading(false);
   };
@@ -101,14 +122,48 @@ const AdminLogin = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Mode toggle — Password vs Magic Link (Supabase) */}
+          {supabaseConfigured && (
+            <div className="flex items-center justify-center gap-1 mb-6 p-1 rounded-xl"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--lux-border)' }}>
+              <button
+                type="button"
+                onClick={() => { setMode('password'); setError(''); setSuccess(''); }}
+                data-testid="admin-login-mode-password"
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs tracking-[0.2em] uppercase transition-all"
+                style={{
+                  background: mode === 'password' ? 'rgba(212,175,55,0.18)' : 'transparent',
+                  color: mode === 'password' ? '#FFF8DC' : 'rgba(255,248,220,0.55)',
+                  border: mode === 'password' ? '1px solid rgba(212,175,55,0.4)' : '1px solid transparent',
+                }}
+              >
+                <Lock className="w-3.5 h-3.5" /> Password
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMode('magic'); setError(''); setSuccess(''); }}
+                data-testid="admin-login-mode-magic"
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs tracking-[0.2em] uppercase transition-all"
+                style={{
+                  background: mode === 'magic' ? 'rgba(212,175,55,0.18)' : 'transparent',
+                  color: mode === 'magic' ? '#FFF8DC' : 'rgba(255,248,220,0.55)',
+                  border: mode === 'magic' ? '1px solid rgba(212,175,55,0.4)' : '1px solid transparent',
+                }}
+              >
+                <Wand2 className="w-3.5 h-3.5" /> Magic Link
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={mode === 'magic' ? handleMagicLink : handleSubmit} className="space-y-5">
             <div>
               <label className="block text-[10px] tracking-[0.3em] uppercase mb-2.5" style={{ color: 'rgba(255,248,220,0.55)' }}>
-                Email or Username
+                {mode === 'magic' ? 'Email Address' : 'Email or Username'}
               </label>
               <input
-                type="text" value={email} onChange={(e) => setEmail(e.target.value)} required
-                placeholder="studio@maharani.com or your username"
+                type={mode === 'magic' ? 'email' : 'text'}
+                value={email} onChange={(e) => setEmail(e.target.value)} required
+                placeholder={mode === 'magic' ? 'studio@maharani.com' : 'studio@maharani.com or your username'}
                 data-testid="admin-login-email"
                 className="w-full px-4 py-3.5 bg-transparent rounded-lg outline-none transition-all font-body text-sm"
                 style={{
@@ -121,26 +176,36 @@ const AdminLogin = () => {
               />
             </div>
 
-            <div>
-              <label className="block text-[10px] tracking-[0.3em] uppercase mb-2.5" style={{ color: 'rgba(255,248,220,0.55)' }}>
-                Password
-              </label>
-              <input
-                type="password" value={password} onChange={(e) => setPassword(e.target.value)} required
-                placeholder="••••••••"
-                data-testid="admin-login-password"
-                className="w-full px-4 py-3.5 bg-transparent rounded-lg outline-none transition-all font-body text-sm"
-                style={{
-                  color: '#FFF8DC',
-                  border: '1px solid var(--lux-border)',
-                  caretColor: '#D4AF37',
-                }}
-                onFocus={(e) => e.target.style.borderColor = '#D4AF37'}
-                onBlur={(e) => e.target.style.borderColor = 'var(--lux-border)'}
-              />
-            </div>
+            {mode === 'password' && (
+              <div>
+                <label className="block text-[10px] tracking-[0.3em] uppercase mb-2.5" style={{ color: 'rgba(255,248,220,0.55)' }}>
+                  Password
+                </label>
+                <input
+                  type="password" value={password} onChange={(e) => setPassword(e.target.value)} required
+                  placeholder="••••••••"
+                  data-testid="admin-login-password"
+                  className="w-full px-4 py-3.5 bg-transparent rounded-lg outline-none transition-all font-body text-sm"
+                  style={{
+                    color: '#FFF8DC',
+                    border: '1px solid var(--lux-border)',
+                    caretColor: '#D4AF37',
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#D4AF37'}
+                  onBlur={(e) => e.target.style.borderColor = 'var(--lux-border)'}
+                />
+              </div>
+            )}
 
-            {!searchParams.get('ref') && (
+            {mode === 'magic' && (
+              <div className="px-4 py-3 rounded-lg text-xs flex items-start gap-3"
+                style={{ background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.18)', color: 'rgba(255,248,220,0.78)' }}>
+                <Mail className="w-3.5 h-3.5 mt-0.5" style={{ color: '#D4AF37' }} />
+                <span>We&apos;ll email you a one-time sign-in link. No password needed. Only works for already-registered photographer accounts.</span>
+              </div>
+            )}
+
+            {mode === 'password' && !searchParams.get('ref') && (
               <div>
                 <label className="block text-[10px] tracking-[0.3em] uppercase mb-2.5" style={{ color: 'rgba(255,248,220,0.55)' }}>
                   Referral Code <span className="opacity-50">(optional)</span>
@@ -169,10 +234,22 @@ const AdminLogin = () => {
               </div>
             )}
 
+            {success && (
+              <div className="px-4 py-3 rounded-lg text-sm" data-testid="admin-login-success"
+                style={{ background: 'rgba(0,100,0,0.12)', border: '1px solid rgba(80,180,80,0.35)', color: '#D2F3D6' }}>
+                {success}
+              </div>
+            )}
+
             <button type="submit" disabled={loading} className="lux-btn w-full justify-center" data-testid="admin-login-submit">
               {loading ? (
                 <>
-                  <Sparkles className="w-4 h-4 animate-pulse" /> Authenticating
+                  <Sparkles className="w-4 h-4 animate-pulse" />
+                  {mode === 'magic' ? 'Sending link' : 'Authenticating'}
+                </>
+              ) : mode === 'magic' ? (
+                <>
+                  Email me a magic link <Wand2 className="w-4 h-4" />
                 </>
               ) : (
                 <>

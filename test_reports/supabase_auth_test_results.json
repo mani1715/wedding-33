@@ -1,0 +1,80 @@
+{
+  "passed": [
+    {
+      "test": "Legacy login (super admin username)",
+      "details": "Logged in as mani_8328@majacreations.com, role=super_admin"
+    },
+    {
+      "test": "Legacy login (super admin email)",
+      "details": "Login with email also works"
+    },
+    {
+      "test": "Legacy login (wrong password)",
+      "details": "Correctly rejected with 401"
+    },
+    {
+      "test": "GET /api/auth/me",
+      "details": "Retrieved admin: mani_8328@majacreations.com, role=super_admin"
+    },
+    {
+      "test": "Auto-mirror (super admin)",
+      "details": "supabase_user_id=6018c14f-3fe4-4a6d-b3fb-ac90adff0e79"
+    },
+    {
+      "test": "Auto-mirror (photographer)",
+      "details": "supabase_user_id=9303b9a2-c8a2-4860-927c-5491a8a1abf4"
+    },
+    {
+      "test": "GET /api/auth/me-supabase (no auth)",
+      "details": "Correctly rejected with 401 'Missing bearer token'"
+    },
+    {
+      "test": "GET /api/auth/me-supabase (invalid token)",
+      "details": "Correctly rejected with 401: Invalid Supabase token: Malformed JWT header: Not enough segments"
+    },
+    {
+      "test": "GET /api/auth/me-supabase (unlinked)",
+      "details": "Correctly returned 404 with error=no_admin_record"
+    },
+    {
+      "test": "POST /api/auth/sync-supabase-user (no auth)",
+      "details": "Correctly rejected with 401"
+    },
+    {
+      "test": "Migration script (dry-run)",
+      "details": "Ran successfully, no DB changes"
+    },
+    {
+      "test": "Migration script (live)",
+      "details": "Ran successfully"
+    },
+    {
+      "test": "Migration bcrypt preservation",
+      "details": "Successfully signed in with original password (bcrypt import worked)"
+    },
+    {
+      "test": "Route prefix /auth/me-supabase",
+      "details": "Endpoint accessible (got 401)"
+    }
+  ],
+  "failed": [
+    {
+      "test": "Legacy login (photographer)",
+      "details": "Expected role=admin, got super_admin"
+    },
+    {
+      "test": "POST /api/auth/sync-supabase-user (create)",
+      "details": "Error: User not allowed"
+    }
+  ],
+  "warnings": [
+    {
+      "test": "GET /api/auth/me-supabase (linked)",
+      "details": "Skipping - would need to create test Supabase user with known password"
+    },
+    {
+      "test": "Route prefix /auth/sync-supabase-user",
+      "details": "Unexpected status 405"
+    }
+  ]
+}

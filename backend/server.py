@@ -990,6 +990,196 @@ async def get_current_admin_info(admin_id: str = Depends(get_current_admin)):
     return AdminResponse(**admin)
 
 
+# ==================== SUPABASE AUTH BRIDGE ====================
+# Lets the frontend authenticate via Supabase (any flow: email/password,
+# magic-link, Google, phone OTP) and still pull its admin row from MongoDB.
+# Flow:
+#   1. Frontend signs in with supabase-js → obtains access_token (JWT)
+#   2. Frontend calls /api/auth/me-supabase with `Authorization: Bearer <sb_jwt>`
+#   3. Backend verifies the JWT locally against Supabase JWKS
+#   4. Backend finds the admins doc by supabase_user_id, falling back to email
+#      (auto-links on first call), then returns the admin profile.
+@api_router.get("/auth/me-supabase")
+async def get_current_admin_via_supabase(request: Request):
+    """Verify a Supabase access token and return the linked admin row.
+
+    The frontend uses this once after a successful supabase-js sign-in to
+    discover which MongoDB admin the Supabase user corresponds to. The admin
+    is auto-linked on first call (matched by email) if needed.
+    """
+    from auth_supabase import verify_supabase_jwt, SupabaseAuthError
+
+    auth_header = request.headers.get("Authorization") or ""
+    if not auth_header.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = auth_header.split(None, 1)[1].strip()
+
+    try:
+        claims = verify_supabase_jwt(token)
+    except SupabaseAuthError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid Supabase token: {exc}")
+
+    sb_user_id = claims.get("sub")
+    sb_email = (claims.get("email") or "").lower()
+    if not sb_user_id:
+        raise HTTPException(status_code=401, detail="Token missing user id")
+
+    # 1) Prefer match by supabase_user_id
+    admin = await db.admins.find_one({"supabase_user_id": sb_user_id}, {"_id": 0})
+
+    # 2) Fall back to email match — auto-link on first call
+    if not admin and sb_email:
+        admin = await db.admins.find_one({"email": sb_email}, {"_id": 0})
+        if admin:
+            await db.admins.update_one(
+                {"id": admin["id"]},
+                {"$set": {"supabase_user_id": sb_user_id}},
+            )
+            admin["supabase_user_id"] = sb_user_id
+
+    if not admin:
+        # Brand-new Supabase user with no MongoDB counterpart yet.
+        # Return enough info so the frontend can present a "complete profile" UI.
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "no_admin_record",
+                "message": "Supabase user has no admin profile yet. Complete sign-up first.",
+                "supabase_user_id": sb_user_id,
+                "email": sb_email,
+            },
+        )
+
+    # Status guards (suspended / inactive)
+    if admin.get("status") == AdminStatus.SUSPENDED.value:
+        raise HTTPException(status_code=403, detail="Account suspended. Please contact support.")
+    if admin.get("status") == AdminStatus.INACTIVE.value:
+        raise HTTPException(status_code=403, detail="Account inactive. Please contact support.")
+
+    # Issue a legacy app JWT so existing /api/* endpoints (which use the legacy
+    # token via get_current_admin) work without rewiring every route.
+    legacy_token = create_access_token(data={
+        "sub": admin["id"],
+        "role": admin.get("role", AdminRole.ADMIN.value),
+    })
+
+    total = admin.get("total_credits", 0) or 0
+    used = admin.get("used_credits", 0) or 0
+
+    return {
+        "access_token": legacy_token,
+        "token_type": "bearer",
+        "admin": {
+            "id": admin["id"],
+            "email": admin["email"],
+            "name": admin.get("name", admin["email"]),
+            "username": admin.get("username"),
+            "phone": admin.get("phone"),
+            "role": admin.get("role", AdminRole.ADMIN.value),
+            "status": admin.get("status", AdminStatus.ACTIVE.value),
+            "available_credits": max(total - used, 0),
+            "supabase_user_id": sb_user_id,
+        },
+    }
+
+
+@api_router.post("/auth/sync-supabase-user")
+async def sync_supabase_user(request: Request, payload: dict):
+    """Create a MongoDB admin row for a freshly-signed-up Supabase user.
+
+    Called by the frontend right after a successful supabase.auth.signUp()
+    (email/password) or after the email verification redirect completes.
+    Returns the same shape as /api/auth/login so the frontend can drop the
+    user straight into the dashboard.
+
+    Body: { name: str, phone?: str, username?: str }
+    Auth: Authorization: Bearer <supabase_access_token>
+    """
+    from auth_supabase import verify_supabase_jwt, SupabaseAuthError
+
+    auth_header = request.headers.get("Authorization") or ""
+    if not auth_header.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = auth_header.split(None, 1)[1].strip()
+
+    try:
+        claims = verify_supabase_jwt(token)
+    except SupabaseAuthError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid Supabase token: {exc}")
+
+    sb_user_id = claims.get("sub")
+    sb_email = (claims.get("email") or "").lower()
+    if not sb_user_id or not sb_email:
+        raise HTTPException(status_code=400, detail="Supabase token missing sub/email")
+
+    name = (payload.get("name") or "").strip() or sb_email.split("@")[0]
+    phone = (payload.get("phone") or "").strip() or None
+    username = (payload.get("username") or "").strip().lower() or None
+
+    # Idempotent: if a row already exists (by supabase_user_id or email), return it.
+    existing = await db.admins.find_one(
+        {"$or": [{"supabase_user_id": sb_user_id}, {"email": sb_email}]},
+        {"_id": 0},
+    )
+    if existing:
+        # Make sure the link is set so future /me-supabase calls don't re-link
+        if not existing.get("supabase_user_id"):
+            await db.admins.update_one(
+                {"id": existing["id"]},
+                {"$set": {"supabase_user_id": sb_user_id}},
+            )
+        admin = existing
+    else:
+        # Uniqueness pre-checks
+        if username and await db.admins.find_one({"username": username}):
+            raise HTTPException(status_code=400, detail="Username already taken")
+        if phone and await db.admins.find_one({"phone": phone}):
+            raise HTTPException(status_code=400, detail="Phone number already registered")
+
+        new_admin = Admin(
+            email=sb_email,
+            password_hash="$supabase$",  # placeholder — auth is delegated to Supabase
+            name=name,
+            role=AdminRole.ADMIN,
+            status=AdminStatus.ACTIVE,
+            total_credits=0,
+            used_credits=0,
+            username=username,
+            phone=phone,
+            phone_verified=bool(phone) and bool(claims.get("phone_verified")),
+            self_signup=True,
+            created_by=None,
+        )
+        doc = new_admin.model_dump()
+        doc["supabase_user_id"] = sb_user_id
+        await db.admins.insert_one(doc)
+        admin = doc
+
+    legacy_token = create_access_token(data={
+        "sub": admin["id"],
+        "role": admin.get("role", AdminRole.ADMIN.value),
+    })
+    total = admin.get("total_credits", 0) or 0
+    used = admin.get("used_credits", 0) or 0
+    return {
+        "success": True,
+        "access_token": legacy_token,
+        "token_type": "bearer",
+        "admin": {
+            "id": admin["id"],
+            "email": admin["email"],
+            "name": admin.get("name"),
+            "username": admin.get("username"),
+            "phone": admin.get("phone"),
+            "phone_verified": admin.get("phone_verified", False),
+            "role": admin.get("role", AdminRole.ADMIN.value),
+            "status": admin.get("status", AdminStatus.ACTIVE.value),
+            "available_credits": max(total - used, 0),
+            "supabase_user_id": sb_user_id,
+        },
+    }
+
+
 # ==================== PHOTOGRAPHER SELF-SIGNUP ====================
 
 # In-memory OTP store: { phone: { otp, expires_at, attempts } }

@@ -11,6 +11,7 @@ const LandingPage = lazy(() => import('./pages/LandingPage'));
 
 // Public pages - Lazy loaded
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
+const AdminAuthCallback = lazy(() => import('./pages/AdminAuthCallback'));
 const LuxuryPreview = lazy(() => import('./pages/LuxuryPreview'));
 const LuxuryPublicInvitation = lazy(() => import('./pages/LuxuryPublicInvitation'));
 const SaveTheDatePage = lazy(() => import('./pages/SaveTheDatePage'));
@@ -118,6 +119,7 @@ function App() {
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/pricing" element={<PublicPricingPage />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/admin/auth/callback" element={<AdminAuthCallback />} />
                 <Route path="/themes" element={<ThemeShowroom />} />
                 <Route path="/themes/kerala_backwaters/gallery" element={<KeralaDesignGallery />} />
                 <Route path="/themes/:themeId/gallery" element={<ThemeDesignGallery />} />
