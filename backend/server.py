@@ -935,7 +935,31 @@ async def login(login_data: AdminLogin):
         "sub": admin['id'],
         "role": admin.get('role', AdminRole.ADMIN.value)
     })
-    
+
+    # Migrate-on-next-login: idempotently mirror this admin into Supabase Auth
+    # so subsequent logins can go directly through supabase-js. Best-effort —
+    # any failure is logged but never blocks the legacy login flow.
+    if not admin.get("supabase_user_id"):
+        try:
+            from supabase_admin import create_or_get_user as _supa_create
+            sup_id = _supa_create(
+                email=admin["email"],
+                password=login_data.password,
+                name=admin.get("name"),
+                phone=admin.get("phone"),
+            )
+            if sup_id:
+                await db.admins.update_one(
+                    {"id": admin["id"]},
+                    {"$set": {"supabase_user_id": sup_id}},
+                )
+        except Exception as _migrate_exc:
+            import logging as _lg
+            _lg.getLogger("auth").warning(
+                "Supabase migrate-on-login failed for %s: %s",
+                admin["email"], _migrate_exc,
+            )
+
     return {
         "access_token": access_token,
         "token_type": "bearer",
