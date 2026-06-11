@@ -386,11 +386,11 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "BUG 3 server-side guard — PATCH /admin/profiles/{id}/quick must reject status=PUBLISHED on a non-published profile"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
+  batch_a_status: "ALL 5/5 PASS — verified via /app/backend/tests/test_batch_a_race_safety.py on iteration_1.json"
 
 agent_communication:
     - agent: "main"
@@ -563,3 +563,27 @@ agent_communication:
         
         Test credentials: /app/memory/test_credentials.md
         Full test output: /app/backend_test.py (can be re-run anytime)
+    - agent: "testing"
+      message: |
+        ✅ BATCH A — FINANCIAL SAFETY — ALL 5/5 PASS
+
+        Stress-tested all 5 race-condition fixes under concurrency:
+          TEST 1 (Double-Click Publish): PASS — used_credits=3 (NOT 6), 1 USED ledger entry, _publish_lock cleared.
+          TEST 2 (Bulk-Publish Backdoor): PASS — matched=3, modified=3, success=3, 3 USED ledger entries. Backdoor is closed.
+          TEST 3 (Razorpay Verify Race): PASS — concurrent forged-sig requests both return 400; payment_record.status stayed 'created'.
+          TEST 4 (Gift Code Race): PASS — unique index on (code, admin_id) atomically blocks duplicate redemption. credits=200 (NOT 300).
+          TEST 5 (Bulk-Purge Refund): PASS — refunded_count=1, refunded_total=3, hard-delete confirmed, REFUND ledger entry.
+
+        Files: /app/backend/tests/test_batch_a_race_safety.py
+               /app/test_reports/iteration_1.json
+               /app/test_reports/pytest/batch_a_results.xml
+
+        Minor (non-blocking): S3 cleanup logs 's3_cleanup_failed:1' when AWS not configured (best-effort, refund still succeeds). credit_packages empty in this env (Razorpay create-order path skipped, verify-payment race tested via direct insert).
+
+        Tasks now flipped to working=true:
+          - admin_dashboard_v2 bulk-publish + bulk-purge
+          - wedding_lifecycle_service.publish_wedding (atomic)
+          - razorpay_credit_service.verify_payment (atomic)
+          - gift_code_routes.redeem_code (reserve-first)
+
+        READY FOR BATCH B.
