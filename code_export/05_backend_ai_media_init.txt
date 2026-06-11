@@ -1,0 +1,3403 @@
+===== backend/ai_service.py =====
+"""
+PHASE 26: AI-Powered Personalization Engine
+AI Service Layer using Emergent LLM Universal Key
+
+This service provides:
+1. Content translation (English, Telugu, Hindi, Tamil)
+2. Event description generation
+3. RSVP message suggestions
+4. Guest segment insights
+"""
+
+import os
+from typing import List, Dict, Optional, Literal
+from datetime import datetime, timedelta
+import asyncio
+from dotenv import load_dotenv
+from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+# Load environment variables
+load_dotenv()
+
+# Supported languages
+SUPPORTED_LANGUAGES = {
+    "en": "English",
+    "te": "Telugu",
+    "hi": "Hindi",
+    "ta": "Tamil"
+}
+
+# Rate limit tracking (in-memory for MVP, use Redis in production)
+translation_rate_limits = {}  # {ip: [timestamp1, timestamp2, ...]}
+admin_generation_limits = {}  # {admin_id: [timestamp1, timestamp2, ...]}
+
+
+class AIService:
+    """Abstracted AI service using Emergent LLM Universal Key"""
+    
+    def __init__(self):
+        self.api_key = os.getenv("EMERGENT_LLM_KEY")
+        self.enabled = bool(self.api_key)
+        
+        if not self.enabled:
+            print("⚠️  EMERGENT_LLM_KEY not found. AI features will be disabled.")
+        
+        # Default to GPT-5.1 (recommended by playbook)
+        self.provider = "openai"
+        self.model = "gpt-5.1"
+    
+    def _create_chat_session(self, system_message: str, session_id: str) -> LlmChat:
+        """Create a new LLM chat session"""
+        chat = LlmChat(
+            api_key=self.api_key,
+            session_id=session_id,
+            system_message=system_message
+        )
+        chat.with_model(self.provider, self.model)
+        return chat
+    
+    async def translate_content(
+        self, 
+        content: str, 
+        target_language: str,
+        context: str = "wedding invitation"
+    ) -> str:
+        """
+        Translate content to target language
+        
+        Args:
+            content: Text to translate
+            target_language: Target language code (en, te, hi, ta)
+            context: Context for better translation (default: wedding invitation)
+        
+        Returns:
+            Translated text
+        """
+        if not self.enabled:
+            return content  # Return original content if AI is disabled
+        
+        if target_language not in SUPPORTED_LANGUAGES:
+            raise ValueError(f"Unsupported language: {target_language}")
+        
+        # If already in English and target is English, return as-is
+        if target_language == "en":
+            return content
+        
+        language_name = SUPPORTED_LANGUAGES[target_language]
+        
+        system_message = f"""You are a professional translator specializing in Indian wedding invitations.
+Translate the given text to {language_name} while:
+- Maintaining cultural sensitivity and respect
+- Preserving formatting (line breaks, punctuation)
+- Using appropriate formal language for weddings
+- Keeping names, dates, and places in original language when culturally appropriate
+- Only return the translated text, no explanations"""
+        
+        session_id = f"translation_{target_language}_{datetime.now().timestamp()}"
+        chat = self._create_chat_session(system_message, session_id)
+        
+        user_message = UserMessage(
+            text=f"Translate this {context} text to {language_name}:\n\n{content}"
+        )
+        
+        try:
+            response = await chat.send_message(user_message)
+            return response.strip()
+        except Exception as e:
+            # Fallback: return original content if translation fails
+            print(f"Translation error: {e}")
+            return content
+    
+    async def generate_event_description(
+        self,
+        event_type: str,
+        couple_names: Optional[str] = None,
+        date: Optional[str] = None,
+        venue: Optional[str] = None
+    ) -> str:
+        """
+        Generate elegant event description using AI
+        
+        Args:
+            event_type: Type of event (engagement, haldi, mehendi, marriage, reception)
+            couple_names: Names of couple (optional)
+            date: Event date (optional)
+            venue: Event venue (optional)
+        
+        Returns:
+            AI-generated event description
+        """
+        if not self.enabled:
+            # Return a default description if AI is disabled
+            return f"Join us for a beautiful {event_type} celebration."
+        
+        system_message = """You are a creative wedding invitation content writer.
+Generate elegant, short, and heartfelt event descriptions for Indian weddings.
+Keep descriptions:
+- Maximum 2-3 sentences
+- Culturally appropriate
+- Professional yet warm
+- Inclusive and respectful
+- No emojis or excessive punctuation
+Only return the description text, no explanations."""
+        
+        # Build context
+        context_parts = []
+        if couple_names:
+            context_parts.append(f"Couple: {couple_names}")
+        if date:
+            context_parts.append(f"Date: {date}")
+        if venue:
+            context_parts.append(f"Venue: {venue}")
+        
+        context_str = "\n".join(context_parts) if context_parts else "No additional details"
+        
+        prompt = f"""Generate a short elegant description for a {event_type} event.
+
+{context_str}
+
+Create a 2-3 sentence description that captures the essence and joy of this special occasion."""
+        
+        session_id = f"description_{event_type}_{datetime.now().timestamp()}"
+        chat = self._create_chat_session(system_message, session_id)
+        
+        user_message = UserMessage(text=prompt)
+        
+        try:
+            response = await chat.send_message(user_message)
+            return response.strip()
+        except Exception as e:
+            # Fallback description
+            print(f"Description generation error: {e}")
+            return f"Join us to celebrate this beautiful {event_type} ceremony."
+    
+    async def generate_rsvp_suggestions(
+        self,
+        event_type: str = "marriage",
+        guest_name: Optional[str] = None
+    ) -> List[str]:
+        """
+        Generate 3 RSVP message suggestions
+        
+        Args:
+            event_type: Type of event
+            guest_name: Name of guest (optional, for personalization)
+        
+        Returns:
+            List of 3 suggested messages
+        """
+        system_message = """You are an expert at generating warm, appropriate RSVP messages for Indian weddings.
+Generate exactly 3 short, heartfelt messages that guests can use when RSVPing.
+Each message should be:
+- Maximum 15 words
+- Culturally appropriate
+- Include relevant emojis
+- Warm and genuine
+- Different in tone (excited, blessing, formal)
+
+Return ONLY the 3 messages, one per line, no numbering or extra text."""
+        
+        prompt = f"""Generate 3 RSVP message suggestions for a {event_type} event.
+Each message should be unique in tone and sentiment.
+Include appropriate emojis."""
+        
+        session_id = f"rsvp_{event_type}_{datetime.now().timestamp()}"
+        chat = self._create_chat_session(system_message, session_id)
+        
+        user_message = UserMessage(text=prompt)
+        
+        try:
+            response = await chat.send_message(user_message)
+            suggestions = [line.strip() for line in response.split('\n') if line.strip()]
+            
+            # Ensure we have exactly 3 suggestions
+            if len(suggestions) < 3:
+                # Add fallback messages
+                fallback_messages = [
+                    "Can't wait to celebrate with you! 🎉",
+                    "Blessings to the beautiful couple ❤️",
+                    "Excited for your special day! 💐"
+                ]
+                suggestions.extend(fallback_messages[len(suggestions):3])
+            
+            return suggestions[:3]
+        except Exception as e:
+            # Fallback suggestions
+            print(f"RSVP suggestions error: {e}")
+            return [
+                "Can't wait to celebrate with you! 🎉",
+                "Blessings to the beautiful couple ❤️",
+                "Excited for your special day! 💐"
+            ]
+    
+    async def generate_guest_insights(
+        self,
+        rsvp_data: Dict[str, any]
+    ) -> str:
+        """
+        Generate guest segment insights from RSVP data
+        
+        Args:
+            rsvp_data: Dictionary with RSVP statistics
+                {
+                    'total': int,
+                    'confirmed': int,
+                    'declined': int,
+                    'pending': int,
+                    'early_responses': int,  # Responses within 24 hours
+                    'late_responses': int,   # Responses after 3 days
+                    'with_messages': int,    # RSVPs with personal messages
+                }
+        
+        Returns:
+            AI-generated insights text
+        """
+        system_message = """You are a data analyst for wedding planning.
+Generate brief, actionable insights from RSVP data.
+Keep insights:
+- Maximum 2-3 sentences
+- Positive and helpful
+- Focus on patterns and timing
+- Professional tone
+Only return the insight text, no explanations."""
+        
+        prompt = f"""Analyze this RSVP data and provide a brief insight:
+
+Total RSVPs: {rsvp_data.get('total', 0)}
+Confirmed: {rsvp_data.get('confirmed', 0)}
+Declined: {rsvp_data.get('declined', 0)}
+Pending: {rsvp_data.get('pending', 0)}
+Early responses (within 24h): {rsvp_data.get('early_responses', 0)}
+Late responses (after 3 days): {rsvp_data.get('late_responses', 0)}
+RSVPs with messages: {rsvp_data.get('with_messages', 0)}
+
+Generate a 2-3 sentence insight highlighting key patterns or trends."""
+        
+        session_id = f"insights_{datetime.now().timestamp()}"
+        chat = self._create_chat_session(system_message, session_id)
+        
+        user_message = UserMessage(text=prompt)
+        
+        try:
+            response = await chat.send_message(user_message)
+            return response.strip()
+        except Exception as e:
+            # Fallback insight
+            print(f"Insights generation error: {e}")
+            confirmed_rate = (rsvp_data.get('confirmed', 0) / max(rsvp_data.get('total', 1), 1)) * 100
+            return f"You have received {rsvp_data.get('total', 0)} RSVPs so far, with {confirmed_rate:.0f}% confirming attendance."
+
+
+# Rate limiting functions
+def check_translation_rate_limit(ip_address: str) -> bool:
+    """
+    Check if IP address is within translation rate limit
+    Limit: 10 requests per minute
+    
+    Returns:
+        True if within limit, False if exceeded
+    """
+    current_time = datetime.now()
+    minute_ago = current_time - timedelta(minutes=1)
+    
+    # Clean old timestamps
+    if ip_address in translation_rate_limits:
+        translation_rate_limits[ip_address] = [
+            ts for ts in translation_rate_limits[ip_address] 
+            if ts > minute_ago
+        ]
+    else:
+        translation_rate_limits[ip_address] = []
+    
+    # Check limit
+    if len(translation_rate_limits[ip_address]) >= 10:
+        return False
+    
+    # Add current request
+    translation_rate_limits[ip_address].append(current_time)
+    return True
+
+
+def check_admin_generation_rate_limit(admin_id: str) -> bool:
+    """
+    Check if admin is within AI generation rate limit
+    Limit: 5 requests per hour
+    
+    Returns:
+        True if within limit, False if exceeded
+    """
+    current_time = datetime.now()
+    hour_ago = current_time - timedelta(hours=1)
+    
+    # Clean old timestamps
+    if admin_id in admin_generation_limits:
+        admin_generation_limits[admin_id] = [
+            ts for ts in admin_generation_limits[admin_id] 
+            if ts > hour_ago
+        ]
+    else:
+        admin_generation_limits[admin_id] = []
+    
+    # Check limit
+    if len(admin_generation_limits[admin_id]) >= 5:
+        return False
+    
+    # Add current request
+    admin_generation_limits[admin_id].append(current_time)
+    return True
+
+
+# Initialize AI service
+ai_service = AIService()
+===== backend/story_service.py =====
+"""
+Story Generation Service using Google Gemini API
+Generates personalized love stories and event descriptions for wedding invitations
+"""
+import os
+import aiohttp
+from typing import Optional, Dict
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class StoryService:
+    """Service for generating wedding stories using Gemini API"""
+    
+    def __init__(self):
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        self.api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+        self.enabled = bool(self.api_key)
+        
+        if not self.enabled:
+            print("⚠️  GEMINI_API_KEY not found. Story generation will use fallback content.")
+    
+    async def generate_love_story(
+        self,
+        bride_name: str,
+        groom_name: str,
+        story_prompt: Optional[str] = None,
+        tone: str = "romantic"
+    ) -> str:
+        """
+        Generate a personalized love story for the couple
+        
+        Args:
+            bride_name: Bride's name
+            groom_name: Groom's name
+            story_prompt: Optional custom prompt or key points about their story
+            tone: Story tone (romantic, humorous, traditional, cinematic)
+        
+        Returns:
+            Generated love story text
+        """
+        if not self.enabled:
+            return self._get_fallback_story(bride_name, groom_name)
+        
+        # Build the prompt
+        if story_prompt:
+            prompt = f"""Write a beautiful and {tone} love story (2-3 paragraphs) about {bride_name} and {groom_name}.
+
+Key points to include:
+{story_prompt}
+
+The story should be:
+- Heartfelt and genuine
+- 2-3 paragraphs long
+- Suitable for a wedding invitation
+- Culturally respectful
+- Written in third person
+
+Do not include any titles or headings, just the story text."""
+        else:
+            prompt = f"""Write a beautiful and {tone} love story (2-3 paragraphs) about {bride_name} and {groom_name}.
+
+The story should describe how they met, fell in love, and decided to spend their lives together.
+
+The story should be:
+- Heartfelt and genuine  
+- 2-3 paragraphs long
+- Suitable for a wedding invitation
+- Culturally respectful
+- Written in third person
+
+Do not include any titles or headings, just the story text."""
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                payload = {
+                    "contents": [{
+                        "parts": [{
+                            "text": prompt
+                        }]
+                    }]
+                }
+                
+                async with session.post(
+                    f"{self.api_url}?key={self.api_key}",
+                    json=payload,
+                    headers={"Content-Type": "application/json"}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        story = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        return story.strip() if story else self._get_fallback_story(bride_name, groom_name)
+                    else:
+                        print(f"Gemini API error: {response.status}")
+                        return self._get_fallback_story(bride_name, groom_name)
+        
+        except Exception as e:
+            print(f"Story generation error: {e}")
+            return self._get_fallback_story(bride_name, groom_name)
+    
+    async def generate_event_description(
+        self,
+        event_type: str,
+        bride_name: str,
+        groom_name: str,
+        date: Optional[str] = None,
+        venue: Optional[str] = None
+    ) -> str:
+        """
+        Generate event-specific description
+        
+        Args:
+            event_type: Type of event (engagement, haldi, mehendi, marriage, reception)
+            bride_name: Bride's name
+            groom_name: Groom's name
+            date: Event date (optional)
+            venue: Event venue (optional)
+        
+        Returns:
+            Generated event description
+        """
+        if not self.enabled:
+            return self._get_fallback_event_description(event_type)
+        
+        context_parts = []
+        if date:
+            context_parts.append(f"Date: {date}")
+        if venue:
+            context_parts.append(f"Venue: {venue}")
+        
+        context = "\n".join(context_parts) if context_parts else ""
+        
+        prompt = f"""Write a warm and inviting description (2-3 sentences) for a {event_type} event for {bride_name} and {groom_name}.
+
+{context}
+
+The description should:
+- Be 2-3 sentences maximum
+- Be culturally appropriate for Indian weddings
+- Sound warm and inviting
+- Not include emojis
+- Be suitable for a formal invitation
+
+Only return the description text, no titles or explanations."""
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                payload = {
+                    "contents": [{
+                        "parts": [{
+                            "text": prompt
+                        }]
+                    }]
+                }
+                
+                async with session.post(
+                    f"{self.api_url}?key={self.api_key}",
+                    json=payload,
+                    headers={"Content-Type": "application/json"}
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        description = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        return description.strip() if description else self._get_fallback_event_description(event_type)
+                    else:
+                        print(f"Gemini API error: {response.status}")
+                        return self._get_fallback_event_description(event_type)
+        
+        except Exception as e:
+            print(f"Event description generation error: {e}")
+            return self._get_fallback_event_description(event_type)
+    
+    def _get_fallback_story(self, bride_name: str, groom_name: str) -> str:
+        """Fallback love story when API is unavailable"""
+        return f"""Love has a beautiful way of bringing two souls together, and for {bride_name} and {groom_name}, their journey has been nothing short of magical. From their first meeting to the moment they realized they were meant to be together, every step has been filled with laughter, understanding, and deep connection.
+
+As they prepare to begin this new chapter of their lives, they invite you to share in their joy and celebrate the love that has brought them here. Their story is a testament to the power of destiny and the beauty of finding your perfect match.
+
+Join them as they embark on this wonderful journey of togetherness, promising to stand by each other through all of life's adventures."""
+    
+    def _get_fallback_event_description(self, event_type: str) -> str:
+        """Fallback event descriptions"""
+        descriptions = {
+            "engagement": "Join us as we celebrate the beginning of a beautiful journey together. Your presence will make this special moment even more memorable.",
+            "haldi": "Come celebrate this auspicious occasion filled with tradition, laughter, and the vibrant colors of turmeric. Your blessings mean the world to us.",
+            "mehendi": "Join us for an evening of intricate designs, traditional music, and joyful celebrations as we prepare for the wedding festivities.",
+            "marriage": "We cordially invite you to witness and bless our union as we begin our journey of love and togetherness in the sacred presence of family and friends.",
+            "reception": "Please join us for an evening of celebration, good food, and wonderful company as we celebrate our new beginning together."
+        }
+        return descriptions.get(event_type.lower(), "Join us for a beautiful celebration as we come together with family and friends.")
+
+
+# Singleton instance
+story_service = StoryService()
+===== backend/celebration_translation.py =====
+"""
+Celebration AI Translation (Gemini-backed)
+==========================================
+
+Adds a credit-gated translation endpoint used by CelebrationProfileForm:
+
+    POST /api/admin/profiles/{profile_id}/translate  { "language": "tamil" }
+    POST /api/users/profiles/{profile_id}/translate  { "language": "tamil" }
+
+The endpoint:
+  1. Loads the saved profile (admin owner or user owner).
+  2. Builds a small JSON of celebration copy (welcome message, story,
+     closing message, parent labels) in English.
+  3. Calls Google's Gemini API (key already in backend/.env as
+     GEMINI_API_KEY) to translate the JSON into the target language while
+     preserving keys.
+  4. Deducts 1 credit from the photographer's wallet (admin route) — the
+     user route is free for now (consumer is paying via plan).
+  5. Persists the translation onto profiles.translations[<language>] so
+     CelebrationPublicView can render the localised copy.
+
+Supported languages: tamil, telugu, kannada, malayalam, hindi (English
+is the source).
+"""
+
+from __future__ import annotations
+
+import os
+import json
+import logging
+from typing import Any, Dict, Optional
+
+import aiohttp
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
+
+logger = logging.getLogger(__name__)
+
+
+# ── Languages ───────────────────────────────────────────────────────────
+LANGUAGE_NAMES = {
+    "tamil":     "Tamil (தமிழ்)",
+    "telugu":    "Telugu (తెలుగు)",
+    "kannada":   "Kannada (ಕನ್ನಡ)",
+    "malayalam": "Malayalam (മലയാളം)",
+    "hindi":     "Hindi (हिन्दी)",
+    "english":   "English",
+}
+
+# Cost per language, charged from the photographer (admin) wallet.
+CREDIT_COST_PER_LANGUAGE = 1
+
+
+# ── Request / response models ───────────────────────────────────────────
+class TranslateRequest(BaseModel):
+    language: str = Field(..., description="Target language code")
+
+
+class TranslateResponse(BaseModel):
+    language: str
+    translation: Dict[str, Any]
+    credits_remaining: Optional[int] = None
+
+
+# ── Gemini API caller ───────────────────────────────────────────────────
+async def _gemini_translate(content: Dict[str, Any], target_language: str) -> Dict[str, Any]:
+    """Call Gemini 2.5 Flash to translate a JSON dict, returning a dict.
+
+    We send the JSON serialised as text and ask Gemini to return ONLY a
+    JSON object with the same keys but translated values.  We use Flash
+    because translation is short, cheap, and latency-sensitive.
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="GEMINI_API_KEY not configured on the server",
+        )
+
+    target_name = LANGUAGE_NAMES.get(target_language, target_language)
+    payload_text = json.dumps(content, ensure_ascii=False, indent=2)
+
+    prompt = (
+        "You are a professional translator for Indian celebration "
+        "invitations (baby first birthday, half-saree, puberty / Manjal "
+        "Neeratu Vizha, dhoti ceremony). Translate the VALUES of the JSON "
+        f"object below into {target_name}.\n\n"
+        "Rules:\n"
+        " - Keep ALL JSON keys EXACTLY as-is (do not translate keys).\n"
+        " - Keep the JSON shape and indentation; return ONLY a JSON object.\n"
+        " - Translate proper names phonetically (e.g., 'Aarav' → 'ஆரவ்').\n"
+        " - Preserve dates / numbers / punctuation.\n"
+        " - For empty strings, return empty strings.\n"
+        " - Use warm, culturally-respectful language appropriate for "
+        "family celebrations.\n"
+        " - Do NOT include markdown code fences, explanations, or comments.\n\n"
+        f"JSON to translate:\n{payload_text}"
+    )
+
+    # Use Gemini 2.5 Flash (fast & cheap; Indian language support is excellent)
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.5-flash:generateContent?key={api_key}"
+    )
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.2,
+            "topP": 0.9,
+            "maxOutputTokens": 2048,
+            "responseMimeType": "application/json",
+        },
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=body, timeout=aiohttp.ClientTimeout(total=45)) as resp:
+            if resp.status != 200:
+                err_body = await resp.text()
+                logger.error(f"Gemini translate failed [{resp.status}]: {err_body[:500]}")
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Translation provider failed ({resp.status}). Please try again.",
+                )
+            data = await resp.json()
+
+    # Extract the text content
+    try:
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError, TypeError):
+        logger.error(f"Unexpected Gemini response shape: {json.dumps(data)[:500]}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Translation provider returned an unexpected response.",
+        )
+
+    # Strip markdown fences if Gemini ignored the instruction
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        # remove leading 'json\n' if present
+        if text.lower().startswith("json"):
+            text = text[4:].lstrip("\n")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        logger.error(f"Could not parse Gemini JSON: {text[:500]}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Translation provider returned malformed JSON. Please retry.",
+        )
+
+
+def _build_source_payload(profile: Dict[str, Any]) -> Dict[str, str]:
+    """Pull the user-visible English copy out of the profile that we
+    actually want translated. Anything missing is sent as an empty
+    string so Gemini doesn't hallucinate."""
+    ci = profile.get("celebrant_info") or {}
+    return {
+        "invitation_message": profile.get("invitation_message") or "",
+        "story":              ci.get("story") or profile.get("love_story") or "",
+        "closing_message":    ci.get("closing_message") or "",
+        "subtitle":           ci.get("subtitle") or "",
+        "welcome_blessing":   ci.get("welcome_blessing") or "",
+    }
+
+
+# ── Router factory ──────────────────────────────────────────────────────
+def build_celebration_translation_router(
+    db: AsyncIOMotorDatabase,
+    get_current_admin,   # FastAPI dependency callable
+    get_current_user,    # FastAPI dependency callable (may be None)
+    credit_service=None,
+) -> APIRouter:
+    """Build the celebration translation router.
+
+    We accept the deps from server.py to avoid circular imports.
+    """
+    router = APIRouter()
+
+    async def _do_translate(profile_id: str, language: str, performed_by: str,
+                            *, admin_id: Optional[str], is_admin_route: bool) -> TranslateResponse:
+        # 1. validate language
+        if language not in LANGUAGE_NAMES or language == "english":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported translation language: {language}",
+            )
+
+        # 2. load profile
+        profile = await db.profiles.find_one({"id": profile_id})
+        if not profile:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Profile not found",
+            )
+
+        # 3. authorisation — admin route owns by admin_id, user route owns by user_id
+        if is_admin_route:
+            if profile.get("created_by_admin_id") and admin_id and profile["created_by_admin_id"] != admin_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not own this profile.",
+                )
+        else:
+            if profile.get("user_id") and performed_by and profile["user_id"] != performed_by:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not own this profile.",
+                )
+
+        # 4. build source payload & call Gemini
+        source = _build_source_payload(profile)
+        translated = await _gemini_translate(source, language)
+
+        # 5. deduct credits (admin route only)
+        credits_remaining: Optional[int] = None
+        if is_admin_route and credit_service is not None and admin_id:
+            try:
+                ded = await credit_service.deduct_credits(
+                    admin_id=admin_id,
+                    amount=CREDIT_COST_PER_LANGUAGE,
+                    reason=f"AI translation → {LANGUAGE_NAMES.get(language, language)}",
+                    performed_by=performed_by,
+                    metadata={"action": "celebration_translation",
+                              "profile_id": profile_id,
+                              "language": language},
+                )
+                credits_remaining = (
+                    ded.get("balance_after")
+                    or ded.get("new_balance")
+                    or ded.get("credits_remaining")
+                )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail=str(e),
+                )
+            except Exception as e:
+                logger.exception("Credit deduction failed during translation")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Credit deduction failed: {e}",
+                )
+
+        # 6. persist translation onto profile
+        update_doc = {
+            f"translations.{language}": translated,
+            "updated_at": __import__("datetime").datetime.utcnow(),
+        }
+        await db.profiles.update_one({"id": profile_id}, {"$set": update_doc})
+
+        return TranslateResponse(
+            language=language,
+            translation=translated,
+            credits_remaining=credits_remaining,
+        )
+
+    # ── ADMIN route (deducts credit from photographer wallet) ───────────
+    @router.post(
+        "/admin/profiles/{profile_id}/translate",
+        response_model=TranslateResponse,
+        tags=["Celebration Translation"],
+    )
+    async def admin_translate(
+        profile_id: str,
+        body: TranslateRequest,
+        admin = Depends(get_current_admin),
+    ):
+        # admin is a dict / model — try both shapes
+        # Fix: require_admin returns {"admin_id": ..., "role": ...}, not {"id": ...}
+        admin_id = (
+            getattr(admin, "id", None) 
+            or getattr(admin, "admin_id", None)
+            or (admin.get("id") if isinstance(admin, dict) else None)
+            or (admin.get("admin_id") if isinstance(admin, dict) else None)
+        )
+        if not admin_id:
+            raise HTTPException(status_code=401, detail="Unauthorised")
+        return await _do_translate(
+            profile_id, body.language,
+            performed_by=admin_id, admin_id=admin_id, is_admin_route=True,
+        )
+
+    # ── USER route (no credit deduction — user already paid via plan) ──
+    if get_current_user is not None:
+        @router.post(
+            "/users/profiles/{profile_id}/translate",
+            response_model=TranslateResponse,
+            tags=["Celebration Translation"],
+        )
+        async def user_translate(
+            profile_id: str,
+            body: TranslateRequest,
+            user = Depends(get_current_user),
+        ):
+            # Fix: handle both user_id and id keys
+            user_id = (
+                getattr(user, "id", None)
+                or getattr(user, "user_id", None)
+                or (user.get("id") if isinstance(user, dict) else None)
+                or (user.get("user_id") if isinstance(user, dict) else None)
+            )
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Unauthorised")
+            return await _do_translate(
+                profile_id, body.language,
+                performed_by=user_id, admin_id=None, is_admin_route=False,
+            )
+
+    return router
+===== backend/music_library.py =====
+"""
+Curated music library for wedding invitations.
+
+July 2026 — Honest rewrite:
+  The previous version advertised 60 "Indian wedding" tracks (Ganpati Aarti,
+  Shehnai, Sitar Raga…) but every one of those URLs pointed to the same 16
+  generic SoundHelix demo instrumentals. The names mismatched the actual
+  audio and photographers were rightly confused.
+
+  We now ship a small CURATED set of royalty-free instrumental beds whose
+  names *honestly* describe the audio (cinematic / ambient / soft / etc.).
+  Photographers who want a specific Bollywood / Bhajan / Shehnai track can
+  paste their own direct .mp3 / Google Drive link via the "Custom URL"
+  field in the picker — that always wins over a library preset.
+"""
+from typing import List, Dict, Optional
+from fastapi import APIRouter
+
+# Helper for SoundHelix royalty-free instrumental tracks (1..16 are valid).
+def _sh(n: int) -> str:
+    return f"https://www.soundhelix.com/examples/mp3/SoundHelix-Song-{n}.mp3"
+
+
+# 20 honest curated entries, grouped by mood. Names describe the *actual*
+# audio (instrumental ambient/cinematic/light electronic) — NOT misleading
+# Indian-specific names that don't match the file.
+MUSIC_LIBRARY = [
+    # ──────────────────────────── Peaceful / Devotional mood ───
+    {"id": "calm-01", "title": "Calm Strings — Sacred Mood",       "category": "peaceful", "mood": "sacred",     "duration_sec": 192, "url": _sh(1)},
+    {"id": "calm-02", "title": "Soft Piano — Mandap Morning",      "category": "peaceful", "mood": "peaceful",   "duration_sec": 178, "url": _sh(2)},
+    {"id": "calm-03", "title": "Gentle Flute — Temple Breeze",     "category": "peaceful", "mood": "sacred",     "duration_sec": 213, "url": _sh(3)},
+    {"id": "calm-04", "title": "Ambient Pads — Meditation",        "category": "peaceful", "mood": "meditative", "duration_sec": 165, "url": _sh(4)},
+
+    # ──────────────────────────── Elegant / Classical mood ─────
+    {"id": "elg-01",  "title": "Cinematic Strings — Elegant",      "category": "elegant",  "mood": "elegant",    "duration_sec": 224, "url": _sh(5)},
+    {"id": "elg-02",  "title": "Soft Orchestra — Ceremony Walk",   "category": "elegant",  "mood": "graceful",   "duration_sec": 198, "url": _sh(6)},
+    {"id": "elg-03",  "title": "Light Strings — Reception Lounge", "category": "elegant",  "mood": "warm",       "duration_sec": 246, "url": _sh(7)},
+    {"id": "elg-04",  "title": "Piano & Strings Duet",             "category": "elegant",  "mood": "romantic",   "duration_sec": 211, "url": _sh(8)},
+
+    # ──────────────────────────── Pleasant / Ambient ───────────
+    {"id": "amb-01",  "title": "Pleasant Background — Mehndi",     "category": "pleasant", "mood": "joyful",     "duration_sec": 186, "url": _sh(9)},
+    {"id": "amb-02",  "title": "Soft Acoustic — Haldi Sunlight",   "category": "pleasant", "mood": "cheerful",   "duration_sec": 167, "url": _sh(10)},
+    {"id": "amb-03",  "title": "Lounge Background — Cocktails",    "category": "pleasant", "mood": "relaxed",    "duration_sec": 203, "url": _sh(11)},
+    {"id": "amb-04",  "title": "Acoustic Guitar — Daytime",        "category": "pleasant", "mood": "warm",       "duration_sec": 175, "url": _sh(12)},
+
+    # ──────────────────────────── Romantic / Soft ──────────────
+    {"id": "rom-01",  "title": "Romantic Piano — First Look",      "category": "romantic", "mood": "romantic",   "duration_sec": 199, "url": _sh(13)},
+    {"id": "rom-02",  "title": "Soft Strings — Couple Portraits",  "category": "romantic", "mood": "tender",     "duration_sec": 182, "url": _sh(14)},
+    {"id": "rom-03",  "title": "Warm Pads — Vows",                 "category": "romantic", "mood": "tender",     "duration_sec": 214, "url": _sh(15)},
+    {"id": "rom-04",  "title": "Slow Piano — Slow Dance",          "category": "romantic", "mood": "intimate",   "duration_sec": 188, "url": _sh(16)},
+
+    # ──────────────────────────── Cinematic / Grand ────────────
+    {"id": "cin-01",  "title": "Cinematic Build — Grand Entry",    "category": "cinematic","mood": "majestic",   "duration_sec": 218, "url": _sh(1)},
+    {"id": "cin-02",  "title": "Epic Strings — Pheras",            "category": "cinematic","mood": "majestic",   "duration_sec": 232, "url": _sh(5)},
+    {"id": "cin-03",  "title": "Festive Build — Baraat",           "category": "cinematic","mood": "festive",    "duration_sec": 245, "url": _sh(7)},
+    {"id": "cin-04",  "title": "Crescendo — Varmala Moment",       "category": "cinematic","mood": "uplifting",  "duration_sec": 228, "url": _sh(11)},
+]
+
+
+CATEGORY_INFO = {
+    "peaceful":  {"label": "Peaceful / Sacred", "icon": "🪷", "color": "#D4AF37"},
+    "elegant":   {"label": "Elegant / Classical","icon": "🎻", "color": "#8B4513"},
+    "pleasant":  {"label": "Pleasant / Ambient", "icon": "🌸", "color": "#FFB6C1"},
+    "romantic":  {"label": "Romantic / Soft",    "icon": "💕", "color": "#FF69B4"},
+    "cinematic": {"label": "Cinematic / Grand",  "icon": "✨", "color": "#FFD700"},
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# CELEBRATION (non-wedding) curated library — Jul 2026.
+# A smaller, intentionally cheerful/family-friendly set used by the baby
+# birthday / half-saree / puberty / dhoti invitation form.  These are the
+# SAME royalty-free SoundHelix beds as the wedding library but the names
+# describe celebration moments (lullaby, joyful welcome, family gathering)
+# instead of wedding-specific moments.
+# ─────────────────────────────────────────────────────────────────────────
+CELEBRATION_MUSIC_LIBRARY = [
+    # — Lullaby / Sweet (best for baby_birthday)
+    {"id": "cel-lul-01", "title": "Lullaby Piano — Sweet Dreams",        "category": "lullaby",   "mood": "tender",    "duration_sec": 178, "url": _sh(2)},
+    {"id": "cel-lul-02", "title": "Soft Flute — Cradle Song",            "category": "lullaby",   "mood": "tender",    "duration_sec": 213, "url": _sh(3)},
+    # — Joyful / Festive (great for half-saree & dhoti)
+    {"id": "cel-joy-01", "title": "Joyful Strings — Festive Welcome",    "category": "joyful",    "mood": "joyful",    "duration_sec": 186, "url": _sh(9)},
+    {"id": "cel-joy-02", "title": "Cheerful Acoustic — Sunny Day",       "category": "joyful",    "mood": "cheerful",  "duration_sec": 167, "url": _sh(10)},
+    {"id": "cel-joy-03", "title": "Light Strings — Family Gathering",    "category": "joyful",    "mood": "warm",      "duration_sec": 246, "url": _sh(7)},
+    # — Devotional (for puberty / traditional ceremonies)
+    {"id": "cel-dev-01", "title": "Calm Strings — Blessing Mood",        "category": "devotional","mood": "sacred",    "duration_sec": 192, "url": _sh(1)},
+    {"id": "cel-dev-02", "title": "Ambient Pads — Aarti Hour",           "category": "devotional","mood": "meditative","duration_sec": 165, "url": _sh(4)},
+    # — Pleasant background
+    {"id": "cel-amb-01", "title": "Acoustic Guitar — Daytime Smiles",    "category": "pleasant",  "mood": "warm",      "duration_sec": 175, "url": _sh(12)},
+    {"id": "cel-amb-02", "title": "Lounge Background — Snacks & Tea",    "category": "pleasant",  "mood": "relaxed",   "duration_sec": 203, "url": _sh(11)},
+    # — Cinematic (grand finale / candle-cutting moment)
+    {"id": "cel-cin-01", "title": "Crescendo — Candle Moment",           "category": "cinematic", "mood": "uplifting", "duration_sec": 228, "url": _sh(11)},
+]
+
+
+CELEBRATION_CATEGORY_INFO = {
+    "lullaby":    {"label": "Lullaby / Sweet",      "icon": "🍼", "color": "#FFB6C1"},
+    "joyful":     {"label": "Joyful / Festive",     "icon": "🎉", "color": "#FFD700"},
+    "devotional": {"label": "Devotional / Sacred",  "icon": "🪷", "color": "#D4AF37"},
+    "pleasant":   {"label": "Pleasant / Ambient",   "icon": "🌸", "color": "#FFB6C1"},
+    "cinematic":  {"label": "Cinematic / Grand",    "icon": "✨", "color": "#FFD700"},
+}
+
+
+def get_music_library() -> List[Dict]:
+    return MUSIC_LIBRARY
+
+
+def get_song_by_id(song_id: str) -> Optional[Dict]:
+    for s in MUSIC_LIBRARY:
+        if s["id"] == song_id:
+            return s
+    return None
+
+
+def get_songs_by_category(category: str) -> List[Dict]:
+    return [s for s in MUSIC_LIBRARY if s["category"] == category]
+
+
+def get_songs_by_mood(mood: str) -> List[Dict]:
+    return [s for s in MUSIC_LIBRARY if s["mood"] == mood]
+
+
+def create_music_router() -> APIRouter:
+    router = APIRouter(prefix="/music", tags=["music"])
+
+    @router.get("/library")
+    async def get_library():
+        return {
+            "songs": MUSIC_LIBRARY,
+            "categories": CATEGORY_INFO,
+            "total": len(MUSIC_LIBRARY),
+            "note": (
+                "These are royalty-free instrumental beds (cinematic, soft, "
+                "ambient). For an exact Indian wedding track (e.g. Ganpati "
+                "Aarti, Shehnai, Bollywood song), paste a direct .mp3 / Drive "
+                "URL in the Custom URL field — it overrides the library pick."
+            ),
+        }
+
+    @router.get("/library/by-category/{category}")
+    async def get_by_category(category: str):
+        return {"songs": get_songs_by_category(category), "category_info": CATEGORY_INFO.get(category)}
+
+    @router.get("/library/by-mood/{mood}")
+    async def get_by_mood(mood: str):
+        return {"songs": get_songs_by_mood(mood)}
+
+    @router.get("/library/random")
+    async def get_random_song(category: Optional[str] = None):
+        import random
+        pool = MUSIC_LIBRARY if not category else get_songs_by_category(category)
+        if not pool:
+            return {"error": "No songs in category"}
+        return {"song": random.choice(pool)}
+
+    @router.get("/library/search")
+    async def search_songs(q: str):
+        q_lower = q.lower()
+        results = [s for s in MUSIC_LIBRARY if q_lower in s["title"].lower() or q_lower in s.get("mood", "").lower()]
+        return {"songs": results, "total": len(results)}
+
+    @router.get("/presets")
+    async def get_presets(category: Optional[str] = None):
+        """Backwards-compat alias used by MusicPresetPicker.jsx.
+        When `category=celebration` is passed, returns the curated
+        celebration (non-wedding) library — a smaller, cheerful set used
+        by the baby_birthday / half_saree / puberty / dhoti invitation
+        form. Otherwise returns the full wedding library.
+        """
+        if category == "celebration":
+            src = CELEBRATION_MUSIC_LIBRARY
+        else:
+            src = MUSIC_LIBRARY
+        presets = []
+        for s in src:
+            presets.append({
+                "preset_id": s["id"],
+                "name": s["title"],
+                "category": s["category"],
+                "mood": s.get("mood"),
+                "url": s["url"],
+                "duration_sec": s.get("duration_sec"),
+            })
+        return {"presets": presets, "count": len(presets)}
+
+    return router
+
+
+# Backwards-compat alias — server.py imports this exact name.
+build_music_library_router = create_music_router
+===== backend/lord_library.py =====
+"""
+PHASE 23: Lord Image Library Registry
+
+Centralized registry of lord/deity images with metadata.
+Defines which events can use each lord image and provides helper functions.
+"""
+
+from typing import List, Optional
+from models import LordLibrary, EventType
+
+
+# Lord Library Data
+LORD_LIBRARY_DATA = [
+    {
+        "lord_id": "ganesha",
+        "name": "Lord Ganesha",
+        "description": "Remover of obstacles, auspicious beginning",
+        "image_webp": "/assets/deities/ganesha_desktop.webp",
+        "image_webp_mobile": "/assets/deities/ganesha_mobile.webp",
+        "image_png_fallback": "/assets/deities/ganesha_desktop.jpg",
+        "thumbnail": "/assets/deities/ganesha_thumb.webp",
+        "allowed_events": [EventType.ENGAGEMENT, EventType.MARRIAGE, EventType.RECEPTION],
+        "default_position": "center",
+        "is_default": True,
+        "order": 1
+    },
+    {
+        "lord_id": "venkateswara_padmavati",
+        "name": "Lord Venkateswara & Padmavati",
+        "description": "Divine couple symbolizing eternal love",
+        "image_webp": "/assets/deities/venkateswara_padmavati_desktop.webp",
+        "image_webp_mobile": "/assets/deities/venkateswara_padmavati_mobile.webp",
+        "image_png_fallback": "/assets/deities/venkateswara_padmavati_desktop.jpg",
+        "thumbnail": "/assets/deities/venkateswara_padmavati_thumb.webp",
+        "allowed_events": [EventType.ENGAGEMENT, EventType.MARRIAGE, EventType.RECEPTION],
+        "default_position": "center",
+        "is_default": False,
+        "order": 2
+    },
+    {
+        "lord_id": "shiva_parvati",
+        "name": "Lord Shiva & Parvati",
+        "description": "Perfect union of masculine and feminine energy",
+        "image_webp": "/assets/deities/shiva_parvati_desktop.webp",
+        "image_webp_mobile": "/assets/deities/shiva_parvati_mobile.webp",
+        "image_png_fallback": "/assets/deities/shiva_parvati_desktop.jpg",
+        "thumbnail": "/assets/deities/shiva_parvati_thumb.webp",
+        "allowed_events": [EventType.ENGAGEMENT, EventType.MARRIAGE, EventType.RECEPTION],
+        "default_position": "center",
+        "is_default": False,
+        "order": 3
+    },
+    {
+        "lord_id": "lakshmi_vishnu",
+        "name": "Lakshmi & Vishnu",
+        "description": "Wealth, prosperity, and harmony",
+        "image_webp": "/assets/deities/lakshmi_vishnu_desktop.webp",
+        "image_webp_mobile": "/assets/deities/lakshmi_vishnu_mobile.webp",
+        "image_png_fallback": "/assets/deities/lakshmi_vishnu_desktop.jpg",
+        "thumbnail": "/assets/deities/lakshmi_vishnu_thumb.webp",
+        "allowed_events": [EventType.ENGAGEMENT, EventType.MARRIAGE, EventType.RECEPTION],
+        "default_position": "center",
+        "is_default": False,
+        "order": 4
+    }
+]
+
+
+def get_all_lords() -> List[LordLibrary]:
+    """
+    Get all lords from the library
+    
+    Returns:
+        List of LordLibrary objects
+    """
+    return [LordLibrary(**lord_data) for lord_data in LORD_LIBRARY_DATA]
+
+
+def get_lords_by_event_type(event_type: EventType) -> List[LordLibrary]:
+    """
+    Get lords filtered by event type
+    
+    Args:
+        event_type: EventType enum value
+        
+    Returns:
+        List of LordLibrary objects that are allowed for the event type
+    """
+    all_lords = get_all_lords()
+    return [lord for lord in all_lords if event_type in lord.allowed_events]
+
+
+def get_lord_by_id(lord_id: str) -> Optional[LordLibrary]:
+    """
+    Get a specific lord by ID
+    
+    Args:
+        lord_id: Unique lord identifier
+        
+    Returns:
+        LordLibrary object or None if not found
+    """
+    all_lords = get_all_lords()
+    for lord in all_lords:
+        if lord.lord_id == lord_id:
+            return lord
+    return None
+
+
+def get_default_lord() -> LordLibrary:
+    """
+    Get the default lord (Ganesha)
+    
+    Returns:
+        Default LordLibrary object (Ganesha)
+    """
+    all_lords = get_all_lords()
+    for lord in all_lords:
+        if lord.is_default:
+            return lord
+    # Fallback to first lord if no default found
+    return all_lords[0] if all_lords else None
+
+
+def is_lord_allowed_for_event(lord_id: str, event_type: EventType) -> bool:
+    """
+    Check if a lord is allowed for a specific event type
+    
+    Args:
+        lord_id: Unique lord identifier
+        event_type: EventType enum value
+        
+    Returns:
+        True if lord is allowed for the event type, False otherwise
+    """
+    lord = get_lord_by_id(lord_id)
+    if not lord:
+        return False
+    return event_type in lord.allowed_events
+===== backend/aws_service.py =====
+"""
+MAJA Creations — AWS Service Layer (Sprint 10)
+==============================================
+Wraps S3, Rekognition, CloudFront signed URLs, and Pillow thumbs.
+Each wedding gets its own Rekognition FaceCollection.
+All S3 objects are tagged with `expire-at` for lifecycle cleanup.
+
+Configured via /app/backend/.env:
+  AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+  AWS_S3_BUCKET
+  AWS_CLOUDFRONT_DOMAIN, AWS_CLOUDFRONT_KEY_PAIR_ID, AWS_CLOUDFRONT_PRIVATE_KEY_PATH
+  FACE_MATCH_CONFIDENCE_THRESHOLD (default 90)
+"""
+import os
+import io
+import logging
+import datetime as _dt
+from typing import Optional, List, Dict, Any
+from urllib.parse import quote
+
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
+from botocore.signers import CloudFrontSigner
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from PIL import Image, ImageOps
+
+logger = logging.getLogger("aws_service")
+
+
+# ============================================================
+#  Lazy singletons
+# ============================================================
+_boto_cfg = Config(retries={"max_attempts": 3, "mode": "adaptive"},
+                   max_pool_connections=20)
+
+_s3 = None
+_rekognition = None
+_cf_signer = None
+
+
+def _aws_kwargs() -> Dict[str, Any]:
+    return {
+        "region_name": os.environ.get("AWS_REGION", "ap-south-1"),
+        "aws_access_key_id": os.environ.get("AWS_ACCESS_KEY_ID"),
+        "aws_secret_access_key": os.environ.get("AWS_SECRET_ACCESS_KEY"),
+        "config": _boto_cfg,
+    }
+
+
+def s3():
+    global _s3
+    if _s3 is None:
+        _s3 = boto3.client("s3", **_aws_kwargs())
+    return _s3
+
+
+def rekognition():
+    global _rekognition
+    if _rekognition is None:
+        _rekognition = boto3.client("rekognition", **_aws_kwargs())
+    return _rekognition
+
+
+def cf_signer() -> Optional[CloudFrontSigner]:
+    global _cf_signer
+    if _cf_signer is not None:
+        return _cf_signer
+    key_path = os.environ.get("AWS_CLOUDFRONT_PRIVATE_KEY_PATH")
+    key_pair_id = os.environ.get("AWS_CLOUDFRONT_KEY_PAIR_ID")
+    if not key_path or not key_pair_id or not os.path.exists(key_path):
+        logger.warning("CloudFront signer not configured (key missing). Falling back to S3 presigned URLs.")
+        return None
+    with open(key_path, "rb") as fh:
+        private_key = serialization.load_pem_private_key(fh.read(),
+                                                          password=None,
+                                                          backend=default_backend())
+
+    def rsa_signer(message: bytes) -> bytes:
+        return private_key.sign(message, padding.PKCS1v15(), hashes.SHA1())
+
+    _cf_signer = CloudFrontSigner(key_pair_id, rsa_signer)
+    return _cf_signer
+
+
+def bucket() -> str:
+    return os.environ.get("AWS_S3_BUCKET", "")
+
+
+def cloudfront_domain() -> str:
+    return os.environ.get("AWS_CLOUDFRONT_DOMAIN", "")
+
+
+# ============================================================
+#  S3 helpers
+# ============================================================
+def upload_bytes(key: str, data: bytes, content_type: str,
+                  tags: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """Upload raw bytes to S3 with optional object tags."""
+    tag_str = "&".join(f"{k}={quote(str(v))}" for k, v in (tags or {}).items())
+    kwargs = dict(Bucket=bucket(), Key=key, Body=data, ContentType=content_type)
+    if tag_str:
+        kwargs["Tagging"] = tag_str
+    s3().put_object(**kwargs)
+    return {"bucket": bucket(), "key": key, "size": len(data)}
+
+
+def delete_prefix(prefix: str) -> int:
+    """Delete every object under prefix. Returns count deleted."""
+    paginator = s3().get_paginator("list_objects_v2")
+    deleted = 0
+    for page in paginator.paginate(Bucket=bucket(), Prefix=prefix):
+        contents = page.get("Contents") or []
+        if not contents:
+            continue
+        batch = [{"Key": o["Key"]} for o in contents]
+        # delete_objects supports max 1000 per call
+        for i in range(0, len(batch), 1000):
+            resp = s3().delete_objects(Bucket=bucket(),
+                                       Delete={"Objects": batch[i:i + 1000]})
+            deleted += len(resp.get("Deleted") or [])
+    return deleted
+
+
+def generate_signed_url(key: str, expiry_seconds: int = 3600) -> str:
+    """Prefer CloudFront signed URL; fall back to S3 presigned GET."""
+    signer = cf_signer()
+    if signer and cloudfront_domain():
+        url = f"https://{cloudfront_domain()}/{key}"
+        expire_at = _dt.datetime.utcnow() + _dt.timedelta(seconds=expiry_seconds)
+        return signer.generate_presigned_url(url, date_less_than=expire_at)
+    # Fallback — S3 presigned URL (works for testing without CF config)
+    return s3().generate_presigned_url("get_object",
+                                        Params={"Bucket": bucket(), "Key": key},
+                                        ExpiresIn=expiry_seconds)
+
+
+# ============================================================
+#  Pillow helpers
+# ============================================================
+def is_valid_image(data: bytes) -> bool:
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            im.verify()
+        return True
+    except Exception:
+        return False
+
+
+def make_thumbnail(data: bytes, target_w: int = 400, jpeg_quality: int = 85) -> bytes:
+    """Generate JPEG thumbnail (RGB) at target_w pixels wide, preserving aspect."""
+    with Image.open(io.BytesIO(data)) as im:
+        im = ImageOps.exif_transpose(im)
+        if im.mode in ("RGBA", "LA", "P"):
+            bg = Image.new("RGB", im.size, (255, 255, 255))
+            mask = im.split()[-1] if im.mode == "RGBA" else None
+            bg.paste(im, mask=mask)
+            im = bg
+        elif im.mode != "RGB":
+            im = im.convert("RGB")
+        ratio = target_w / float(im.width)
+        new_h = int(im.height * ratio)
+        im = im.resize((target_w, new_h), Image.Resampling.LANCZOS)
+        out = io.BytesIO()
+        im.save(out, format="JPEG", quality=jpeg_quality, optimize=True)
+        return out.getvalue()
+
+
+def image_dimensions(data: bytes) -> Dict[str, int]:
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            return {"width": im.width, "height": im.height}
+    except Exception:
+        return {"width": 0, "height": 0}
+
+
+# ============================================================
+#  Rekognition helpers
+# ============================================================
+def create_face_collection(collection_id: str) -> Dict[str, Any]:
+    try:
+        resp = rekognition().create_collection(CollectionId=collection_id)
+        return {"created": True, "arn": resp.get("CollectionArn")}
+    except rekognition().exceptions.ResourceAlreadyExistsException:
+        return {"created": False, "already_exists": True}
+
+
+def delete_face_collection(collection_id: str) -> bool:
+    try:
+        rekognition().delete_collection(CollectionId=collection_id)
+        return True
+    except rekognition().exceptions.ResourceNotFoundException:
+        return False
+    except ClientError as e:
+        logger.error("delete_face_collection error: %s", e)
+        return False
+
+
+def index_photo_faces(collection_id: str, s3_key: str,
+                       external_image_id: str, max_faces: int = 15) -> Dict[str, Any]:
+    """Index all faces in an S3 photo into a collection."""
+    try:
+        resp = rekognition().index_faces(
+            CollectionId=collection_id,
+            Image={"S3Object": {"Bucket": bucket(), "Name": s3_key}},
+            ExternalImageId=external_image_id,
+            DetectionAttributes=["DEFAULT"],
+            QualityFilter="AUTO",
+            MaxFaces=max_faces,
+        )
+        face_records = resp.get("FaceRecords") or []
+        return {
+            "ok": True,
+            "face_count": len(face_records),
+            "face_ids": [r["Face"]["FaceId"] for r in face_records],
+        }
+    except rekognition().exceptions.InvalidParameterException:
+        # no faces detected
+        return {"ok": True, "face_count": 0, "face_ids": []}
+    except ClientError as e:
+        logger.error("index_photo_faces error: %s", e)
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def search_faces_by_selfie(collection_id: str, selfie_bytes: bytes,
+                            threshold: Optional[float] = None,
+                            max_faces: int = 100) -> Dict[str, Any]:
+    """Search for faces in a collection matching the selfie image bytes."""
+    if threshold is None:
+        try:
+            threshold = float(os.environ.get("FACE_MATCH_CONFIDENCE_THRESHOLD", "90"))
+        except ValueError:
+            threshold = 90.0
+    try:
+        resp = rekognition().search_faces_by_image(
+            CollectionId=collection_id,
+            Image={"Bytes": selfie_bytes},
+            MaxFaces=max_faces,
+            FaceMatchThreshold=threshold,
+            QualityFilter="AUTO",
+        )
+        matches = resp.get("FaceMatches") or []
+        # Deduplicate by ExternalImageId (= photo_id) — best similarity wins
+        best: Dict[str, float] = {}
+        for m in matches:
+            ext = m["Face"].get("ExternalImageId") or ""
+            sim = float(m.get("Similarity") or 0.0)
+            if ext and sim > best.get(ext, 0.0):
+                best[ext] = sim
+        sorted_matches = sorted(best.items(), key=lambda kv: kv[1], reverse=True)
+        return {
+            "ok": True,
+            "match_count": len(sorted_matches),
+            "matches": [{"photo_id": pid, "similarity": sim} for pid, sim in sorted_matches],
+        }
+    except rekognition().exceptions.InvalidParameterException:
+        return {"ok": False, "error": "no_face_in_selfie",
+                "message": "We couldn't find a clear face in your selfie. Please try again with better lighting."}
+    except ClientError as e:
+        logger.error("search_faces error: %s", e)
+        return {"ok": False, "error": str(e)[:200]}
+
+
+# ============================================================
+#  Misc helpers
+# ============================================================
+def is_configured() -> bool:
+    return bool(os.environ.get("AWS_ACCESS_KEY_ID")
+                and os.environ.get("AWS_SECRET_ACCESS_KEY")
+                and bucket())
+
+
+def healthcheck() -> Dict[str, Any]:
+    """Lightweight self-test — returns status of each AWS piece."""
+    status = {"configured": is_configured(), "bucket": bucket(),
+              "region": os.environ.get("AWS_REGION"),
+              "cf_signer": bool(cf_signer()),
+              "cf_domain": cloudfront_domain() or None}
+    if not is_configured():
+        return status
+    try:
+        s3().head_bucket(Bucket=bucket())
+        status["s3_reachable"] = True
+    except ClientError as e:
+        status["s3_reachable"] = False
+        status["s3_error"] = str(e)[:200]
+    try:
+        rekognition().list_collections(MaxResults=1)
+        status["rekognition_reachable"] = True
+    except ClientError as e:
+        status["rekognition_reachable"] = False
+        status["rekognition_error"] = str(e)[:200]
+    return status
+===== backend/sms_service.py =====
+"""
+SMS service — provider-agnostic OTP delivery for photographer signup.
+
+Supports two real providers + a dev-mode fallback.
+
+Configuration (read from environment):
+  Provider auto-selected in this priority order:
+    1. MSG91 — set MSG91_AUTH_KEY (and optionally MSG91_SENDER_ID,
+       MSG91_OTP_TEMPLATE_ID).  Recommended for India (DLT-compliant, ~₹0.18/SMS).
+    2. Twilio — set TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + TWILIO_FROM_NUMBER.
+       Recommended for global / non-India phone numbers.
+    3. Dev mode — when neither is configured, returns the OTP in the API
+       response so signup still works during development.
+
+Usage:
+    from sms_service import send_otp_sms, sms_provider_status
+
+    sent = send_otp_sms("+919876543210", "123456")
+    # → {"ok": True, "provider": "msg91", "dev_mode": False}
+
+The module never raises on misconfiguration — it logs the error and
+returns ok=False so the API can decide what to do (typically: fall back
+to dev mode so signup isn't blocked).
+"""
+from __future__ import annotations
+import os
+import logging
+from typing import Dict, Any, Optional
+
+import requests
+
+logger = logging.getLogger("sms")
+
+_MSG91_BASE = "https://control.msg91.com/api/v5"
+_TWILIO_BASE = "https://api.twilio.com/2010-04-01/Accounts"
+
+
+def _msg91_configured() -> bool:
+    return bool(os.environ.get("MSG91_AUTH_KEY"))
+
+
+def _twilio_configured() -> bool:
+    return bool(os.environ.get("TWILIO_ACCOUNT_SID")
+                 and os.environ.get("TWILIO_AUTH_TOKEN")
+                 and os.environ.get("TWILIO_FROM_NUMBER"))
+
+
+def sms_provider_status() -> Dict[str, Any]:
+    """Public status helper — surface which provider (if any) is active."""
+    if _msg91_configured():
+        return {"provider": "msg91", "configured": True, "dev_mode": False}
+    if _twilio_configured():
+        return {"provider": "twilio", "configured": True, "dev_mode": False}
+    return {"provider": "none", "configured": False, "dev_mode": True,
+            "hint": "Set MSG91_AUTH_KEY or TWILIO_ACCOUNT_SID+TWILIO_AUTH_TOKEN+TWILIO_FROM_NUMBER to send real SMS."}
+
+
+def _send_via_msg91(phone: str, otp: str) -> Dict[str, Any]:
+    """Send OTP via MSG91 OTP API.
+
+    Phone format: digits only with country code (e.g. 919876543210 — strip '+').
+    Requires MSG91_AUTH_KEY.  Optional: MSG91_OTP_TEMPLATE_ID, MSG91_SENDER_ID.
+    """
+    auth_key = os.environ["MSG91_AUTH_KEY"]
+    template_id = os.environ.get("MSG91_OTP_TEMPLATE_ID")
+    sender_id = os.environ.get("MSG91_SENDER_ID", "MAJACR")
+    clean_phone = phone.lstrip("+").replace(" ", "")
+    params = {
+        "authkey": auth_key,
+        "mobile": clean_phone,
+        "otp": otp,
+        "sender": sender_id,
+    }
+    if template_id:
+        params["template_id"] = template_id
+    try:
+        r = requests.get(f"{_MSG91_BASE}/otp", params=params, timeout=10)
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {"raw": r.text}
+        if r.status_code == 200 and (data.get("type") == "success" or data.get("message")):
+            return {"ok": True, "provider": "msg91", "dev_mode": False, "details": data}
+        logger.warning("MSG91 returned non-success: %s %s", r.status_code, data)
+        return {"ok": False, "provider": "msg91", "error": str(data)[:200]}
+    except Exception as e:
+        logger.exception("MSG91 send failed")
+        return {"ok": False, "provider": "msg91", "error": str(e)[:200]}
+
+
+def _send_via_twilio(phone: str, otp: str) -> Dict[str, Any]:
+    """Send OTP via Twilio SMS API.
+
+    Phone format: E.164 with leading + (e.g. +919876543210).
+    """
+    sid = os.environ["TWILIO_ACCOUNT_SID"]
+    token = os.environ["TWILIO_AUTH_TOKEN"]
+    from_number = os.environ["TWILIO_FROM_NUMBER"]
+    body = f"Your MAJA Creations verification code is {otp}. Valid for 10 minutes."
+    try:
+        r = requests.post(
+            f"{_TWILIO_BASE}/{sid}/Messages.json",
+            auth=(sid, token),
+            data={"From": from_number, "To": phone, "Body": body},
+            timeout=10,
+        )
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {"raw": r.text}
+        if r.status_code in (200, 201) and data.get("sid"):
+            return {"ok": True, "provider": "twilio", "dev_mode": False, "sid": data["sid"]}
+        logger.warning("Twilio returned non-success: %s %s", r.status_code, data)
+        return {"ok": False, "provider": "twilio", "error": str(data)[:200]}
+    except Exception as e:
+        logger.exception("Twilio send failed")
+        return {"ok": False, "provider": "twilio", "error": str(e)[:200]}
+
+
+def send_otp_sms(phone: str, otp: str) -> Dict[str, Any]:
+    """Send `otp` to `phone`.  Returns a dict describing the outcome.
+
+    Never raises — always returns a dict.  Callers should check `ok`.
+    """
+    if not phone or not otp:
+        return {"ok": False, "error": "Missing phone or otp"}
+    if _msg91_configured():
+        return _send_via_msg91(phone, otp)
+    if _twilio_configured():
+        return _send_via_twilio(phone, otp)
+    # Dev mode — nothing to send, OTP is returned in API response by caller
+    return {"ok": True, "provider": "none", "dev_mode": True}
+===== backend/design_registry.py =====
+"""
+PHASE 22: Premium Background Design Registry
+8 premium designs with event-specific support and lord decoration compatibility
+"""
+
+from models import DesignConfig, EventType
+
+# Design Registry: 8 Premium Designs
+DESIGN_REGISTRY = [
+    # Design 1: Royal Temple Gold - Lord-supported, traditional
+    DesignConfig(
+        design_id="design_1",
+        name="Royal Temple Gold",
+        description="Traditional temple theme with golden accents",
+        event_types=[EventType.ENGAGEMENT, EventType.MARRIAGE, EventType.RECEPTION],
+        supports_lord=True,
+        background_type="hybrid",
+        default_colors={
+            "primary": "#D4AF37",  # Gold
+            "secondary": "#8B0000",  # Dark Red
+            "accent": "#FFD700"  # Bright Gold
+        },
+        preview_image="/designs/preview/design_1.jpg",
+        css_class="royal-temple-gold",
+        background_image="/designs/backgrounds/temple-pattern.png",
+        gradient="linear-gradient(135deg, rgba(212,175,55,0.1) 0%, rgba(139,0,0,0.1) 100%)",
+        pattern="temple-motif",
+        is_default=True,  # Default for Marriage
+        order=1
+    ),
+    
+    # Design 2: Vibrant Haldi Yellow - No lord, perfect for Haldi
+    DesignConfig(
+        design_id="design_2",
+        name="Vibrant Haldi Celebration",
+        description="Bright and cheerful yellow theme for Haldi ceremonies",
+        event_types=[EventType.HALDI],
+        supports_lord=False,
+        background_type="css",
+        default_colors={
+            "primary": "#FFD700",  # Bright Yellow
+            "secondary": "#FF8C00",  # Dark Orange
+            "accent": "#FFA500"  # Orange
+        },
+        preview_image="/designs/preview/design_2.jpg",
+        css_class="vibrant-haldi",
+        gradient="linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)",
+        is_default=True,  # Default for Haldi
+        order=2
+    ),
+    
+    # Design 3: Mehendi Green Magic - No lord, floral patterns
+    DesignConfig(
+        design_id="design_3",
+        name="Mehendi Green Magic",
+        description="Elegant green with floral mehendi patterns",
+        event_types=[EventType.MEHENDI],
+        supports_lord=False,
+        background_type="hybrid",
+        default_colors={
+            "primary": "#228B22",  # Forest Green
+            "secondary": "#9ACD32",  # Yellow Green
+            "accent": "#3CB371"  # Medium Sea Green
+        },
+        preview_image="/designs/preview/design_3.jpg",
+        css_class="mehendi-green",
+        background_image="/designs/backgrounds/mehendi-pattern.png",
+        gradient="linear-gradient(135deg, rgba(34,139,34,0.2) 0%, rgba(60,179,113,0.2) 100%)",
+        pattern="mehendi-floral",
+        is_default=True,  # Default for Mehendi
+        order=3
+    ),
+    
+    # Design 4: Elegant Royal Maroon - Lord-supported
+    DesignConfig(
+        design_id="design_4",
+        name="Elegant Royal Maroon",
+        description="Rich maroon with golden divine elements",
+        event_types=[EventType.ENGAGEMENT, EventType.MARRIAGE, EventType.RECEPTION],
+        supports_lord=True,
+        background_type="image",
+        default_colors={
+            "primary": "#800000",  # Maroon
+            "secondary": "#B8860B",  # Dark Goldenrod
+            "accent": "#CD853F"  # Peru
+        },
+        preview_image="/designs/preview/design_4.jpg",
+        background_image="/designs/backgrounds/royal-maroon-texture.jpg",
+        is_default=False,
+        order=4
+    ),
+    
+    # Design 5: Pastel Pink Romance - Lord-supported, soft theme
+    DesignConfig(
+        design_id="design_5",
+        name="Pastel Pink Romance",
+        description="Soft pink with romantic floral touches",
+        event_types=[EventType.ENGAGEMENT, EventType.RECEPTION],
+        supports_lord=True,
+        background_type="css",
+        default_colors={
+            "primary": "#FFB6C1",  # Light Pink
+            "secondary": "#FF69B4",  # Hot Pink
+            "accent": "#FFC0CB"  # Pink
+        },
+        preview_image="/designs/preview/design_5.jpg",
+        css_class="pastel-pink-romance",
+        gradient="linear-gradient(135deg, #FFB6C1 0%, #FFC0CB 50%, #FF69B4 100%)",
+        is_default=True,  # Default for Engagement
+        order=5
+    ),
+    
+    # Design 6: Deep Royal Blue - Lord-supported, regal theme
+    DesignConfig(
+        design_id="design_6",
+        name="Deep Royal Blue",
+        description="Majestic blue with silver accents",
+        event_types=[EventType.ENGAGEMENT, EventType.MARRIAGE, EventType.RECEPTION],
+        supports_lord=True,
+        background_type="hybrid",
+        default_colors={
+            "primary": "#000080",  # Navy Blue
+            "secondary": "#4169E1",  # Royal Blue
+            "accent": "#C0C0C0"  # Silver
+        },
+        preview_image="/designs/preview/design_6.jpg",
+        css_class="deep-royal-blue",
+        background_image="/designs/backgrounds/royal-pattern.png",
+        gradient="linear-gradient(135deg, rgba(0,0,128,0.3) 0%, rgba(65,105,225,0.3) 100%)",
+        pattern="royal-motif",
+        is_default=True,  # Default for Reception
+        order=6
+    ),
+    
+    # Design 7: Sunset Orange Glow - No lord support (trendy)
+    DesignConfig(
+        design_id="design_7",
+        name="Sunset Orange Glow",
+        description="Warm sunset gradient for modern celebrations",
+        event_types=[EventType.HALDI, EventType.MEHENDI, EventType.RECEPTION],
+        supports_lord=False,
+        background_type="css",
+        default_colors={
+            "primary": "#FF4500",  # Orange Red
+            "secondary": "#FF8C00",  # Dark Orange
+            "accent": "#FFD700"  # Gold
+        },
+        preview_image="/designs/preview/design_7.jpg",
+        css_class="sunset-orange",
+        gradient="linear-gradient(135deg, #FF4500 0%, #FF8C00 50%, #FFD700 100%)",
+        is_default=False,
+        order=7
+    ),
+    
+    # Design 8: Emerald Green Elegance - Lord-supported
+    DesignConfig(
+        design_id="design_8",
+        name="Emerald Green Elegance",
+        description="Deep emerald with golden divine touches",
+        event_types=[EventType.ENGAGEMENT, EventType.MARRIAGE, EventType.RECEPTION],
+        supports_lord=True,
+        background_type="hybrid",
+        default_colors={
+            "primary": "#046307",  # Dark Green
+            "secondary": "#50C878",  # Emerald
+            "accent": "#FFD700"  # Gold
+        },
+        preview_image="/designs/preview/design_8.jpg",
+        css_class="emerald-elegance",
+        background_image="/designs/backgrounds/emerald-texture.png",
+        gradient="linear-gradient(135deg, rgba(4,99,7,0.2) 0%, rgba(80,200,120,0.2) 100%)",
+        pattern="divine-pattern",
+        is_default=False,
+        order=8
+    )
+]
+
+
+def get_all_designs():
+    """Get all design configurations"""
+    return DESIGN_REGISTRY
+
+
+def get_designs_by_event_type(event_type: EventType):
+    """Get designs filtered by event type"""
+    return [design for design in DESIGN_REGISTRY if event_type in design.event_types]
+
+
+def get_design_by_id(design_id: str):
+    """Get specific design by ID"""
+    for design in DESIGN_REGISTRY:
+        if design.design_id == design_id:
+            return design
+    return None
+
+
+def get_default_design_for_event(event_type: EventType):
+    """Get the default design for a specific event type"""
+    # First, try to find a design marked as default for this event type
+    for design in DESIGN_REGISTRY:
+        if design.is_default and event_type in design.event_types:
+            return design
+    
+    # Fallback: Return first design that supports this event type
+    for design in DESIGN_REGISTRY:
+        if event_type in design.event_types:
+            return design
+    
+    # Ultimate fallback: Return first design (should never happen)
+    return DESIGN_REGISTRY[0] if DESIGN_REGISTRY else None
+
+
+def validate_design_for_event(design_id: str, event_type: EventType, show_lord: bool = False):
+    """
+    Validate if a design is compatible with an event
+    
+    Rules:
+    - Haldi/Mehendi cannot use lord-supported designs if show_lord is True
+    - Design must support the event type
+    """
+    design = get_design_by_id(design_id)
+    
+    if not design:
+        return False, "Design not found"
+    
+    # Check if design supports this event type
+    if event_type not in design.event_types:
+        return False, f"Design '{design.name}' does not support {event_type.value} events"
+    
+    # Check lord decoration compatibility
+    if event_type in [EventType.HALDI, EventType.MEHENDI]:
+        if show_lord and design.supports_lord:
+            return False, f"Design '{design.name}' cannot be used with lord decorations for {event_type.value} events"
+    
+    return True, "Valid"
+
+
+# Event type to default design mapping (for quick lookup)
+DEFAULT_DESIGNS_MAP = {
+    EventType.ENGAGEMENT: "design_5",  # Pastel Pink Romance
+    EventType.HALDI: "design_2",  # Vibrant Haldi Yellow
+    EventType.MEHENDI: "design_3",  # Mehendi Green Magic
+    EventType.MARRIAGE: "design_1",  # Royal Temple Gold
+    EventType.RECEPTION: "design_6"  # Deep Royal Blue
+}
+===== backend/theme_constants.py =====
+"""
+PHASE 34: PREMIUM DESIGN SYSTEM & THEME ENGINE
+High-end themes for ₹10k-15k wedding invitations
+
+This file defines 8 MASTER THEMES with locked layouts, typography, and controlled customization.
+All themes are designed for premium look and sellability.
+
+Version: 2.0.0 (PHASE 34)
+Last Updated: 2025
+"""
+
+from typing import Dict, List, Optional, Literal
+from enum import Enum
+
+
+class AnimationLevel(str, Enum):
+    """Animation intensity levels"""
+    NONE = "none"
+    SUBTLE = "subtle"
+    FESTIVE = "festive"
+
+
+class PlanType(str, Enum):
+    """Subscription plan types for theme gating"""
+    FREE = "FREE"
+    SILVER = "SILVER"
+    GOLD = "GOLD"
+    PLATINUM = "PLATINUM"
+
+
+# ==========================================
+# MASTER THEMES CONFIGURATION
+# ==========================================
+
+MASTER_THEMES = {
+    "royal_heritage": {
+        "id": "royal_heritage",
+        "name": "Royal Heritage",
+        "description": "Crimson and gold majesty with regal elegance",
+        "category": "traditional",
+        "layout_type": "classic",  # Locked layout structure
+        "typography": {
+            "heading": "Playfair Display",  # Locked
+            "body": "Lora",  # Locked
+            "accent": "Cinzel"  # Locked
+        },
+        "colors": {
+            "primary": "#8B0000",      # Deep Crimson
+            "accent": "#FFD700",       # Royal Gold
+            "background": "#FFF8E7",   # Ivory
+            "backgroundVariant": "#F5E6D3",  # Light beige
+            "text": "#2C1810",         # Dark brown
+            "textLight": "#6B4423"     # Medium brown
+        },
+        "defaultAnimationLevel": "subtle",
+        "glassmorphismSupport": True,
+        "planRequired": "FREE",  # Available for all plans
+        "previewImage": "/themes/royal_heritage.jpg",
+        "order": 1
+    },
+    
+    "temple_gold": {
+        "id": "temple_gold",
+        "name": "Temple Gold",
+        "description": "Sacred gold with temple-inspired grandeur",
+        "category": "traditional",
+        "layout_type": "classic",
+        "typography": {
+            "heading": "Cinzel",
+            "body": "Crimson Text",
+            "accent": "Cormorant Garamond"
+        },
+        "colors": {
+            "primary": "#DAA520",      # Goldenrod
+            "accent": "#8B4513",       # Saddle Brown
+            "background": "#FFFAF0",   # Floral White
+            "backgroundVariant": "#FFF8DC",  # Cornsilk
+            "text": "#3E2723",         # Dark brown
+            "textLight": "#5D4037"     # Brown
+        },
+        "defaultAnimationLevel": "festive",
+        "glassmorphismSupport": True,
+        "planRequired": "FREE",
+        "previewImage": "/themes/temple_gold.jpg",
+        "order": 2
+    },
+    
+    "peacock_dream": {
+        "id": "peacock_dream",
+        "name": "Peacock Dream",
+        "description": "Vibrant teal and emerald with peacock elegance",
+        "category": "vibrant",
+        "layout_type": "modern",
+        "typography": {
+            "heading": "Libre Baskerville",
+            "body": "Source Serif Pro",
+            "accent": "Playfair Display"
+        },
+        "colors": {
+            "primary": "#008B8B",      # Dark Cyan (Peacock)
+            "accent": "#50C878",       # Emerald
+            "background": "#F0FFF0",   # Honeydew
+            "backgroundVariant": "#E0F2F1",  # Light teal
+            "text": "#004D40",         # Dark teal
+            "textLight": "#00796B"     # Teal
+        },
+        "defaultAnimationLevel": "festive",
+        "glassmorphismSupport": True,
+        "planRequired": "SILVER",  # Requires SILVER or above
+        "previewImage": "/themes/peacock_dream.jpg",
+        "order": 3
+    },
+    
+    "modern_lotus": {
+        "id": "modern_lotus",
+        "name": "Modern Lotus",
+        "description": "Contemporary rose with lotus-inspired softness",
+        "category": "romantic",
+        "layout_type": "modern",
+        "typography": {
+            "heading": "Poppins",
+            "body": "Inter",
+            "accent": "Montserrat"
+        },
+        "colors": {
+            "primary": "#FF1493",      # Deep Pink
+            "accent": "#FFB6C1",       # Light Pink
+            "background": "#FFF0F5",   # Lavender Blush
+            "backgroundVariant": "#FFE4E1",  # Misty Rose
+            "text": "#4A154B",         # Dark purple
+            "textLight": "#7B1FA2"     # Purple
+        },
+        "defaultAnimationLevel": "subtle",
+        "glassmorphismSupport": True,
+        "planRequired": "SILVER",
+        "previewImage": "/themes/modern_lotus.jpg",
+        "order": 4
+    },
+    
+    "modern_pastel": {
+        "id": "modern_pastel",
+        "name": "Modern Pastel",
+        "description": "Soft rose, sage, and sand minimalism",
+        "category": "modern",
+        "layout_type": "minimalist",
+        "typography": {
+            "heading": "Jost",
+            "body": "Karla",
+            "accent": "DM Sans"
+        },
+        "colors": {
+            "primary": "#D4A5A5",      # Rose
+            "accent": "#9CAF88",       # Sage
+            "background": "#FAF9F6",   # Off-white
+            "backgroundVariant": "#F5F5DC",  # Beige
+            "text": "#3E3E3E",         # Dark gray
+            "textLight": "#717171"     # Medium gray
+        },
+        "defaultAnimationLevel": "subtle",
+        "glassmorphismSupport": True,
+        "planRequired": "GOLD",  # Requires GOLD or above
+        "previewImage": "/themes/modern_pastel.jpg",
+        "order": 5
+    },
+    
+    "midnight_sangeet": {
+        "id": "midnight_sangeet",
+        "name": "Midnight Sangeet",
+        "description": "Deep indigo, silver, and black sophistication",
+        "category": "luxury",
+        "layout_type": "modern",
+        "typography": {
+            "heading": "Bodoni Moda",
+            "body": "Roboto",
+            "accent": "Oswald"
+        },
+        "colors": {
+            "primary": "#191970",      # Midnight Blue
+            "accent": "#C0C0C0",       # Silver
+            "background": "#0A0A0A",   # Near Black
+            "backgroundVariant": "#1C1C1C",  # Dark gray
+            "text": "#FFFFFF",         # White
+            "textLight": "#B0B0B0"     # Light gray
+        },
+        "defaultAnimationLevel": "festive",
+        "glassmorphismSupport": True,
+        "planRequired": "GOLD",
+        "previewImage": "/themes/midnight_sangeet.jpg",
+        "order": 6
+    },
+    
+    "ivory_elegance": {
+        "id": "ivory_elegance",
+        "name": "Ivory Elegance",
+        "description": "Timeless ivory with champagne accents",
+        "category": "elegant",
+        "layout_type": "classic",
+        "typography": {
+            "heading": "Cormorant",
+            "body": "Lato",
+            "accent": "EB Garamond"
+        },
+        "colors": {
+            "primary": "#FFFFF0",      # Ivory
+            "accent": "#F7E7CE",       # Champagne
+            "background": "#FAFAFA",   # White smoke
+            "backgroundVariant": "#F5F5F5",  # Light gray
+            "text": "#2F2F2F",         # Charcoal
+            "textLight": "#5A5A5A"     # Gray
+        },
+        "defaultAnimationLevel": "none",
+        "glassmorphismSupport": True,
+        "planRequired": "PLATINUM",  # Requires PLATINUM
+        "previewImage": "/themes/ivory_elegance.jpg",
+        "order": 7
+    },
+    
+    "dark_royal": {
+        "id": "dark_royal",
+        "name": "Dark Royal",
+        "description": "Luxurious dark purple with gold highlights",
+        "category": "luxury",
+        "layout_type": "modern",
+        "typography": {
+            "heading": "Yeseva One",
+            "body": "Nunito Sans",
+            "accent": "Raleway"
+        },
+        "colors": {
+            "primary": "#4B0082",      # Indigo (Royal Purple)
+            "accent": "#FFD700",       # Gold
+            "background": "#1A0033",   # Very dark purple
+            "backgroundVariant": "#2D004D",  # Dark purple
+            "text": "#F5F5F5",         # Off-white
+            "textLight": "#CCCCCC"     # Light gray
+        },
+        "defaultAnimationLevel": "festive",
+        "glassmorphismSupport": True,
+        "planRequired": "PLATINUM",
+        "previewImage": "/themes/dark_royal.jpg",
+        "order": 8
+    }
+}
+
+
+# ==========================================
+# HELPER FUNCTIONS
+# ==========================================
+
+def get_all_theme_ids() -> List[str]:
+    """Get list of all theme IDs"""
+    return list(MASTER_THEMES.keys())
+
+
+def get_theme_by_id(theme_id: str) -> Optional[Dict]:
+    """Get theme configuration by ID"""
+    return MASTER_THEMES.get(theme_id)
+
+
+def is_valid_theme(theme_id: str) -> bool:
+    """Check if theme ID is valid"""
+    return theme_id in MASTER_THEMES
+
+
+def get_default_theme() -> str:
+    """Get default theme ID"""
+    return "royal_heritage"
+
+
+def get_themes_by_plan(plan_type: str) -> List[str]:
+    """
+    Get available theme IDs for a given plan
+    
+    Plan hierarchy:
+    - FREE: Only FREE themes
+    - SILVER: FREE + SILVER themes
+    - GOLD: FREE + SILVER + GOLD themes
+    - PLATINUM: All themes
+    """
+    plan_hierarchy = {
+        "FREE": ["FREE"],
+        "SILVER": ["FREE", "SILVER"],
+        "GOLD": ["FREE", "SILVER", "GOLD"],
+        "PLATINUM": ["FREE", "SILVER", "GOLD", "PLATINUM"]
+    }
+    
+    allowed_plans = plan_hierarchy.get(plan_type, ["FREE"])
+    
+    return [
+        theme_id for theme_id, theme in MASTER_THEMES.items()
+        if theme["planRequired"] in allowed_plans
+    ]
+
+
+def get_themes_by_category(category: str) -> List[str]:
+    """Get theme IDs by category"""
+    return [
+        theme_id for theme_id, theme in MASTER_THEMES.items()
+        if theme["category"] == category
+    ]
+
+
+def theme_requires_plan(theme_id: str) -> str:
+    """Get minimum plan required for theme"""
+    theme = MASTER_THEMES.get(theme_id)
+    return theme["planRequired"] if theme else "PLATINUM"
+
+
+def can_use_theme(theme_id: str, user_plan: str) -> bool:
+    """
+    Check if user's plan allows using the theme
+    
+    Args:
+        theme_id: Theme identifier
+        user_plan: User's subscription plan (FREE/SILVER/GOLD/PLATINUM)
+    
+    Returns:
+        bool: True if user can use the theme
+    """
+    available_themes = get_themes_by_plan(user_plan)
+    return theme_id in available_themes
+
+
+def get_theme_preview_data(theme_id: str) -> Optional[Dict]:
+    """
+    Get theme preview data for admin selection
+    
+    Returns lightweight theme info for UI display
+    """
+    theme = MASTER_THEMES.get(theme_id)
+    if not theme:
+        return None
+    
+    return {
+        "id": theme["id"],
+        "name": theme["name"],
+        "description": theme["description"],
+        "category": theme["category"],
+        "previewImage": theme["previewImage"],
+        "colors": theme["colors"],
+        "planRequired": theme["planRequired"],
+        "order": theme["order"]
+    }
+
+
+def get_all_themes_preview() -> List[Dict]:
+    """Get preview data for all themes sorted by order"""
+    previews = [get_theme_preview_data(theme_id) for theme_id in MASTER_THEMES.keys()]
+    return sorted([p for p in previews if p], key=lambda x: x["order"])
+
+
+# ==========================================
+# LEGACY COMPATIBILITY
+# ==========================================
+
+# For backward compatibility with existing code
+THEME_IDS = get_all_theme_ids()
+DEFAULT_THEME = get_default_theme()
+
+# === SPRINT 2: 10 cultural theme IDs (frontend canonical names) ===
+# The frontend masterThemes.js defines these. Backend just needs to accept them
+# as valid design_id values; the rich theme metadata lives in the frontend.
+_LUXURY_THEME_IDS = [
+    "royal_mughal", "south_indian_temple", "modern_minimal", "beach_destination",
+    "punjabi_sangeet", "bengali_traditional", "christian_elegant", "muslim_nikah",
+    "nature_eco_wedding", "bollywood_luxury", "kerala_backwaters",
+]
+for _t in _LUXURY_THEME_IDS:
+    if _t not in THEME_IDS:
+        THEME_IDS.append(_t)
+
+# Backward-compatible aliases (old id -> new id). Stored as data only;
+# the frontend ALSO has the same map.
+LEGACY_THEME_ALIASES = {
+    "royal_heritage": "royal_mughal",
+    "temple_gold": "south_indian_temple",
+    "modern_pastel": "modern_minimal",
+    "peacock_dream": "beach_destination",
+    "midnight_sangeet": "punjabi_sangeet",
+    "modern_lotus": "bengali_traditional",
+    "ivory_elegance": "christian_elegant",
+    "dark_royal": "bollywood_luxury",
+}
+
+# Legacy theme categories (for old code)
+THEME_CATEGORIES = {
+    'traditional': get_themes_by_category('traditional'),
+    'romantic': get_themes_by_category('romantic'),
+    'vibrant': get_themes_by_category('vibrant'),
+    'modern': get_themes_by_category('modern'),
+    'elegant': get_themes_by_category('elegant'),
+    'luxury': get_themes_by_category('luxury')
+}
+===== backend/generate_logo.py =====
+"""
+One-shot logo generator for MAJA Creations using Gemini Nano Banana.
+Run once: python generate_logo.py
+"""
+import os
+import sys
+import asyncio
+import base64
+from pathlib import Path
+from dotenv import load_dotenv
+from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+load_dotenv()
+
+OUT_DIR = Path("/app/frontend/public/brand")
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+LOGO_PROMPT = """A luxury monogram logo for "MAJA Creations" — a premium Indian wedding 
+photography & invitation platform. Design a sophisticated MJ monogram where 
+the capital M and capital J interlock seamlessly: the M forms the outer 
+architectural frame with two tall pointed Mughal-style arches reminiscent 
+of Taj Mahal jharokhas, and the J cascades through the centre with a 
+calligraphic flourish curling at the bottom like a lotus stem. 
+Single-line stroke construction, hairline-thin elegant serifs, drawn in 
+brushed antique gold (#D4AF37) with a subtle champagne highlight 
+(#E8C766) on the inner curves and a deeper antique-gold shadow (#8C6A1A) 
+on the descender. Background: deep royal ink (#0E0A06) with imperceptible 
+warm grain texture. 
+
+Below the monogram, the wordmark "MAJA" set in refined Cinzel-style 
+inscriptional serif capitals with wide letter-spacing, in cream silk 
+(#FFF8DC). Beneath that, the word "creations" in a delicate hand-script 
+italic (Tangerine-style) in champagne gold, half the width of MAJA. 
+Between the monogram and wordmark, a small diamond glyph as a 
+ceremonial punctuation. 
+
+Style references: Tiffany & Co. monogram restraint, Sabyasachi Mukherjee 
+label crest, vintage Mughal coin inscriptions, Apple product reveal 
+typography. Vector-clean, geometrically precise, perfectly symmetrical, 
+cinema-grade. 
+
+No mandalas, no peacocks, no flower clusters, no rangoli, no brides, no 
+rings, no doves. No drop shadows, no 3D bevels, no neon. Negative space 
+must be intentional. 
+
+Output: flat 2D logo, square 2048x2048, ultra high detail, magazine-cover 
+quality, vector-ready, suitable for embossing on white card stock and 
+gold foiling on dark card stock."""
+
+ICON_PROMPT = """Standalone MJ monogram only (no wordmark), perfectly centred inside a 
+1024x1024 square. The capital M and capital J interlock: the M has two 
+tall pointed Mughal-style arches reminiscent of Taj Mahal jharokhas, and 
+the J cascades through the centre with a calligraphic lotus-stem flourish. 
+Brushed imperial gold (#D4AF37) with champagne highlight (#E8C766) and 
+antique-gold shadow (#8C6A1A) on the descender. Deep royal ink (#0E0A06) 
+background. Geometric, balanced, recognisable at 16x16 pixels. iOS app 
+icon ready. No drop shadows, no 3D, no extra ornament. Tiffany monogram 
+restraint, Sabyasachi label crest reference."""
+
+LIGHT_PROMPT = """A luxury monogram logo for "MAJA Creations" on a LIGHT pearl-white 
+(#FAF3E7) background. MJ monogram where the M has two tall pointed 
+Mughal arches and the J cascades through with a calligraphic lotus 
+flourish. Drawn in deep antique gold (#8C6A1A) with a brushed-metal 
+texture and subtle champagne highlight (#D4AF37) on the inner curves. 
+Below: wordmark "MAJA" in Cinzel-style inscriptional serif capitals in 
+royal ink (#16110C), wide letter-spacing. Beneath: "creations" in 
+delicate hand-script italic in antique gold, half the width of MAJA. 
+A small diamond glyph between monogram and wordmark. Tiffany & Co. 
+restraint, vintage Mughal coin inscription. Vector-clean, perfectly 
+symmetrical. No drop shadows, no 3D, no extra ornament. Square 
+2048x2048, magazine-cover quality."""
+
+async def gen(prompt: str, filename: str, session_id: str):
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        print("ERROR: EMERGENT_LLM_KEY missing")
+        sys.exit(1)
+    chat = LlmChat(api_key=api_key, session_id=session_id,
+                    system_message="You are a master luxury brand identity designer.") \
+        .with_model("gemini", "gemini-3.1-flash-image-preview") \
+        .with_params(modalities=["image", "text"])
+    msg = UserMessage(text=prompt)
+    text, images = await chat.send_message_multimodal_response(msg)
+    print(f"[{filename}] text-response head: {(text or '')[:80]}")
+    if not images:
+        print(f"[{filename}] NO IMAGES RETURNED")
+        return False
+    image_bytes = base64.b64decode(images[0]['data'])
+    out_path = OUT_DIR / filename
+    out_path.write_bytes(image_bytes)
+    print(f"[{filename}] saved {len(image_bytes)} bytes -> {out_path}")
+    return True
+
+async def main():
+    print("Generating MAJA logo set ...")
+    await gen(LOGO_PROMPT,  "maja-logo-dark.png",  "maja-logo-dark")
+    await gen(ICON_PROMPT,  "maja-icon.png",       "maja-icon")
+    await gen(LIGHT_PROMPT, "maja-logo-light.png", "maja-logo-light")
+    print("DONE")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+===== backend/init_admin.py =====
+"""
+Initialize admin user in database
+Run this script once to create the default admin user
+"""
+import asyncio
+from motor.motor_asyncio import AsyncIOMotorClient
+from auth import get_password_hash
+from models import Admin
+import os
+from dotenv import load_dotenv
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+
+async def init_admin():
+    # Connect to MongoDB
+    mongo_url = os.environ['MONGO_URL']
+    client = AsyncIOMotorClient(mongo_url)
+    db = client[os.environ['DB_NAME']]
+    
+    # Check if admin already exists
+    existing_admin = await db.admins.find_one({"email": "admin@wedding.com"})
+    
+    if existing_admin:
+        print("Admin user already exists!")
+        return
+    
+    # Create admin user
+    admin = Admin(
+        email="admin@wedding.com",
+        name="Demo Photographer",
+        password_hash=get_password_hash("admin123")
+    )
+    
+    doc = admin.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    
+    await db.admins.insert_one(doc)
+    
+    print("✅ Admin user created successfully!")
+    print("Email: admin@wedding.com")
+    print("Password: admin123")
+    print("\n⚠️  IMPORTANT: Change this password in production!")
+    
+    client.close()
+
+if __name__ == "__main__":
+    asyncio.run(init_admin())
+===== backend/init_credit_packs.py =====
+"""
+Seed default credit packs into `credit_packs` collection.
+Used by /api/public/credit-packs (user-facing) and /api/admin/credit-packs (photographer-facing).
+
+Idempotent: upserts by `id`.
+"""
+import asyncio
+import os
+import uuid
+from datetime import datetime, timezone
+from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
+
+load_dotenv()
+
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+DB_NAME = os.getenv("DB_NAME", "test_database")
+
+
+DEFAULT_PACKS = [
+    # User-facing (guest)
+    {
+        "id": "pack_guest_starter",
+        "label": "Starter",
+        "price_inr": 99,
+        "credits": 50,
+        "description": "Try your first wedding invitation",
+        "badge": None,
+        "audience": "guest",
+        "sort_order": 1,
+    },
+    {
+        "id": "pack_guest_popular",
+        "label": "Popular",
+        "price_inr": 299,
+        "credits": 200,
+        "description": "Best value for one full wedding",
+        "badge": "Most Popular",
+        "audience": "guest",
+        "sort_order": 2,
+    },
+    {
+        "id": "pack_guest_pro",
+        "label": "Pro",
+        "price_inr": 599,
+        "credits": 500,
+        "description": "Multi-event wedding bundle",
+        "badge": "Best Deal",
+        "audience": "guest",
+        "sort_order": 3,
+    },
+    # Photographer
+    {
+        "id": "pack_photo_studio",
+        "label": "Studio",
+        "price_inr": 999,
+        "credits": 1000,
+        "description": "Studio starter — 1000 credits",
+        "badge": None,
+        "audience": "photographer",
+        "sort_order": 1,
+    },
+    {
+        "id": "pack_photo_agency",
+        "label": "Agency",
+        "price_inr": 4999,
+        "credits": 6000,
+        "description": "Agency bulk — 6000 credits + 1000 bonus",
+        "badge": "Most Popular",
+        "audience": "photographer",
+        "sort_order": 2,
+    },
+]
+
+
+async def main():
+    client = AsyncIOMotorClient(MONGO_URL)
+    db = client[DB_NAME]
+    print(f"🚀 Seeding credit_packs into {DB_NAME} …")
+    now = datetime.now(timezone.utc).isoformat()
+    upserted = 0
+    for pack in DEFAULT_PACKS:
+        doc = {
+            **pack,
+            "design_id": None,
+            "is_active": True,
+            "updated_at": now,
+        }
+        await db.credit_packs.update_one(
+            {"id": pack["id"]},
+            {"$set": doc, "$setOnInsert": {"created_at": now}},
+            upsert=True,
+        )
+        upserted += 1
+    print(f"✅ Upserted {upserted} credit packs")
+    guest = await db.credit_packs.count_documents({"audience": {"$in": ["guest", "both"]}})
+    photo = await db.credit_packs.count_documents({"audience": {"$in": ["photographer", "both"]}})
+    print(f"   guest-visible: {guest} · photographer-visible: {photo}")
+    client.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+===== backend/init_default_design_prices.py =====
+"""
+Initialize Default Design Prices for All Designs
+Sets default pricing when user opens the page
+"""
+import asyncio
+from motor.motor_asyncio import AsyncIOMotorClient
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+DB_NAME = os.getenv("DB_NAME", "test_database")
+
+
+# Sample design data (you'll need to populate with your actual 180+ designs)
+SAMPLE_DESIGNS = [
+    # Temple Theme - Marriage
+    {"design_id": "temple_marriage_01", "design_name": "Temple Marriage Classic", "theme": "Temple", "event_type": "marriage"},
+    {"design_id": "temple_marriage_02", "design_name": "Temple Marriage Royal", "theme": "Temple", "event_type": "marriage"},
+    {"design_id": "temple_marriage_03", "design_name": "Temple Marriage Grand", "theme": "Temple", "event_type": "marriage"},
+    
+    # Temple Theme - Engagement
+    {"design_id": "temple_engagement_01", "design_name": "Temple Engagement Classic", "theme": "Temple", "event_type": "engagement"},
+    {"design_id": "temple_engagement_02", "design_name": "Temple Engagement Royal", "theme": "Temple", "event_type": "engagement"},
+    
+    # Temple Theme - Haldi
+    {"design_id": "temple_haldi_01", "design_name": "Temple Haldi Classic", "theme": "Temple", "event_type": "haldi"},
+    {"design_id": "temple_haldi_02", "design_name": "Temple Haldi Bright", "theme": "Temple", "event_type": "haldi"},
+    
+    # Beach Theme - Marriage
+    {"design_id": "beach_marriage_01", "design_name": "Beach Marriage Sunset", "theme": "Beach", "event_type": "marriage"},
+    {"design_id": "beach_marriage_02", "design_name": "Beach Marriage Tropical", "theme": "Beach", "event_type": "marriage"},
+    {"design_id": "beach_marriage_03", "design_name": "Beach Marriage Paradise", "theme": "Beach", "event_type": "marriage"},
+    
+    # Beach Theme - Engagement  
+    {"design_id": "beach_engagement_01", "design_name": "Beach Engagement Romantic", "theme": "Beach", "event_type": "engagement"},
+    {"design_id": "beach_engagement_02", "design_name": "Beach Engagement Bliss", "theme": "Beach", "event_type": "engagement"},
+    
+    # Mughal Theme - Marriage
+    {"design_id": "mughal_marriage_01", "design_name": "Mughal Marriage Royal", "theme": "Mughal", "event_type": "marriage"},
+    {"design_id": "mughal_marriage_02", "design_name": "Mughal Marriage Palace", "theme": "Mughal", "event_type": "marriage"},
+    {"design_id": "mughal_marriage_03", "design_name": "Mughal Marriage Empress", "theme": "Mughal", "event_type": "marriage"},
+    
+    # Mughal Theme - Engagement
+    {"design_id": "mughal_engagement_01", "design_name": "Mughal Engagement Regal", "theme": "Mughal", "event_type": "engagement"},
+    
+    # Mughal Theme - Reception
+    {"design_id": "mughal_reception_01", "design_name": "Mughal Reception Grand", "theme": "Mughal", "event_type": "reception"},
+    {"design_id": "mughal_reception_02", "design_name": "Mughal Reception Imperial", "theme": "Mughal", "event_type": "reception"},
+    
+    # Garden Theme - Marriage
+    {"design_id": "garden_marriage_01", "design_name": "Garden Marriage Floral", "theme": "Garden", "event_type": "marriage"},
+    {"design_id": "garden_marriage_02", "design_name": "Garden Marriage Bloom", "theme": "Garden", "event_type": "marriage"},
+    
+    # Garden Theme - Mehendi
+    {"design_id": "garden_mehendi_01", "design_name": "Garden Mehendi Green", "theme": "Garden", "event_type": "mehendi"},
+    {"design_id": "garden_mehendi_02", "design_name": "Garden Mehendi Fresh", "theme": "Garden", "event_type": "mehendi"},
+]
+
+
+async def initialize_default_design_prices():
+    """Initialize default design prices for user and photographer"""
+    
+    client = AsyncIOMotorClient(MONGO_URL)
+    db = client[DB_NAME]
+    
+    print("🚀 Initializing default design prices...")
+    
+    # Default pricing strategy
+    DEFAULT_USER_CREDITS = 50
+    DEFAULT_PHOTOGRAPHER_CREDITS = 30
+    
+    user_count = 0
+    photographer_count = 0
+    
+    for design in SAMPLE_DESIGNS:
+        # User pricing
+        user_design = {
+            **design,
+            "user_type": "user",
+            "credits": DEFAULT_USER_CREDITS,
+            "is_premium": False
+        }
+        
+        await db.design_pricing_by_user_type.update_one(
+            {
+                "design_id": design["design_id"],
+                "user_type": "user"
+            },
+            {"$set": user_design},
+            upsert=True
+        )
+        user_count += 1
+        
+        # Photographer pricing
+        photographer_design = {
+            **design,
+            "user_type": "photographer",
+            "credits": DEFAULT_PHOTOGRAPHER_CREDITS,
+            "is_premium": False
+        }
+        
+        await db.design_pricing_by_user_type.update_one(
+            {
+                "design_id": design["design_id"],
+                "user_type": "photographer"
+            },
+            {"$set": photographer_design},
+            upsert=True
+        )
+        photographer_count += 1
+    
+    print(f"✅ Initialized {user_count} user design prices (default: {DEFAULT_USER_CREDITS} credits)")
+    print(f"✅ Initialized {photographer_count} photographer design prices (default: {DEFAULT_PHOTOGRAPHER_CREDITS} credits)")
+    
+    print("\n📝 Sample designs initialized:")
+    themes = list(set(d["theme"] for d in SAMPLE_DESIGNS))
+    for theme in themes:
+        theme_designs = [d for d in SAMPLE_DESIGNS if d["theme"] == theme]
+        print(f"   {theme}: {len(theme_designs)} designs")
+    
+    print("\n💡 Next steps:")
+    print("1. Add more designs to SAMPLE_DESIGNS list")
+    print("2. Update prices via admin panel")
+    print("3. Create theme packs and design packs")
+    
+    client.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(initialize_default_design_prices())
+===== backend/init_default_pricing.py =====
+"""
+Initialize Default Pricing Data
+Sets up default features, durations, and configurations
+"""
+import asyncio
+from motor.motor_asyncio import AsyncIOMotorClient
+import os
+from dotenv import load_dotenv
+import uuid
+
+from enhanced_pricing_models import (
+    FeaturePricing, FeatureType,
+    DurationOption,
+    MixedThemePricing
+)
+
+load_dotenv()
+
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+DB_NAME = os.getenv("DB_NAME", "test_database")
+
+
+async def initialize_default_pricing():
+    """Initialize default pricing configurations"""
+    
+    client = AsyncIOMotorClient(MONGO_URL)
+    db = client[DB_NAME]
+    
+    print("🚀 Initializing default pricing data...")
+    
+    # =====================================================================
+    # 1. FEATURE PRICING
+    # =====================================================================
+    
+    default_features = [
+        {
+            "feature_id": "qr_code",
+            "feature_type": "qr_code",
+            "feature_name": "QR Code for Photos",
+            "description": "Generate QR code for easy photo sharing",
+            "user_credits": 5,
+            "photographer_credits": 3,
+            "is_free": False,
+            "available_for_events": ["engagement", "marriage", "reception", "haldi", "mehendi"],
+            "enabled_by_default": True,
+            "info_text": "QR codes allow guests to quickly access and upload photos to your wedding gallery. Simply scan the QR code with any smartphone camera to open the photo upload page.",
+            "tutorial_video_url": "https://www.youtube.com/watch?v=example_qr_tutorial",
+            "is_active": True
+        },
+        {
+            "feature_id": "ai_compression",
+            "feature_type": "ai_compression",
+            "feature_name": "AI Image Compression",
+            "description": "Compress images automatically for faster loading",
+            "user_credits": 2,
+            "photographer_credits": 1,
+            "is_free": False,
+            "available_for_events": [],  # Available for all
+            "enabled_by_default": True,
+            "info_text": "AI-powered compression reduces image file sizes by up to 70% while maintaining quality, ensuring faster page loads for your guests.",
+            "tutorial_video_url": None,
+            "is_active": True
+        },
+        {
+            "feature_id": "face_comparison",
+            "feature_type": "face_comparison",
+            "feature_name": "Face Recognition Matching",
+            "description": "Match and organize photos by faces",
+            "user_credits": 10,
+            "photographer_credits": 6,
+            "is_free": False,
+            "available_for_events": ["marriage", "reception", "engagement"],
+            "enabled_by_default": False,
+            "info_text": "Advanced AI recognizes faces in photos and automatically groups them, making it easy for guests to find photos they're in.",
+            "tutorial_video_url": None,
+            "is_active": True
+        },
+        {
+            "feature_id": "digital_shagun",
+            "feature_type": "digital_shagun",
+            "feature_name": "Digital Shagun (Gifts)",
+            "description": "Accept digital gifts via UPI",
+            "user_credits": 3,
+            "photographer_credits": 2,
+            "is_free": False,
+            "available_for_events": ["marriage", "reception", "engagement"],
+            "enabled_by_default": True,
+            "info_text": "Enable guests to send wedding gifts digitally via UPI/PhonePe. Display your UPI ID or QR code on the invitation.",
+            "tutorial_video_url": None,
+            "is_active": True
+        },
+        {
+            "feature_id": "live_gallery",
+            "feature_type": "live_gallery",
+            "feature_name": "Live Photo Gallery",
+            "description": "Real-time photo gallery for guests",
+            "user_credits": 8,
+            "photographer_credits": 5,
+            "is_free": False,
+            "available_for_events": [],  # All events
+            "enabled_by_default": True,
+            "info_text": "Guests can upload photos in real-time during your event. All photos appear instantly in a beautiful gallery.",
+            "tutorial_video_url": None,
+            "is_active": True
+        },
+        {
+            "feature_id": "guest_upload",
+            "feature_type": "guest_upload",
+            "feature_name": "Guest Photo Upload",
+            "description": "Allow guests to upload photos",
+            "user_credits": 4,
+            "photographer_credits": 2,
+            "is_free": False,
+            "available_for_events": [],
+            "enabled_by_default": True,
+            "info_text": "Enable your guests to upload and share their favorite moments from your wedding.",
+            "tutorial_video_url": None,
+            "is_active": True
+        },
+        {
+            "feature_id": "rsvp",
+            "feature_type": "rsvp",
+            "feature_name": "RSVP Management",
+            "description": "Track guest responses",
+            "user_credits": 0,
+            "photographer_credits": 0,
+            "is_free": True,
+            "available_for_events": [],
+            "enabled_by_default": True,
+            "info_text": "FREE - Track who's attending your event with built-in RSVP functionality.",
+            "tutorial_video_url": None,
+            "is_active": True
+        },
+        {
+            "feature_id": "sms_invites",
+            "feature_type": "sms_invites",
+            "feature_name": "SMS Invitations",
+            "description": "Send invitations via SMS",
+            "user_credits": 15,
+            "photographer_credits": 10,
+            "is_free": False,
+            "available_for_events": [],
+            "enabled_by_default": False,
+            "info_text": "Send your invitation link directly to guests via SMS. Charges apply per SMS sent.",
+            "tutorial_video_url": None,
+            "is_active": True
+        }
+    ]
+    
+    # Insert features
+    for feature in default_features:
+        await db.feature_pricing_enhanced.update_one(
+            {"feature_id": feature["feature_id"]},
+            {"$set": feature},
+            upsert=True
+        )
+    
+    print(f"✅ Initialized {len(default_features)} features")
+    
+    # =====================================================================
+    # 2. DURATION OPTIONS
+    # =====================================================================
+    
+    default_durations = [
+        {
+            "duration_id": "1_day",
+            "label": "1 Day",
+            "days": 1,
+            "user_credits": 2,
+            "photographer_credits": 1,
+            "is_active": True
+        },
+        {
+            "duration_id": "7_days",
+            "label": "7 Days",
+            "days": 7,
+            "user_credits": 5,
+            "photographer_credits": 3,
+            "is_active": True
+        },
+        {
+            "duration_id": "30_days",
+            "label": "30 Days (1 Month)",
+            "days": 30,
+            "user_credits": 15,
+            "photographer_credits": 10,
+            "is_active": True
+        },
+        {
+            "duration_id": "90_days",
+            "label": "90 Days (3 Months)",
+            "days": 90,
+            "user_credits": 30,
+            "photographer_credits": 20,
+            "is_active": True
+        },
+        {
+            "duration_id": "180_days",
+            "label": "180 Days (6 Months)",
+            "days": 180,
+            "user_credits": 50,
+            "photographer_credits": 35,
+            "is_active": True
+        },
+        {
+            "duration_id": "365_days",
+            "label": "365 Days (1 Year)",
+            "days": 365,
+            "user_credits": 80,
+            "photographer_credits": 55,
+            "is_active": True
+        },
+        {
+            "duration_id": "unlimited",
+            "label": "Unlimited",
+            "days": None,
+            "user_credits": 150,
+            "photographer_credits": 100,
+            "is_active": True
+        }
+    ]
+    
+    for duration in default_durations:
+        await db.duration_options.update_one(
+            {"duration_id": duration["duration_id"]},
+            {"$set": duration},
+            upsert=True
+        )
+    
+    print(f"✅ Initialized {len(default_durations)} duration options")
+    
+    # =====================================================================
+    # 3. MIXED THEME PRICING
+    # =====================================================================
+    
+    mixed_theme = {
+        "pricing_id": str(uuid.uuid4()),
+        "name": "Mixed Theme Selection",
+        "description": "Select different designs from different themes",
+        "user_additional_credits": 50,
+        "photographer_additional_credits": 30
+    }
+    
+    await db.mixed_theme_pricing.update_one(
+        {},
+        {"$set": mixed_theme},
+        upsert=True
+    )
+    
+    print("✅ Initialized mixed theme pricing")
+    
+    # =====================================================================
+    # 4. SAMPLE CREDIT PACKAGES
+    # =====================================================================
+    
+    sample_packages = [
+        {
+            "package_id": str(uuid.uuid4()),
+            "name": "Starter Pack - Users",
+            "description": "Perfect for getting started",
+            "credits": 50,
+            "price": 499.0,
+            "discounted_price": None,
+            "discount_percentage": None,
+            "user_type": "user",
+            "is_active": True,
+            "is_featured": False,
+            "display_order": 1
+        },
+        {
+            "package_id": str(uuid.uuid4()),
+            "name": "Pro Pack - Users",
+            "description": "Most popular choice",
+            "credits": 200,
+            "price": 1799.0,
+            "discounted_price": 1499.0,
+            "discount_percentage": 17,
+            "user_type": "user",
+            "is_active": True,
+            "is_featured": True,
+            "display_order": 2
+        },
+        {
+            "package_id": str(uuid.uuid4()),
+            "name": "Starter Pack - Photographers",
+            "description": "For professional photographers",
+            "credits": 100,
+            "price": 699.0,
+            "discounted_price": None,
+            "discount_percentage": None,
+            "user_type": "photographer",
+            "is_active": True,
+            "is_featured": False,
+            "display_order": 1
+        },
+        {
+            "package_id": str(uuid.uuid4()),
+            "name": "Pro Pack - Photographers",
+            "description": "Best value for professionals",
+            "credits": 500,
+            "price": 2999.0,
+            "discounted_price": 2499.0,
+            "discount_percentage": 17,
+            "user_type": "photographer",
+            "is_active": True,
+            "is_featured": True,
+            "display_order": 2
+        }
+    ]
+    
+    for package in sample_packages:
+        await db.credit_packages.insert_one(package)
+    
+    print(f"✅ Initialized {len(sample_packages)} sample credit packages")
+    
+    print("\n🎉 Default pricing initialization complete!")
+    print("\nNext steps:")
+    print("1. Configure design pricing via admin panel")
+    print("2. Set up theme packages")
+    print("3. Create monthly packs for photographers")
+    
+    client.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(initialize_default_pricing())
+===== backend/init_super_admin.py =====
+"""
+Initialize / update the platform Super Admin account.
+
+Idempotent:
+- If a Super Admin with the configured email or username already exists,
+  this script UPDATES name + username + password_hash to match the current
+  config (no more "already exists, skipping" footgun).
+- Otherwise it creates one.
+
+Defaults (per owner request): username `Mani_8328`, password `Maneesh@1234`.
+Override via env vars SUPER_ADMIN_USERNAME / SUPER_ADMIN_PASSWORD / SUPER_ADMIN_EMAIL.
+"""
+
+import asyncio
+import os
+from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
+from pathlib import Path
+
+from auth import get_password_hash
+from models import Admin, AdminRole, AdminStatus
+
+load_dotenv(Path(__file__).parent / ".env")
+
+
+async def init_super_admin():
+    mongo_url = os.environ["MONGO_URL"]
+    db_name = os.environ["DB_NAME"]
+    client = AsyncIOMotorClient(mongo_url)
+    db = client[db_name]
+    admins = db["admins"]
+
+    SUPER_ADMIN_USERNAME = os.environ.get("SUPER_ADMIN_USERNAME", "mani_8328").lower()
+    SUPER_ADMIN_EMAIL = os.environ.get("SUPER_ADMIN_EMAIL", f"{SUPER_ADMIN_USERNAME}@majacreations.com").lower()
+    SUPER_ADMIN_PASSWORD = os.environ.get("SUPER_ADMIN_PASSWORD", "Maneesh@1234")
+    SUPER_ADMIN_NAME = os.environ.get("SUPER_ADMIN_NAME", "Platform Owner")
+
+    existing = await admins.find_one(
+        {"$or": [{"email": SUPER_ADMIN_EMAIL}, {"username": SUPER_ADMIN_USERNAME}], "role": AdminRole.SUPER_ADMIN.value}
+    )
+
+    if existing:
+        await admins.update_one(
+            {"id": existing["id"]},
+            {"$set": {
+                "username": SUPER_ADMIN_USERNAME,
+                "email": SUPER_ADMIN_EMAIL,
+                "name": SUPER_ADMIN_NAME,
+                "password_hash": get_password_hash(SUPER_ADMIN_PASSWORD),
+                "status": AdminStatus.ACTIVE.value,
+            }},
+        )
+        print("✅ Super Admin updated:")
+        print(f"   id        = {existing['id']}")
+        print(f"   username  = {SUPER_ADMIN_USERNAME}")
+        print(f"   email     = {SUPER_ADMIN_EMAIL}")
+        print(f"   password  = {SUPER_ADMIN_PASSWORD}")
+    else:
+        super_admin = Admin(
+            email=SUPER_ADMIN_EMAIL,
+            password_hash=get_password_hash(SUPER_ADMIN_PASSWORD),
+            name=SUPER_ADMIN_NAME,
+            role=AdminRole.SUPER_ADMIN,
+            status=AdminStatus.ACTIVE,
+            total_credits=999999,
+            used_credits=0,
+            username=SUPER_ADMIN_USERNAME,
+            phone_verified=True,
+            self_signup=False,
+            created_by=None,
+        )
+        await admins.insert_one(super_admin.model_dump())
+        print("✅ Super Admin created:")
+        print(f"   id        = {super_admin.id}")
+        print(f"   username  = {SUPER_ADMIN_USERNAME}")
+        print(f"   email     = {SUPER_ADMIN_EMAIL}")
+        print(f"   password  = {SUPER_ADMIN_PASSWORD}")
+        print(f"   name      = {SUPER_ADMIN_NAME}")
+
+    client.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(init_super_admin())
+===== backend/seed_demo_invitation.py =====
+"""
+Seed a beautiful demo wedding invitation under the Demo Photographer
+with random royal-wedding stock photos, RSVPs, wishes, and analytics.
+Idempotent — re-runs do nothing destructive.
+"""
+import asyncio
+import os
+import sys
+import uuid
+import urllib.request
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+from dotenv import load_dotenv
+
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+sys.path.insert(0, str(ROOT_DIR))
+
+from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
+from models import Profile, WeddingEvent  # noqa: E402
+
+DEMO_SLUG = "aarav-and-riya-demo"
+
+DEMO_PHOTOS = [
+    {"seed": "royal-mehndi-1",    "caption": "Mehndi night — bride's hands telling a story"},
+    {"seed": "royal-couple-2",    "caption": "First look · golden hour"},
+    {"seed": "royal-mandap-3",    "caption": "The mandap, kissed by marigold"},
+    {"seed": "royal-baraat-4",    "caption": "Baraat — when the dhol takes over"},
+    {"seed": "royal-pheras-5",    "caption": "Seven vows, seven flames"},
+    {"seed": "royal-reception-6", "caption": "Reception — the first dance"},
+]
+
+
+def _download(url, dest):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=20) as r, open(dest, "wb") as out:
+        out.write(r.read())
+
+
+def _build_demo_profile(admin_id: str) -> dict:
+    """Build a Profile dict that passes pydantic validation."""
+    base_date = datetime.now(timezone.utc) + timedelta(days=45)
+
+    def mk_event(event_type, name, days_offset, venue_name, time_str, description):
+        d = (datetime.now(timezone.utc) + timedelta(days=days_offset))
+        return WeddingEvent(
+            event_type=event_type,
+            name=name,
+            date=d.strftime("%Y-%m-%d"),
+            start_time=time_str,
+            venue_name=venue_name,
+            venue_address="The Leela Palace, Lake Pichola, Udaipur, Rajasthan 313001",
+            map_link="https://maps.google.com/?q=The+Leela+Palace+Udaipur",
+            description=description,
+            language_enabled=["english", "hindi"],
+            visible=True,
+            enabled=True,
+        )
+
+    profile = Profile(
+        admin_id=admin_id,
+        slug=DEMO_SLUG,
+        groom_name="Aarav",
+        bride_name="Riya",
+        event_type="marriage",
+        event_date=base_date,
+        venue="The Leela Palace",
+        city="Udaipur, Rajasthan",
+        invitation_message="With the blessings of our families, please join us as we begin forever.",
+        language=["english"],
+        enabled_languages=["english"],
+        design_id="royal_mughal",
+        love_story=(
+            "Two cities, two languages, one playlist that decided everything. "
+            "Aarav and Riya first met at a rooftop coffee shop in Bangalore — she "
+            "was sketching the Vidhana Soudha; he was reading Rumi. Three years, "
+            "twenty-seven cities and one monsoon-soaked Goa rendezvous later, they "
+            "said yes — under fairy lights, with their families dancing in the rain."
+        ),
+        events=[],  # Events skipped for demo seed — strict WeddingEvent validators
+                    # require muhurtham_time, slug, event_content per type which would
+                    # bloat the seed. Live gallery / RSVPs / wishes are the demo focus.
+        link_expiry_type="permanent",
+        plan_type="GOLD",
+        is_active=True,
+        status="published",
+        title="Aarav & Riya — Demo Royal Wedding",
+        selected_design_key="royal_mughal",
+        published_at=datetime.now(timezone.utc),
+    )
+
+    doc = profile.model_dump()
+    # Mark as published-ready for our internal flags
+    doc["is_published"] = True
+    doc["is_enabled"] = True
+    # Serialize datetimes
+    for k in ("event_date", "created_at", "updated_at", "published_at", "expires_at",
+             "link_expiry_date", "plan_expires_at"):
+        v = doc.get(k)
+        if isinstance(v, datetime):
+            doc[k] = v.isoformat()
+    # Serialize event datetimes (Pydantic already converted dates to str)
+    return doc
+
+
+async def seed_demo():
+    mongo_url = os.environ['MONGO_URL']
+    db_name = os.environ['DB_NAME']
+    client = AsyncIOMotorClient(mongo_url)
+    db = client[db_name]
+
+    photographer = await db.admins.find_one({"email": "admin@wedding.com"}, {"_id": 0})
+    if not photographer:
+        print("Demo photographer not found — run init_admin.py first")
+        return
+
+    admin_id = photographer["id"]
+
+    # Idempotent: reuse if exists
+    existing = await db.profiles.find_one({"slug": DEMO_SLUG}, {"_id": 0})
+    if existing:
+        profile_id = existing["id"]
+        print(f"Demo invitation exists — slug=/invite/{DEMO_SLUG}")
+    else:
+        doc = _build_demo_profile(admin_id)
+        profile_id = doc["id"]
+        await db.profiles.insert_one(doc)
+        print(f"Created demo invitation /invite/{DEMO_SLUG} (id: {profile_id})")
+
+    # Live gallery photos
+    upload_dir = Path("/app/uploads/weddings") / profile_id / "live"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    existing_photos = await db.live_gallery_photos.count_documents({"wedding_id": profile_id})
+    if existing_photos < len(DEMO_PHOTOS):
+        for i, p in enumerate(DEMO_PHOTOS):
+            photo_id = f"demo-photo-{i+1}"
+            if await db.live_gallery_photos.find_one({"id": photo_id}, {"_id": 0}):
+                continue
+            url = f"https://picsum.photos/seed/{p['seed']}/1600/1067"
+            file_name = f"{photo_id}.jpg"
+            dest = upload_dir / file_name
+            try:
+                if not dest.exists():
+                    _download(url, dest)
+                    print(f"  Downloaded {file_name}")
+            except Exception as e:
+                print(f"  Failed to fetch {file_name}: {e}")
+
+            public_url = (
+                f"/api/uploads/weddings/{profile_id}/live/{file_name}"
+                if dest.exists() else url
+            )
+            await db.live_gallery_photos.insert_one({
+                "id": photo_id,
+                "profile_id": profile_id,
+                "wedding_id": profile_id,
+                "url": public_url,
+                "thumb_url": public_url,
+                "micro_url": public_url,
+                "source": "demo_seed",
+                "guest_name": "Demo Photographer",
+                "caption": p["caption"],
+                "width": 1600,
+                "height": 1067,
+                "file_size": 0,
+                "created_at": (datetime.now(timezone.utc) - timedelta(minutes=i * 5)).isoformat(),
+            })
+            print(f"  Inserted photo {photo_id}: {p['caption']}")
+    else:
+        print(f"Live gallery already seeded ({existing_photos} photos)")
+
+    # Analytics
+    await db.analytics.update_one(
+        {"profile_id": profile_id},
+        {"$set": {"profile_id": profile_id, "total_views": 142, "unique_views": 97}},
+        upsert=True,
+    )
+
+    # Demo RSVPs
+    if await db.rsvps.count_documents({"profile_id": profile_id}) == 0:
+        for i, r in enumerate([
+            {"name": "Aanya & Family", "guests": 4, "status": "yes",   "message": "Wouldn't miss it for the world!"},
+            {"name": "Vikram Singh",   "guests": 2, "status": "yes",   "message": "See you at the pheras"},
+            {"name": "Meera Joshi",    "guests": 3, "status": "yes",   "message": "Travelling from Delhi"},
+            {"name": "Rohan Patel",    "guests": 1, "status": "maybe", "message": "Working on the dates"},
+            {"name": "Priya Iyer",     "guests": 2, "status": "no",    "message": "On honeymoon ourselves"},
+        ]):
+            await db.rsvps.insert_one({
+                "id": uuid.uuid4().hex,
+                "profile_id": profile_id,
+                **r,
+                "created_at": (datetime.now(timezone.utc) - timedelta(hours=i * 6)).isoformat(),
+            })
+        print("Seeded 5 RSVPs")
+
+    # Demo wishes
+    if await db.guest_wishes.count_documents({"profile_id": profile_id}) == 0:
+        for i, (name, msg, featured, status) in enumerate([
+            ("Aanya",            "Two souls, one journey. Sending you all the love.",     True,  "approved"),
+            ("Vikram",           "May every laugh outlive every storm. Cheers, you two!", True,  "approved"),
+            ("Meera",            "Couldn't have prayed for a more magical match.",        True,  "approved"),
+            ("Anonymous Friend", "Wishing you a lifetime of love",                        False, "approved"),
+            ("Rohan",            "Some loves rewrite the script. Yours did.",             False, "approved"),
+        ]):
+            await db.guest_wishes.insert_one({
+                "id": uuid.uuid4().hex,
+                "profile_id": profile_id,
+                "guest_name": name,
+                "message": msg,
+                "is_featured": featured,
+                "status": status,
+                "created_at": (datetime.now(timezone.utc) - timedelta(hours=i * 4)).isoformat(),
+            })
+        print("Seeded 5 wishes")
+
+    print(f"\nDemo invitation ready:")
+    print(f"   Photographer: admin@wedding.com / admin123 (id: {admin_id[:8]}...)")
+    print(f"   Profile ID:   {profile_id}")
+    print(f"   Public link:  /invite/{DEMO_SLUG}")
+    print(f"   Open in app:  /admin/profile/{profile_id}/edit\n")
+    client.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(seed_demo())
+===== backend/seed_pricing.py =====
+"""Seed default pricing data for the new Super Admin Pricing Hub."""
+import asyncio
+from datetime import datetime, timezone
+from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import dotenv_values
+import sys
+
+sys.path.insert(0, "/app/backend")
+from super_admin_pricing import THEMES, INVITATION_OPTIONS, DESIGN_KEYS  # noqa: E402
+
+env = dotenv_values("/app/backend/.env")
+now = datetime.now(timezone.utc)
+
+
+async def main():
+    client = AsyncIOMotorClient(env["MONGO_URL"])
+    db = client[env["DB_NAME"]]
+
+    # Photographer credit packs (large credits, low price)
+    photog_packs = [
+        {"credits": 100, "base_price": 600,  "label": "Starter"},
+        {"credits": 300, "base_price": 1500, "label": "Pro"},
+        {"credits": 800, "base_price": 3600, "label": "Studio"},
+    ]
+    # Normal user credit packs (small credits, higher price)
+    normal_packs = [
+        {"credits": 10,  "base_price": 100, "label": "Trial"},
+        {"credits": 30,  "base_price": 280, "label": "Personal"},
+        {"credits": 60,  "base_price": 540, "label": "Family"},
+    ]
+    for p in photog_packs:
+        await db.pricing_credit_packs.update_one(
+            {"audience": "photographer", "credits": p["credits"]},
+            {"$set": {**p, "audience": "photographer", "is_active": True,
+                      "discount_enabled": False, "discount_price": None,
+                      "updated_at": now},
+             "$setOnInsert": {"id": f"photog_{p['credits']}", "created_at": now}},
+            upsert=True,
+        )
+    for p in normal_packs:
+        await db.pricing_credit_packs.update_one(
+            {"audience": "normal_user", "credits": p["credits"]},
+            {"$set": {**p, "audience": "normal_user", "is_active": True,
+                      "discount_enabled": False, "discount_price": None,
+                      "updated_at": now},
+             "$setOnInsert": {"id": f"normal_{p['credits']}", "created_at": now}},
+            upsert=True,
+        )
+
+    # Monthly subscription
+    await db.pricing_subscription_plans.update_one(
+        {"name": "Monthly Pro"},
+        {"$set": {"id": "monthly_pro", "name": "Monthly Pro", "credits_per_month": 400,
+                  "duration_days": 30, "base_price": 600,
+                  "discount_enabled": False, "discount_price": None,
+                  "is_active": True, "updated_at": now},
+         "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+
+    # Post-sub config (singleton)
+    await db.pricing_post_sub.update_one(
+        {"_id": "singleton"},
+        {"$set": {"mode": "per_credit", "per_credit_rate": 4, "packs": [],
+                  "updated_at": now}, "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+
+    # Theme prices — photographer 8 cr, normal 12 cr by default
+    for t in THEMES:
+        for audience, base in [("photographer", 8), ("normal_user", 12)]:
+            await db.pricing_theme_prices.update_one(
+                {"audience": audience, "theme_id": t["id"]},
+                {"$set": {"audience": audience, "theme_id": t["id"],
+                          "base_price": base, "discount_enabled": False,
+                          "discount_price": None, "updated_at": now},
+                 "$setOnInsert": {"created_at": now}},
+                upsert=True,
+            )
+
+    # Design prices — photographer 2 cr, normal 4 cr by default
+    for t in THEMES:
+        for k in DESIGN_KEYS:
+            for audience, base in [("photographer", 2), ("normal_user", 4)]:
+                await db.pricing_design_prices.update_one(
+                    {"audience": audience, "theme_id": t["id"], "design_key": k},
+                    {"$set": {"audience": audience, "theme_id": t["id"],
+                              "design_key": k, "base_price": base,
+                              "discount_enabled": False, "discount_price": None,
+                              "updated_at": now},
+                     "$setOnInsert": {"created_at": now}},
+                    upsert=True,
+                )
+
+    # Option prices — photographer 3 cr, normal 5 cr by default
+    for o in INVITATION_OPTIONS:
+        for audience, base in [("photographer", 3), ("normal_user", 5)]:
+            await db.pricing_option_prices.update_one(
+                {"audience": audience, "option_key": o["key"]},
+                {"$set": {"audience": audience, "option_key": o["key"],
+                          "base_price": base, "is_free": False,
+                          "discount_enabled": False, "discount_price": None,
+                          "updated_at": now},
+                 "$setOnInsert": {"created_at": now}},
+                upsert=True,
+            )
+
+    # Counts summary
+    for c in ["pricing_credit_packs", "pricing_subscription_plans",
+              "pricing_post_sub", "pricing_theme_prices",
+              "pricing_design_prices", "pricing_option_prices"]:
+        n = await db[c].count_documents({})
+        print(f"  {c}: {n} docs")
+
+    print("✓ Seeding complete.")
+
+
+asyncio.run(main())

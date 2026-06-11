@@ -1,0 +1,478 @@
+===============================================================
+  WEDDING-31 CODE EXPORT — MANIFEST
+===============================================================
+
+## How to use these files with Claude AI:
+Upload one or more chunks based on what you want to analyse.
+Each file is < 600 KB so it fits in Claude.ai's upload limit.
+
+## Chunks:
+  01_backend_core.txt          server.py + auth + admin core
+  02_backend_models_lifecycle  models + lifecycle + feature gating
+  03_backend_credits_pricing   credits, razorpay, pricing, gift codes
+  04_backend_features          premium, user, gallery, monetisation
+  05_backend_ai_media_init     AI, music, AWS, SMS, init/seed scripts
+  06_pages_dashboard_forms     LuxuryDashboard, LuxuryProfileForm, CelebrationProfileForm, wizards
+  07_pages_public_views        public invitation, preview, save-the-date, couple access
+  08_pages_auth_purchase       login, signup, OAuth callback, credits, purchase wizards
+  09_pages_designs_themes      design picker, theme pages, theme settings
+  10_pages_super_admin         super admin dashboard, pricing, gift codes, expiry, audit
+  11_pages_feature_mgmt        gallery, RSVP, QR, greetings, live gallery, AI Studio, etc.
+  12_pages_user_misc           User-side pages (dashboard, design picker, invitation form, WhatsApp, wishes)
+  13_components_dashboard_luxury  components/dashboard/ + components/luxury/
+  14_components_other          top-level components + ui/ + animations/
+  15_frontend_wiring           App.js, context (AuthContext, UserAuthContext), hooks, utils, lib, config
+  16_AUDIT_CONTEXT.txt         FOCUSED: only files mentioned in the bug audit (smaller, faster review)
+
+===============================================================
+## BACKEND FILE TREE
+===============================================================
+   323 lines     9709 bytes   backend/access_control.py
+   523 lines    23401 bytes   backend/admin_dashboard_v2.py
+   351 lines    12044 bytes   backend/ai_service.py
+   247 lines    10822 bytes   backend/analytics_extras.py
+   107 lines     3482 bytes   backend/auth.py
+   295 lines    11227 bytes   backend/aws_service.py
+   312 lines    12936 bytes   backend/celebration_translation.py
+   167 lines     5674 bytes   backend/credit_packages.py
+   331 lines    11274 bytes   backend/credit_service.py
+   190 lines     8052 bytes   backend/credit_system_routes.py
+   245 lines     9099 bytes   backend/design_registry.py
+   474 lines    16259 bytes   backend/enhanced_admin_service.py
+   253 lines     7909 bytes   backend/enhanced_pricing_models.py
+   162 lines     4723 bytes   backend/feature_gating.py
+   359 lines    12245 bytes   backend/feature_registry.py
+   766 lines    34929 bytes   backend/gallery_features.py
+   449 lines    18659 bytes   backend/gallery_privacy.py
+   102 lines     4831 bytes   backend/generate_logo.py
+   298 lines    13050 bytes   backend/gift_code_routes.py
+   270 lines    12435 bytes   backend/gift_registry.py
+   426 lines    19058 bytes   backend/guest_features.py
+    49 lines     1312 bytes   backend/init_admin.py
+   103 lines     2860 bytes   backend/init_credit_packs.py
+   132 lines     5819 bytes   backend/init_default_design_prices.py
+   326 lines    11466 bytes   backend/init_default_pricing.py
+    84 lines     3033 bytes   backend/init_super_admin.py
+   251 lines    11784 bytes   backend/invitation_categories.py
+   395 lines    16420 bytes   backend/invitation_v2.py
+   453 lines    19479 bytes   backend/live_gallery_features.py
+   139 lines     4568 bytes   backend/lord_library.py
+   428 lines    18631 bytes   backend/map_features.py
+  3763 lines   141887 bytes   backend/models.py
+   578 lines    26096 bytes   backend/monetization_features.py
+   191 lines    11710 bytes   backend/music_library.py
+   292 lines    12424 bytes   backend/photographer_referrals.py
+  1245 lines    58314 bytes   backend/premium_features.py
+   270 lines     9354 bytes   backend/pricing_calculation_service.py
+   268 lines    11472 bytes   backend/pricing_features.py
+   299 lines    11027 bytes   backend/razorpay_credit_service.py
+   464 lines    17140 bytes   backend/restructured_admin_service.py
+   257 lines     8350 bytes   backend/restructured_pricing_models.py
+    86 lines     3350 bytes   backend/scripts/gen_haldi_mehndi_photos.py
+    72 lines     2747 bytes   backend/scripts/seed_bucket1a_demo.py
+    65 lines     2231 bytes   backend/scripts/seed_demo_events.py
+   110 lines     3922 bytes   backend/scripts/seed_test_accounts.py
+   402 lines    14435 bytes   backend/security_middleware.py
+   226 lines     9462 bytes   backend/seed_demo_invitation.py
+   118 lines     5025 bytes   backend/seed_pricing.py
+ 14410 lines   536900 bytes   backend/server.py
+   126 lines     5219 bytes   backend/sms_service.py
+   194 lines     8092 bytes   backend/story_service.py
+   797 lines    31470 bytes   backend/super_admin_pricing.py
+   567 lines    20916 bytes   backend/super_admin_service.py
+   463 lines    18989 bytes   backend/super_admin_v2.py
+   354 lines    10485 bytes   backend/template_validator.py
+   279 lines    10513 bytes   backend/tests/test_admin_dashboard_v2.py
+   303 lines    12111 bytes   backend/tests/test_bucket1a_song_checkin.py
+   321 lines    13960 bytes   backend/tests/test_credit_system.py
+   348 lines    14283 bytes   backend/tests/test_gallery_privacy.py
+   187 lines     7517 bytes   backend/tests/test_invite_full_and_webp.py
+   112 lines     4964 bytes   backend/tests/test_iter10_regression.py
+    88 lines     3577 bytes   backend/tests/test_photo_toggles.py
+   150 lines     5669 bytes   backend/tests/test_photographer_panel_v2.py
+   192 lines     6684 bytes   backend/tests/test_photographer_tiers.py
+   170 lines     6169 bytes   backend/tests/test_pricing_and_opening.py
+   138 lines     5220 bytes   backend/tests/test_razorpay_tier_discount.py
+   174 lines     7510 bytes   backend/tests/test_room_and_video.py
+   396 lines    17900 bytes   backend/tests/test_universal_invitations.py
+   271 lines    11310 bytes   backend/tests/test_user_purchase_wizard.py
+   393 lines    12741 bytes   backend/theme_constants.py
+   256 lines    10769 bytes   backend/user_auth.py
+  1088 lines    49997 bytes   backend/user_features.py
+   317 lines    12453 bytes   backend/user_purchase_service.py
+   736 lines    27499 bytes   backend/wedding_lifecycle_service.py
+   209 lines     9555 bytes   backend/wishes_features.py
+
+===============================================================
+## FRONTEND FILE TREE (src only)
+===============================================================
+   232 lines    14631 bytes   frontend/src/App.js
+    50 lines     1063 bytes   frontend/src/components/AnimatedSection.jsx
+   209 lines     7477 bytes   frontend/src/components/AuditLogsViewer.jsx
+    72 lines     2270 bytes   frontend/src/components/BackButton.jsx
+   357 lines    12436 bytes   frontend/src/components/CreditWallet.jsx
+   342 lines    12275 bytes   frontend/src/components/DesignCardWithPricing.jsx
+   181 lines     6136 bytes   frontend/src/components/DesignImage.jsx
+   212 lines     7468 bytes   frontend/src/components/DesignRenderer.jsx
+   111 lines     3587 bytes   frontend/src/components/ErrorBoundary.jsx
+   261 lines    11928 bytes   frontend/src/components/EventCategoriesPanel.jsx
+    78 lines     1599 bytes   frontend/src/components/GlassCard.jsx
+   277 lines    11620 bytes   frontend/src/components/HelpTour.jsx
+    72 lines     2756 bytes   frontend/src/components/LoadingFallback.jsx
+    76 lines     2540 bytes   frontend/src/components/LockedFeatureIndicator.jsx
+   253 lines     9702 bytes   frontend/src/components/MusicSelector.jsx
+   192 lines     8262 bytes   frontend/src/components/ParkingConfig.jsx
+   155 lines     6545 bytes   frontend/src/components/PhotographerTierCard.jsx
+   148 lines     6066 bytes   frontend/src/components/PhotographerTierHistory.jsx
+     5 lines      333 bytes   frontend/src/components/PublicCreditsModal.jsx
+   351 lines    15177 bytes   frontend/src/components/PurchaseFlowModal.jsx
+   197 lines     7167 bytes   frontend/src/components/QRCodeDisplay.jsx
+   264 lines    10067 bytes   frontend/src/components/ReferralDashboard.jsx
+    16 lines      443 bytes   frontend/src/components/ScrollToTop.jsx
+    75 lines     1589 bytes   frontend/src/components/SkeletonLoader.jsx
+    43 lines     1187 bytes   frontend/src/components/StatusBadge.jsx
+   278 lines    10107 bytes   frontend/src/components/ThankYouMessageEditor.jsx
+   373 lines    12611 bytes   frontend/src/components/ThemeAnimatedBackground.jsx
+   241 lines     9256 bytes   frontend/src/components/ThemePreview.jsx
+   186 lines     6719 bytes   frontend/src/components/ThemeSelector.jsx
+   240 lines     7016 bytes   frontend/src/components/TouchParticles.jsx
+   250 lines    10549 bytes   frontend/src/components/UpgradeModal.jsx
+   184 lines     8493 bytes   frontend/src/components/UserAuthModal.jsx
+    49 lines     1493 bytes   frontend/src/components/WatermarkOverlay.jsx
+   253 lines     8963 bytes   frontend/src/components/WeddingAlbumUploader.jsx
+    90 lines     2452 bytes   frontend/src/components/animations/AnimationController.jsx
+    67 lines     1956 bytes   frontend/src/components/animations/CrystalSparkle.jsx
+   116 lines     3844 bytes   frontend/src/components/animations/FireflyParticle.jsx
+   119 lines     4588 bytes   frontend/src/components/animations/FlameAnimation.jsx
+    63 lines     1858 bytes   frontend/src/components/animations/GoldShimmer.jsx
+    75 lines     2359 bytes   frontend/src/components/animations/LanternGlow.jsx
+    62 lines     1672 bytes   frontend/src/components/animations/LeafSway.jsx
+    52 lines     1362 bytes   frontend/src/components/animations/PendulumSwing.jsx
+   149 lines     4635 bytes   frontend/src/components/animations/PetalFall.jsx
+   131 lines     4114 bytes   frontend/src/components/animations/SkyLanternFloat.jsx
+   198 lines     6924 bytes   frontend/src/components/animations/WaterRipple.jsx
+    37 lines      796 bytes   frontend/src/components/animations/WisteriaDrift.jsx
+    17 lines      982 bytes   frontend/src/components/animations/index.js
+    83 lines     3402 bytes   frontend/src/components/dashboard/BulkActionBar.jsx
+   113 lines     5349 bytes   frontend/src/components/dashboard/CardMenu.jsx
+   138 lines     5668 bytes   frontend/src/components/dashboard/NotificationsBell.jsx
+   177 lines     7813 bytes   frontend/src/components/dashboard/QuickEditModal.jsx
+   201 lines     9142 bytes   frontend/src/components/dashboard/TopUpCreditsModal.jsx
+   279 lines    12163 bytes   frontend/src/components/luxury/AIStoryComposer.jsx
+    37 lines     1359 bytes   frontend/src/components/luxury/AddToCalendarButton.jsx
+   124 lines     4140 bytes   frontend/src/components/luxury/AmPmTimePicker.jsx
+   126 lines     4548 bytes   frontend/src/components/luxury/AmbientMusicPlayer.jsx
+   401 lines    17366 bytes   frontend/src/components/luxury/AnalyticsExtrasSection.jsx
+   415 lines    20946 bytes   frontend/src/components/luxury/CategoryPreviewModal.jsx
+   347 lines    15625 bytes   frontend/src/components/luxury/CelebrationPreviewModal.jsx
+  1611 lines    69659 bytes   frontend/src/components/luxury/CelebrationPublicView.jsx
+   135 lines     5681 bytes   frontend/src/components/luxury/CheckInSection.jsx
+   266 lines    13094 bytes   frontend/src/components/luxury/DigitalShagunSection.jsx
+   116 lines     4534 bytes   frontend/src/components/luxury/DressCodeSection.jsx
+    73 lines     2942 bytes   frontend/src/components/luxury/FeatureFlagsPanel.jsx
+   283 lines    13292 bytes   frontend/src/components/luxury/FindMyPhotosModal.jsx
+   323 lines    13491 bytes   frontend/src/components/luxury/FindMyRoomSection.jsx
+   169 lines     5615 bytes   frontend/src/components/luxury/GalleryLockScreen.jsx
+   256 lines     9798 bytes   frontend/src/components/luxury/GalleryPrivacyEditor.jsx
+   211 lines    10411 bytes   frontend/src/components/luxury/GiftRegistrySection.jsx
+   197 lines     6949 bytes   frontend/src/components/luxury/GuestRoomsEditor.jsx
+   246 lines    11058 bytes   frontend/src/components/luxury/GuestUploadButton.jsx
+   155 lines     5568 bytes   frontend/src/components/luxury/HeroMandala3D.jsx
+   168 lines     7056 bytes   frontend/src/components/luxury/HoneymoonFundSection.jsx
+   272 lines    11909 bytes   frontend/src/components/luxury/LivePhotoWallTeaser.jsx
+   110 lines     3919 bytes   frontend/src/components/luxury/LiveStreamSection.jsx
+   164 lines     6547 bytes   frontend/src/components/luxury/LiveTimelineSection.jsx
+    98 lines     4122 bytes   frontend/src/components/luxury/LuxuryShell.jsx
+   102 lines     4801 bytes   frontend/src/components/luxury/MajaReferralCTA.jsx
+    15 lines      510 bytes   frontend/src/components/luxury/MandalaLoader.jsx
+   201 lines     6800 bytes   frontend/src/components/luxury/MultiPhotoUploader.jsx
+   208 lines     8852 bytes   frontend/src/components/luxury/MusicPresetPicker.jsx
+   277 lines    10208 bytes   frontend/src/components/luxury/NonWeddingDesignCard.jsx
+   294 lines    12305 bytes   frontend/src/components/luxury/PersonalizedWelcome.jsx
+    83 lines     2534 bytes   frontend/src/components/luxury/PetalConfetti.jsx
+   182 lines     7094 bytes   frontend/src/components/luxury/PhotoUploadField.jsx
+   130 lines     5051 bytes   frontend/src/components/luxury/PreWeddingLinksEditor.jsx
+   218 lines     9032 bytes   frontend/src/components/luxury/PreWeddingSection.jsx
+    31 lines      758 bytes   frontend/src/components/luxury/ScrollSection.jsx
+   138 lines     6751 bytes   frontend/src/components/luxury/SectionsSwitchboard.jsx
+   188 lines     7574 bytes   frontend/src/components/luxury/SongRequestSection.jsx
+   257 lines    12584 bytes   frontend/src/components/luxury/ThemeDesignPreviewModal.jsx
+   348 lines    16246 bytes   frontend/src/components/luxury/ThemeDesignWizard.jsx
+    86 lines     3908 bytes   frontend/src/components/luxury/ThemePreviewModal.jsx
+    59 lines     3023 bytes   frontend/src/components/luxury/TravelLinksSection.jsx
+   267 lines    11747 bytes   frontend/src/components/luxury/VenuesSection.jsx
+    40 lines     1114 bytes   frontend/src/components/luxury/WatermarkOverlay.jsx
+   182 lines     7576 bytes   frontend/src/components/luxury/WaxSealOpening.jsx
+   292 lines    13366 bytes   frontend/src/components/luxury/WishesWallSection.jsx
+    49 lines     1738 bytes   frontend/src/components/perf/RouteCleanup.jsx
+   148 lines     4664 bytes   frontend/src/components/perf/SmartImage.jsx
+    41 lines     1615 bytes   frontend/src/components/ui/accordion.jsx
+    97 lines     3461 bytes   frontend/src/components/ui/alert-dialog.jsx
+    47 lines     1335 bytes   frontend/src/components/ui/alert.jsx
+     5 lines      140 bytes   frontend/src/components/ui/aspect-ratio.jsx
+    33 lines     1029 bytes   frontend/src/components/ui/avatar.jsx
+    34 lines      990 bytes   frontend/src/components/ui/badge.jsx
+    92 lines     2269 bytes   frontend/src/components/ui/breadcrumb.jsx
+    48 lines     1741 bytes   frontend/src/components/ui/button.jsx
+    71 lines     2849 bytes   frontend/src/components/ui/calendar.jsx
+    50 lines     1440 bytes   frontend/src/components/ui/card.jsx
+   193 lines     4811 bytes   frontend/src/components/ui/carousel.jsx
+    22 lines      880 bytes   frontend/src/components/ui/checkbox.jsx
+     9 lines      315 bytes   frontend/src/components/ui/collapsible.jsx
+   116 lines     3893 bytes   frontend/src/components/ui/command.jsx
+   156 lines     6175 bytes   frontend/src/components/ui/context-menu.jsx
+    94 lines     3214 bytes   frontend/src/components/ui/dialog.jsx
+    90 lines     2345 bytes   frontend/src/components/ui/drawer.jsx
+   156 lines     6345 bytes   frontend/src/components/ui/dropdown-menu.jsx
+   133 lines     3121 bytes   frontend/src/components/ui/form.jsx
+    23 lines     1109 bytes   frontend/src/components/ui/hover-card.jsx
+    53 lines     1809 bytes   frontend/src/components/ui/input-otp.jsx
+    19 lines      688 bytes   frontend/src/components/ui/input.jsx
+    16 lines      525 bytes   frontend/src/components/ui/label.jsx
+   198 lines     6874 bytes   frontend/src/components/ui/menubar.jsx
+   104 lines     4299 bytes   frontend/src/components/ui/navigation-menu.jsx
+   100 lines     2322 bytes   frontend/src/components/ui/pagination.jsx
+    27 lines     1216 bytes   frontend/src/components/ui/popover.jsx
+    21 lines      653 bytes   frontend/src/components/ui/progress.jsx
+    29 lines     1133 bytes   frontend/src/components/ui/radio-group.jsx
+    40 lines     1556 bytes   frontend/src/components/ui/resizable.jsx
+    38 lines     1362 bytes   frontend/src/components/ui/scroll-area.jsx
+   119 lines     4769 bytes   frontend/src/components/ui/select.jsx
+    23 lines      600 bytes   frontend/src/components/ui/separator.jsx
+   108 lines     3535 bytes   frontend/src/components/ui/sheet.jsx
+    14 lines      225 bytes   frontend/src/components/ui/skeleton.jsx
+    21 lines      914 bytes   frontend/src/components/ui/slider.jsx
+    28 lines      797 bytes   frontend/src/components/ui/sonner.jsx
+    22 lines     1025 bytes   frontend/src/components/ui/switch.jsx
+    86 lines     2231 bytes   frontend/src/components/ui/table.jsx
+    41 lines     1529 bytes   frontend/src/components/ui/tabs.jsx
+    18 lines      585 bytes   frontend/src/components/ui/textarea.jsx
+    85 lines     3829 bytes   frontend/src/components/ui/toast.jsx
+    33 lines      774 bytes   frontend/src/components/ui/toaster.jsx
+    43 lines     1268 bytes   frontend/src/components/ui/toggle-group.jsx
+    40 lines     1324 bytes   frontend/src/components/ui/toggle.jsx
+    26 lines     1127 bytes   frontend/src/components/ui/tooltip.jsx
+   545 lines    14816 bytes   frontend/src/config/designRegistry.js
+   333 lines     9717 bytes   frontend/src/config/designSystem.js
+   123 lines     3773 bytes   frontend/src/config/designThemes.js
+   194 lines     5118 bytes   frontend/src/config/divineDecorationsConfig.js
+   446 lines    15193 bytes   frontend/src/config/eventBackgroundConfig.js
+   273 lines     9671 bytes   frontend/src/config/eventBackgrounds.js
+   333 lines     9586 bytes   frontend/src/config/eventDesignSystem.js
+   352 lines    13160 bytes   frontend/src/config/languageTemplates.js
+    98 lines     3133 bytes   frontend/src/config/religiousAssets.js
+   576 lines    15073 bytes   frontend/src/config/themeSystem.js
+   264 lines     6092 bytes   frontend/src/config/themes.js
+    33 lines     1207 bytes   frontend/src/constants/testIds/auth.js
+     6 lines      211 bytes   frontend/src/constants/testIds/home.js
+    15 lines      700 bytes   frontend/src/constants/testIds/index.js
+    83 lines     2359 bytes   frontend/src/context/AuthContext.js
+    32 lines     1009 bytes   frontend/src/context/InvitePrefetchContext.js
+   161 lines     4530 bytes   frontend/src/context/TranslationContext.jsx
+    94 lines     3340 bytes   frontend/src/context/UserAuthContext.js
+    92 lines     4064 bytes   frontend/src/data/helpTourSteps.js
+   155 lines     3085 bytes   frontend/src/hooks/use-toast.js
+    35 lines      733 bytes   frontend/src/hooks/useAbortController.js
+   108 lines     3246 bytes   frontend/src/hooks/useAutoSave.js
+    63 lines     1813 bytes   frontend/src/hooks/useCanvasVisibility.js
+    90 lines     2534 bytes   frontend/src/hooks/useFocusTrap.js
+   114 lines     3661 bytes   frontend/src/hooks/useGalleryAccess.js
+    52 lines     1730 bytes   frontend/src/hooks/useMotionDefaults.js
+   117 lines     3742 bytes   frontend/src/hooks/usePricing.js
+    95 lines     2591 bytes   frontend/src/hooks/useTheme.js
+    56 lines     1663 bytes   frontend/src/hooks/useThemeDetection.js
+    57 lines     1986 bytes   frontend/src/hooks/useThreeJsRuntime.js
+    58 lines     1597 bytes   frontend/src/hooks/useUnsavedChanges.js
+    32 lines     1276 bytes   frontend/src/index.js
+     6 lines      137 bytes   frontend/src/lib/utils.js
+   356 lines    18418 bytes   frontend/src/pages/AIStudio.jsx
+   722 lines    34599 bytes   frontend/src/pages/AccountCreditsPage.jsx
+   208 lines     9084 bytes   frontend/src/pages/AdminLogin.jsx
+   411 lines    15854 bytes   frontend/src/pages/AdminSignup.jsx
+   244 lines     8626 bytes   frontend/src/pages/AuditLogsPage.jsx
+    77 lines     3008 bytes   frontend/src/pages/AuthCallback.jsx
+  1214 lines    54775 bytes   frontend/src/pages/CelebrationInvitationPreview.jsx
+   965 lines    45106 bytes   frontend/src/pages/CelebrationProfileForm.jsx
+   386 lines    17404 bytes   frontend/src/pages/CelebrationPurchaseWizard.jsx
+   198 lines     9990 bytes   frontend/src/pages/CoupleAccess.jsx
+  1675 lines    75909 bytes   frontend/src/pages/DesignFullPreview.jsx
+   283 lines    15994 bytes   frontend/src/pages/DigitalShagunSettings.jsx
+   198 lines     8688 bytes   frontend/src/pages/EventCategorySelector.jsx
+   248 lines    11660 bytes   frontend/src/pages/EventDesignPicker.jsx
+   649 lines    33716 bytes   frontend/src/pages/EventInvitationWizard.jsx
+   363 lines    14935 bytes   frontend/src/pages/EventPhotosPanel.jsx
+   495 lines    24992 bytes   frontend/src/pages/GalleryManager.jsx
+   367 lines    18478 bytes   frontend/src/pages/GiftRegistryEditor.jsx
+   288 lines    10833 bytes   frontend/src/pages/GreetingsManagement.jsx
+   679 lines    34331 bytes   frontend/src/pages/GuestListManager.jsx
+   179 lines     6912 bytes   frontend/src/pages/KeralaDesignGallery.jsx
+  1825 lines    94426 bytes   frontend/src/pages/LandingPage.jsx
+   257 lines    12017 bytes   frontend/src/pages/LiveGalleryManagement.jsx
+   323 lines    14549 bytes   frontend/src/pages/LivePhotoWall.jsx
+   755 lines    34864 bytes   frontend/src/pages/LuxuryDashboard.jsx
+   791 lines    42260 bytes   frontend/src/pages/LuxuryPreview.jsx
+  2608 lines   142712 bytes   frontend/src/pages/LuxuryProfileForm.jsx
+  1459 lines    69320 bytes   frontend/src/pages/LuxuryPublicInvitation.jsx
+  1215 lines    58549 bytes   frontend/src/pages/LuxurySuperAdminDashboard.jsx
+   595 lines    21853 bytes   frontend/src/pages/Phase30AnalyticsPage.jsx
+   262 lines    14298 bytes   frontend/src/pages/PhotographerDetail.jsx
+   228 lines    10061 bytes   frontend/src/pages/PhotographerLiveMode.jsx
+   144 lines     6906 bytes   frontend/src/pages/PostWeddingManagement.jsx
+   266 lines    12944 bytes   frontend/src/pages/PublicPricingPage.jsx
+   386 lines    19129 bytes   frontend/src/pages/PurchaseFlowPage.jsx
+   387 lines    18395 bytes   frontend/src/pages/PurchaseOptionsWizard.jsx
+   182 lines     7214 bytes   frontend/src/pages/QRCodeManagement.jsx
+   273 lines    13148 bytes   frontend/src/pages/RSVPManagement.jsx
+   158 lines     7350 bytes   frontend/src/pages/ReferralsCreditsPage.jsx
+   210 lines     8572 bytes   frontend/src/pages/SaveTheDatePage.jsx
+   258 lines    10344 bytes   frontend/src/pages/SuperAdminExpiryTiers.jsx
+   286 lines    12424 bytes   frontend/src/pages/SuperAdminGiftCodes.jsx
+   136 lines     6149 bytes   frontend/src/pages/SuperAdminLogin.jsx
+  1042 lines    48206 bytes   frontend/src/pages/SuperAdminPricingHub.jsx
+   230 lines     8724 bytes   frontend/src/pages/ThemeDesignGallery.jsx
+   249 lines    11913 bytes   frontend/src/pages/ThemeEventPicker.jsx
+   533 lines    25302 bytes   frontend/src/pages/ThemeInvitationPreview.jsx
+   275 lines    10428 bytes   frontend/src/pages/ThemeSettingsPage.jsx
+   393 lines    19415 bytes   frontend/src/pages/ThemeShowroom.jsx
+   158 lines     7045 bytes   frontend/src/pages/TrashBinPage.jsx
+   250 lines    11072 bytes   frontend/src/pages/UserDashboard.jsx
+   516 lines    24570 bytes   frontend/src/pages/UserDesignPicker.jsx
+   905 lines    42322 bytes   frontend/src/pages/UserInvitationForm.jsx
+   290 lines    13581 bytes   frontend/src/pages/UserLiveGalleryManagement.jsx
+   660 lines    28381 bytes   frontend/src/pages/UserProfile.jsx
+   223 lines    11149 bytes   frontend/src/pages/WhatsAppManager.jsx
+   234 lines    10555 bytes   frontend/src/pages/WishesManagement.jsx
+   216 lines     8261 bytes   frontend/src/tailwind.config.js
+   367 lines    13344 bytes   frontend/src/themes/Reveal.jsx
+  1328 lines    53174 bytes   frontend/src/themes/UniversalDesignRenderer.jsx
+   143 lines     5795 bytes   frontend/src/themes/allDesigns.js
+   178 lines     5965 bytes   frontend/src/themes/beach/BeachBackground.jsx
+    35 lines     1371 bytes   frontend/src/themes/beach/beach.colors.js
+   188 lines     6081 bytes   frontend/src/themes/bengali/BengaliBackground.jsx
+    35 lines     1404 bytes   frontend/src/themes/bengali/bengali.colors.js
+   145 lines     5382 bytes   frontend/src/themes/bollywood/BollywoodBackground.jsx
+    36 lines     1446 bytes   frontend/src/themes/bollywood/bollywood.colors.js
+   134 lines     4549 bytes   frontend/src/themes/christian/ChristianBackground.jsx
+    37 lines     1498 bytes   frontend/src/themes/christian/christian.colors.js
+    19 lines      490 bytes   frontend/src/themes/configs/_shared.js
+   123 lines     7456 bytes   frontend/src/themes/configs/beach.designs.js
+   108 lines     7440 bytes   frontend/src/themes/configs/bengali.designs.js
+   108 lines     7599 bytes   frontend/src/themes/configs/christian.designs.js
+   109 lines     7073 bytes   frontend/src/themes/configs/minimal.designs.js
+   108 lines     7969 bytes   frontend/src/themes/configs/mughal.designs.js
+   108 lines     7618 bytes   frontend/src/themes/configs/muslim.designs.js
+   108 lines     7503 bytes   frontend/src/themes/configs/nature.designs.js
+   108 lines     7358 bytes   frontend/src/themes/configs/punjabi.designs.js
+   112 lines     8134 bytes   frontend/src/themes/configs/temple.designs.js
+    68 lines     2051 bytes   frontend/src/themes/designOverlays.js
+   163 lines     5672 bytes   frontend/src/themes/kerala_backwaters/KeralaBackground.jsx
+   500 lines    18549 bytes   frontend/src/themes/kerala_backwaters/KeralaDesignRenderer.jsx
+    41 lines     1658 bytes   frontend/src/themes/kerala_backwaters/kerala.colors.js
+   283 lines    11586 bytes   frontend/src/themes/kerala_backwaters/kerala.designs.js
+   183 lines     9427 bytes   frontend/src/themes/masterThemes.js
+   127 lines     3940 bytes   frontend/src/themes/minimal/MinimalBackground.jsx
+    35 lines     1374 bytes   frontend/src/themes/minimal/minimal.colors.js
+   154 lines     5083 bytes   frontend/src/themes/mughal/MughalBackground.jsx
+    36 lines     1500 bytes   frontend/src/themes/mughal/mughal.colors.js
+   170 lines     5506 bytes   frontend/src/themes/muslim/MuslimBackground.jsx
+    36 lines     1523 bytes   frontend/src/themes/muslim/muslim.colors.js
+   173 lines     5406 bytes   frontend/src/themes/nature/NatureBackground.jsx
+    36 lines     1383 bytes   frontend/src/themes/nature/nature.colors.js
+   164 lines     5378 bytes   frontend/src/themes/punjabi/PunjabiBackground.jsx
+    35 lines     1431 bytes   frontend/src/themes/punjabi/punjabi.colors.js
+   275 lines    19459 bytes   frontend/src/themes/sampleData.js
+    46 lines     1968 bytes   frontend/src/themes/samplePhotos.js
+   513 lines    19942 bytes   frontend/src/themes/shared/CinematicClosing.jsx
+    58 lines     2228 bytes   frontend/src/themes/shared/ThemeAnimationOrchestrator.jsx
+   129 lines     6590 bytes   frontend/src/themes/shared/ThemeBackgroundAmbient.jsx
+   156 lines     4707 bytes   frontend/src/themes/shared/ZoomInOpening.jsx
+   203 lines     6639 bytes   frontend/src/themes/temple/TempleBackground.jsx
+    37 lines     1578 bytes   frontend/src/themes/temple/temple.colors.js
+    83 lines     2782 bytes   frontend/src/themes/textContrast.js
+   166 lines     6270 bytes   frontend/src/themes/themeDesignResolver.js
+   152 lines     4102 bytes   frontend/src/themes/themeMotion.js
+   230 lines     6034 bytes   frontend/src/utils/analyticsTracker.js
+   110 lines     2698 bytes   frontend/src/utils/deviceFingerprint.js
+   146 lines     4277 bytes   frontend/src/utils/languageLoader.js
+    38 lines     1615 bytes   frontend/src/utils/mediaUrl.js
+
+===============================================================
+## ROUTES (from App.js)
+===============================================================
+<Route path="/" element={<LandingPage />} />
+<Route path="/pricing" element={<PublicPricingPage />} />
+<Route path="/auth/callback" element={<AuthCallback />} />
+<Route path="/themes" element={<ThemeShowroom />} />
+<Route path="/themes/kerala_backwaters/gallery" element={<KeralaDesignGallery />} />
+<Route path="/themes/:themeId/gallery" element={<ThemeDesignGallery />} />
+<Route path="/themes/:themeId/events" element={<ThemeEventPicker />} />
+<Route path="/themes/:themeId/events/:event" element={<EventDesignPicker />} />
+<Route path="/themes/:themeId/events/:event/design/:designIndex" element={<DesignFullPreview />} />
+<Route path="/themes/:themeId" element={<ThemeShowroom />} />
+<Route path="/preview/luxe" element={<LuxuryPreview />} />
+<Route path="/preview/theme/:themeId" element={<ThemeInvitationPreview />} />
+<Route path="/preview/celebration/:category" element={<CelebrationInvitationPreview />} />
+<Route path="/preview/celebration/:category/:designId" element={<CelebrationInvitationPreview />} />
+<Route path="/invite/:slug" element={<LuxuryPublicInvitation />} />
+<Route path="/invite/:slug/:eventType" element={<LuxuryPublicInvitation />} />
+<Route path="/save-the-date/:slug" element={<SaveTheDatePage />} />
+<Route path="/couple/access" element={<CoupleAccess />} />
+<Route path="/couple/access/:slug" element={<CoupleAccess />} />
+<Route path="/super-admin/login" element={<SuperAdminLogin />} />
+<Route path="/super-admin/dashboard" element={<LuxurySuperAdminDashboard />} />
+<Route path="/super-admin/pricing" element={<SuperAdminPricingHub />} />
+<Route path="/super-admin/credit-packs" element={<SuperAdminPricingHub />} />
+<Route path="/super-admin/credit-packs-new" element={<SuperAdminPricingHub />} />
+<Route path="/super-admin/design-pricing" element={<SuperAdminPricingHub />} />
+<Route path="/super-admin/design-pricing-new" element={<SuperAdminPricingHub />} />
+<Route path="/super-admin/plans-pricing" element={<SuperAdminPricingHub />} />
+<Route path="/super-admin/pricing-discounts" element={<SuperAdminPricingHub />} />
+<Route path="/super-admin/pricing-editor" element={<SuperAdminPricingHub />} />
+<Route path="/super-admin/credits" element={<SuperAdminPricingHub />} />
+<Route path="/super-admin/expiry-tiers" element={<SuperAdminExpiryTiers />} />
+<Route path="/admin/login" element={<AdminLogin />} />
+<Route path="/admin/signup" element={<AdminSignup />} />
+<Route path="/admin/dashboard" element={<LuxuryDashboard />} />
+<Route path="/admin/category-selector" element={<EventCategorySelector />} />
+<Route path="/admin/celebration/new" element={<CelebrationProfileForm />} />
+<Route path="/admin/celebration/:profileId/edit" element={<CelebrationProfileForm />} />
+<Route path="/user/celebration/new" element={<CelebrationProfileForm />} />
+<Route path="/user/celebration/:profileId/edit" element={<CelebrationProfileForm />} />
+<Route path="/admin/dashboard/trash" element={<TrashBinPage />} />
+<Route path="/admin/profile/new" element={<LuxuryProfileForm />} />
+<Route path="/admin/profile/:profileId/edit" element={<LuxuryProfileForm />} />
+<Route path="/admin/wedding/:weddingId/edit" element={<LuxuryProfileForm />} />
+<Route path="/admin/profile/:profileId/invitations" element={<EventInvitationWizard />} />
+<Route path="/admin/profile/:profileId/rsvps" element={<RSVPManagement />} />
+<Route path="/admin/profile/:profileId/guests" element={<GuestListManager />} />
+<Route path="/admin/profile/:profileId/analytics" element={<Phase30AnalyticsPage />} />
+<Route path="/admin/profile/:profileId/greetings" element={<GreetingsManagement />} />
+<Route path="/admin/profile/:profileId/wishes" element={<WishesManagement />} />
+<Route path="/admin/profile/:profileId/post-wedding" element={<PostWeddingManagement />} />
+<Route path="/admin/profile/:profileId/qr-codes" element={<QRCodeManagement />} />
+<Route path="/admin/profile/:profileId/referrals" element={<ReferralsCreditsPage />} />
+<Route path="/admin/profile/:profileId/theme-settings" element={<ThemeSettingsPage />} />
+<Route path="/admin/audit-logs" element={<AuditLogsPage />} />
+<Route path="/admin/profile/:profileId/ai-studio" element={<AIStudio />} />
+<Route path="/admin/profile/:profileId/live-gallery" element={<LiveGalleryManagement />} />
+<Route path="/admin/profile/:profileId/whatsapp" element={<WhatsAppManager />} />
+<Route path="/admin/profile/:profileId/shagun" element={<DigitalShagunSettings />} />
+<Route path="/admin/profile/:profileId/gifts" element={<GiftRegistryEditor />} />
+<Route path="/admin/profile/:profileId/gallery" element={<GalleryManager />} />
+<Route path="/live/:profileId" element={<PhotographerLiveMode />} />
+<Route path="/invite/:slug/live-gallery" element={<LivePhotoWall />} />
+<Route path="/super-admin/gift-codes" element={<SuperAdminGiftCodes />} />
+<Route path="/super-admin/photographers/:adminId" element={<PhotographerDetail />} />
+<Route path="/admin/credits/top-up" element={<AccountCreditsPage />} />
+<Route path="/account/credits" element={<AccountCreditsPage />} />
+<Route path="/credits" element={<AccountCreditsPage />} />
+<Route path="/purchase" element={<PurchaseFlowPage />} />
+<Route path="/user/dashboard" element={<UserDashboard />} />
+<Route path="/user/profile" element={<UserProfile />} />
+<Route path="/user/buy-credits" element={<AccountCreditsPage />} />
+<Route path="/user/create-invitation" element={<UserDesignPicker />} />
+<Route path="/user/create-invitation/:themeId/:event/:designId" element={<UserInvitationForm />} />
+<Route path="/user/buy-theme/:themeId" element={<PurchaseOptionsWizard />} />
+<Route path="/user/buy-design/:themeId/:event/:designId" element={<PurchaseOptionsWizard />} />
+<Route path="/user/buy-celebration/:category/:designId" element={<CelebrationPurchaseWizard />} />
+<Route path="/user/profile/:profileId/live-gallery" element={<UserLiveGalleryManagement />} />

@@ -1,0 +1,4154 @@
+===== frontend/src/pages/DesignFullPreview.jsx =====
+/**
+ * DesignFullPreview — Unified Stage layout.
+ *
+ * One single design-themed look for the ENTIRE page:
+ *   • Page background = the design's natural parchment / cream / palette
+ *     colour (from `design.bg`), PLUS a soft, low-opacity copy of the
+ *     same design image fixed in the background — so the design extends
+ *     everywhere (not just at the top).
+ *   • Hero card: the design photo shown smaller (max-width 620 px),
+ *     centered, sharp, with a soft drop-shadow. Empty space on the
+ *     sides shares the same design-themed background, with subtle
+ *     ornamental floating motifs.
+ *   • All sub-sections (Our Story, Ceremonies, Names, Map, Comments,
+ *     etc.) sit on top of the same background with a translucent
+ *     parchment-tinted panel — so the design pattern is always visible.
+ *
+ * Structure (extensible):
+ *   <PageStage>
+ *     <SoftDesignBackdrop />          fixed, low-opacity design image
+ *     <SideOrnaments />               subtle theme accent shapes
+ *     <main>
+ *       <HeroCard />                  the invitation
+ *       <StorySection />
+ *       <CeremoniesSection />
+ *       <NamesSection (placeholder) />
+ *       <MapSection (placeholder) />
+ *       <CommentsSection (placeholder) />
+ *       <VariantSwitcher />
+ *     </main>
+ *   </PageStage>
+ *
+ * Adding a new section later is just: drop a <Panel> child in <main>.
+ */
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Calendar, Check, Edit3, Image as ImageIcon, Link as LinkIcon, MapPin, MessageSquare, Save, Share2, Upload, Users, X } from 'lucide-react';
+import { ALL_DESIGNS, useThemeDesigns } from '@/themes/allDesigns';
+import { KERALA_COLORS } from '@/themes/kerala_backwaters/kerala.colors';
+import { getThemeById } from '@/themes/masterThemes';
+import { normaliseEvent, resolveDesign, pageBgForDesign } from '@/themes/themeDesignResolver';
+import { AnimationProvider } from '@/components/animations';
+import UniversalDesignRenderer from '@/themes/UniversalDesignRenderer';
+import { isLight as isLightColor } from '@/themes/textContrast';
+import { getThemeSampleData } from '@/themes/sampleData';
+import { OpeningOrchestrator, ClosingOrchestrator } from '@/themes/shared/ThemeAnimationOrchestrator';
+import ThemeAnimatedBackground from '@/components/ThemeAnimatedBackground';
+import DesignImage from '@/components/DesignImage';
+import { Heart, Send, Sparkles, Gift, Plane, Hotel, Building2, Camera, Search } from 'lucide-react';
+import { eventPhoto, DEFAULT_COUPLE_PHOTO, DEFAULT_BRIDE_PHOTO, DEFAULT_GROOM_PHOTO } from '@/themes/samplePhotos';
+
+const LS_KEY = 'wedding3.designSelections.v1';
+const readSelections = () => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch { return {}; } };
+const writeSelections = (d) => { try { localStorage.setItem(LS_KEY, JSON.stringify(d)); } catch (e) { /* ignore */ } };
+
+const DEFAULT_PHOTO = 'https://images.unsplash.com/photo-1519741497674-611481863552?w=400&h=400&fit=crop&q=85';
+
+// Build per-theme defaults from THEME_SAMPLE_DATA so each theme preview has
+// its own culturally resonant placeholder couple (Lakshmi & Karthik for South
+// Indian, Simran & Arjun for Punjabi, etc.).
+// `event` (e.g. "haldi", "mehndi") drives the hero photo — Haldi/Mehndi show
+// the freshly-generated single-person portraits, every other event shows the
+// couple shot.
+const buildDefaultText = (themeId, event) => {
+  const s = getThemeSampleData(themeId) || {};
+  return {
+    bride: s.bride || 'Anaya',
+    groom: s.groom || 'Vihaan',
+    date:  s.weddingDate || '14 February 2026',
+    venue: `${s.venue || 'Falaknuma Palace'}${s.city ? ' · ' + s.city.split(',')[0] : ''}`,
+    story: s.story || 'Two souls. One promise. A wedding to remember.',
+    photo: eventPhoto(event) || DEFAULT_PHOTO,
+    bride_about:  s.bride_about  || '',
+    groom_about:  s.groom_about  || '',
+    couple_about: s.couple_about || s.story || '',
+    nakshatram:   s.nakshatram   || '',
+    muhurtam:     s.muhurtam     || '',
+    wedding_time: s.wedding_time || '11:00 AM',
+  };
+};
+
+const DEFAULT_CEREMONIES = [
+  { key: 'Engagement', date: '10 February 2026', venue: 'Garden Pavilion', time: '6:30 PM' },
+  { key: 'Marriage',   date: '14 February 2026', venue: 'The Mandap',       time: '11:00 AM' },
+  { key: 'Reception',  date: '15 February 2026', venue: 'Falaknuma Palace', time: '7:00 PM' },
+];
+
+const DEFAULT_FAMILY = [
+  { side: 'Bride', members: ['Rajesh & Meena Kapoor (Parents)', 'Aarav Kapoor (Brother)'] },
+  { side: 'Groom', members: ['Suresh & Lata Mehta (Parents)', 'Riya Mehta (Sister)'] },
+];
+
+const DesignFullPreview = () => {
+  const { themeId, event: rawEvent, designIndex } = useParams();
+  const navigate = useNavigate();
+  const themeMeta = useMemo(() => getThemeById(themeId), [themeId]);
+  const event = useMemo(() => normaliseEvent(rawEvent), [rawEvent]);
+  const idx = Math.max(0, Math.min(2, parseInt(designIndex || '0', 10)));
+  // PHASE 8: lazy-load this specific theme's design config (also keeps cache hot).
+  const themeDesigns = useThemeDesigns(themeId);
+
+  const resolved = useMemo(() => resolveDesign(themeId, event, idx), [themeId, event, idx, themeDesigns]);
+  const sampleData = useMemo(() => getThemeSampleData(themeId) || {}, [themeId]);
+  const tokens = resolved?.theme?.tokens || (themeId === 'kerala_backwaters'
+    ? { background: KERALA_COLORS.water, text: KERALA_COLORS.text, accent: KERALA_COLORS.secondary }
+    : (themeDesigns?.tokens || ALL_DESIGNS[themeId]?.tokens || { background: '#0a0a0a', text: '#F5ECD7', accent: '#D4AF37' }));
+
+  const [text, setText] = useState(() => {
+    const stored = readSelections();
+    return { ...buildDefaultText(themeId, event), ...(stored.text || {}) };
+  });
+  const [saved, setSaved] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [coverText, setCoverText] = useState(() => {
+    const stored = readSelections();
+    return stored.coverText ?? false;
+  });
+
+  /* When the event changes (user switches between Haldi/Mehndi/Marriage etc.)
+     swap the hero photo to the matching default UNLESS the user has uploaded
+     a custom photo (data: URL or non-default URL). */
+  useEffect(() => {
+    const defaults = buildDefaultText(themeId, event);
+    setText((prev) => {
+      const isDefault =
+        !prev.photo ||
+        prev.photo === DEFAULT_PHOTO ||
+        prev.photo === DEFAULT_COUPLE_PHOTO ||
+        prev.photo === DEFAULT_BRIDE_PHOTO ||
+        prev.photo === DEFAULT_GROOM_PHOTO ||
+        prev.photo.includes('/uploads/themes/');
+      return isDefault ? { ...prev, photo: defaults.photo } : prev;
+    });
+  }, [themeId, event]);
+
+  /* Per-theme cinematic opening — plays every time the user lands on a
+     design preview (no sessionStorage gating).  The user complained that
+     once-per-session caching meant the opening "didn't come" when they
+     navigated between designs, so every entry replays the full cinematic. */
+  const [openingDone, setOpeningDone] = useState(false);
+  const markOpeningDone = useCallback(() => { setOpeningDone(true); }, []);
+  // Replay the opening every time the user switches to a different design
+  // (themeId / event / idx change) so each pick gets its own cinematic intro.
+  useEffect(() => { setOpeningDone(false); }, [themeId, event, idx]);
+
+  // SAFETY: never trap users on a blank screen if the opening orchestrator
+  // chunk is slow or never reports completion.
+  useEffect(() => {
+    if (openingDone) return;
+    const id = setTimeout(() => setOpeningDone(true), 6000);
+    return () => clearTimeout(id);
+  }, [openingDone, themeId, event, idx]);
+  const footerRef = useRef(null);
+
+  // Use design's own bg colour as the unified page colour
+  const pageBg = pageBgForDesign(resolved?.design, { tokens });
+  // Pick a readable text colour against the parchment background
+  const textOnBg = isLightColor(pageBg) ? '#1A0F08' : '#FFF8DC';
+  const mutedText = isLightColor(pageBg) ? 'rgba(40,26,16,0.78)' : 'rgba(255,248,220,0.85)';
+
+  // User-requested change (2026-06-06):
+  //   The previous backdrop layered a heavy `pageBg` tint + animated particles
+  //   over the design artwork, dulling beautiful pieces like the Kerala
+  //   backwaters illustration. Keep the page wrapper TRANSPARENT so the
+  //   `SoftDesignBackdrop` image (now displayed crisply) is the actual page
+  //   background. A readable text colour is still computed against the
+  //   original tokens.background palette so headings stay legible.
+  useEffect(() => {
+    // Remove dark overlays and set LIGHT background
+    document.body.classList.remove('luxe', 'luxe-grain', 'luxe-vignette');
+    document.body.style.background = 'linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%)';
+    return () => { document.body.style.background = ''; };
+  }, [pageBg]);
+
+  if (!themeMeta || !resolved) {
+    return (
+      <div className="min-h-screen grid place-items-center px-6" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%)', color: '#2F2F2F' }}>
+        <div className="text-center">
+          <h2 className="font-display text-3xl mb-3">Design not available.</h2>
+          <button onClick={() => navigate(`/themes/${themeId}/events`)} className="lux-btn lux-btn-ghost">
+            Back to ceremonies
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const accent = tokens.accentGold || tokens.accent;
+  const imgUrl = resolved.design.image;
+  const headingFont = tokens.heading || '"Cormorant Garamond", serif';
+
+  const handleSave = () => {
+    const data = readSelections();
+    data.text = text;
+    data.coverText = coverText;
+    data[`${themeId}__${event}`] = { themeId, event, designIndex: idx, designId: resolved.design.id };
+    data.lastPick = { themeId, event, designIndex: idx, designId: resolved.design.id, savedAt: new Date().toISOString() };
+    writeSelections(data);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2200);
+  };
+
+  const handleShare = async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try { await navigator.share({ title: `${themeMeta.name} · ${event}`, url }); return; } catch { /* user cancelled */ }
+    }
+    try { await navigator.clipboard.writeText(url); setSaved(true); setTimeout(() => setSaved(false), 1800); } catch { /* ignore */ }
+  };
+
+  return (
+    <AnimationProvider>
+      {/* Petal burst on scroll/touch — luxury micro-interaction.
+          Pointer-events: none, never blocks UI. */}
+      {openingDone && <PetalBurstOverlay accent={accent} />}
+
+      {/* Per-theme cinematic opening — fires once per session per theme.
+          Until the opening is done the rest of the page stays hidden. */}
+      {!openingDone && (
+        <OpeningOrchestrator
+          themeId={themeId}
+          event={event}
+          image={resolved?.design?.image}
+          bride={text.bride}
+          groom={text.groom}
+          date={text.date}
+          monogram={`${(text.bride || '?')[0]} & ${(text.groom || '?')[0]}`}
+          onComplete={markOpeningDone}
+        />
+      )}
+      <div
+        className="relative"
+        style={{
+          // TRANSPARENT wrapper — the design image (via SoftDesignBackdrop)
+          // is now the page background. Previously this was `background: pageBg`
+          // which painted a solid dark colour over the artwork.
+          background: 'transparent',
+          color: textOnBg, minHeight: '100vh',
+          opacity: openingDone ? 1 : 0,
+          pointerEvents: openingDone ? 'auto' : 'none',
+          transition: 'opacity 0.55s ease',
+        }}
+        data-testid={`design-full-preview-${themeId}-${event.toLowerCase()}-${idx}`}
+      >
+        {/* ── DESIGN IMAGE PAGE BACKGROUND (fixed, edge-to-edge, visible) ─── */}
+        <SoftDesignBackdrop image={imgUrl} accent={accent} pageBg={pageBg} />
+
+        {/* ── Top controls ── */}
+        <div
+          className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-5 md:px-10 py-4"
+          style={{
+            background: `linear-gradient(180deg, ${pageBg}DD 0%, ${pageBg}00 100%)`,
+            backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+          }}
+        >
+          <button
+            onClick={() => navigate(`/themes/${themeId}/events/${event}`)}
+            className="inline-flex items-center gap-2 text-xs tracking-[0.3em] uppercase px-3 py-2 rounded-md"
+            style={{ color: textOnBg, background: `${pageBg}CC`, border: `1px solid ${accent}55` }}
+            data-testid="back-to-designs"
+          >
+            <ArrowLeft className="w-4 h-4" /> Designs
+          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setEditMode(v => !v)}
+              className="inline-flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase px-3 py-2 rounded-md"
+              style={{
+                color: editMode ? pageBg : textOnBg,
+                background: editMode ? accent : `${pageBg}CC`,
+                border: `1px solid ${accent}77`,
+              }}
+              data-testid="toggle-edit-mode">
+              <Edit3 className="w-3.5 h-3.5" /> {editMode ? 'Done editing' : 'Edit text'}
+            </button>
+            <button onClick={handleSave}
+              className="inline-flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase px-3 py-2 rounded-md"
+              style={{ color: pageBg, background: accent, border: `1px solid ${accent}` }}
+              data-testid="save-selection">
+              {saved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+              {saved ? 'Saved' : 'Save pick'}
+            </button>
+            <button onClick={handleShare}
+              className="hidden sm:inline-flex items-center gap-2 text-[11px] tracking-[0.25em] uppercase px-3 py-2 rounded-md"
+              style={{ color: textOnBg, background: `${pageBg}CC`, border: `1px solid ${accent}77` }}
+              data-testid="share-design">
+              <Share2 className="w-3.5 h-3.5" /> Share
+            </button>
+          </div>
+        </div>
+
+        {/* ── PAGE CONTENT ── */}
+        <main className="relative z-10" style={{ paddingTop: 70 }}>
+
+          {/* HERO — invitation rendered through UniversalDesignRenderer
+               so the photographer's clean text card always sits on top of
+               (and covers) the poster's baked-in text. */}
+          <Panel pageBg={pageBg} accent={accent} variant="hero">
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 1.0, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+              className="relative mx-auto"
+              style={{
+                maxWidth: 'min(560px, 92vw)',
+                width: '100%',
+                willChange: 'transform',
+                animation: 'card-float 6s ease-in-out infinite',
+                filter: 'drop-shadow(0 30px 60px rgba(0,0,0,0.30)) drop-shadow(0 10px 24px rgba(0,0,0,0.18))',
+              }}
+              data-testid="card-text-overlay"
+            >
+              <UniversalDesignRenderer
+                design={resolved.design}
+                theme={resolved.theme}
+                bride={text.bride}
+                groom={text.groom}
+                date={text.date}
+                venue={text.venue}
+                photo={text.photo}
+                coverText={coverText}
+                testId={`hero-${resolved.design.id}`}
+              />
+            </motion.div>
+
+            <div className="mt-6 flex items-center justify-center">
+              <button
+                onClick={() => setCoverText((v) => !v)}
+                className="inline-flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase px-3 py-2 rounded-md"
+                style={{
+                  color: coverText ? pageBg : textOnBg,
+                  background: coverText ? accent : `${accent}22`,
+                  border: `1px solid ${accent}66`,
+                }}
+                data-testid="toggle-cover-text"
+                title="Hide any baked-in text on the template"
+              >
+                {coverText ? '✓ Clean canvas (hides design)' : 'Hide template baked-in text'}
+              </button>
+            </div>
+
+            <div
+              aria-hidden
+              className="text-[10px] tracking-[0.5em] uppercase mt-6 text-center"
+              style={{ color: accent, opacity: 0.85 }}
+            >
+              ▾ Scroll for details
+            </div>
+          </Panel>
+
+          {/* OUR STORY */}
+          <Panel pageBg={pageBg} accent={accent} testId="info-section">
+            <Eyebrow accent={accent}>◆ Our Story</Eyebrow>
+            <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+              Two souls. <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>One promise.</em>
+            </SectionHeading>
+            <p className="text-[1.05rem] leading-relaxed" style={{ color: mutedText }}>{text.story}</p>
+          </Panel>
+
+          {/* COUNTDOWN — live ticker until the wedding moment */}
+          <CountdownSection
+            pageBg={pageBg}
+            accent={accent}
+            textOnBg={textOnBg}
+            mutedText={mutedText}
+            headingFont={headingFont}
+            weddingDate={text.date}
+          />
+
+          {/* SEQUENTIAL PHOTO REVEAL — Groom (left) → Bride (right) →
+              Couple → Wedding details. NOT side-by-side. */}
+          <SequentialPhotoReveal
+            pageBg={pageBg}
+            accent={accent}
+            textOnBg={textOnBg}
+            mutedText={mutedText}
+            headingFont={headingFont}
+            bride={text.bride}
+            groom={text.groom}
+            heroPhoto={text.photo}
+            brideBio={text.bride_about}
+            groomBio={text.groom_about}
+            coupleStory={text.couple_about || text.story}
+            weddingDate={text.date}
+            weddingTime={text.wedding_time}
+            venue={text.venue}
+            nakshatram={text.nakshatram}
+            muhurtam={text.muhurtam}
+          />
+
+          {/* PHOTO GALLERY — smooth horizontal scroll powered by CSS transform
+              + will-change so it scrolls 60fps even on mid-range phones. */}
+          <PhotoGallerySection
+            pageBg={pageBg}
+            accent={accent}
+            textOnBg={textOnBg}
+            mutedText={mutedText}
+            headingFont={headingFont}
+            heroPhoto={text.photo}
+          />
+
+          {/* Events/Ceremonies panel removed per requirement */}
+
+          {/* NAMES — Bride & Groom side family (placeholder, ready to wire) */}
+          <Panel pageBg={pageBg} accent={accent} testId="names-section">
+            <Eyebrow accent={accent}><Users className="w-3 h-3 inline-block mr-2 -mt-0.5" /> Family</Eyebrow>
+            <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+              With blessings <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>from both sides.</em>
+            </SectionHeading>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+              {DEFAULT_FAMILY.map((f) => (
+                <div key={f.side} className="px-5 py-4 rounded-md" style={{ background: `${accent}10`, border: `1px solid ${accent}33` }}>
+                  <div className="text-[11px] tracking-[0.3em] uppercase mb-2" style={{ color: accent }}>{f.side}'s side</div>
+                  <ul className="space-y-1 text-sm" style={{ color: mutedText }}>
+                    {f.members.map((m, i) => <li key={i}>{m}</li>)}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          {/* MAP — venue location (placeholder, ready to wire to Google Maps later) */}
+          <Panel pageBg={pageBg} accent={accent} testId="map-section">
+            <Eyebrow accent={accent}><MapPin className="w-3 h-3 inline-block mr-2 -mt-0.5" /> Venue</Eyebrow>
+            <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+              Find <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>your way.</em>
+            </SectionHeading>
+            <div
+              className="mt-5 rounded-md flex items-center justify-center text-sm"
+              style={{
+                background: `${accent}10`, border: `1px solid ${accent}33`,
+                color: mutedText, minHeight: 220,
+                backgroundImage: 'linear-gradient(135deg, rgba(0,0,0,0.04) 25%, transparent 25%, transparent 50%, rgba(0,0,0,0.04) 50%, rgba(0,0,0,0.04) 75%, transparent 75%, transparent)',
+                backgroundSize: '20px 20px',
+              }}
+            >
+              <div className="text-center">
+                <MapPin className="w-7 h-7 mx-auto mb-2" style={{ color: accent }} />
+                <div className="font-display text-lg" style={{ fontFamily: headingFont, color: textOnBg }}>{text.venue}</div>
+                <div className="text-[11px] tracking-[0.3em] uppercase mt-1" style={{ color: accent }}>Map coming soon</div>
+              </div>
+            </div>
+          </Panel>
+
+          {/* COMMENTS / WISHES — guest book placeholder */}
+          {/* WISHES */}
+          <Panel pageBg={pageBg} accent={accent} testId="comments-section">
+            <Eyebrow accent={accent}><MessageSquare className="w-3 h-3 inline-block mr-2 -mt-0.5" /> Wishes</Eyebrow>
+            <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+              Leave a <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>blessing.</em>
+            </SectionHeading>
+            <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
+              {(sampleData?.wishes || []).slice(0, 4).map((w, i) => (
+                <div key={i} className="px-4 py-3 rounded-md"
+                  style={{ background: `${accent}10`, border: `1px solid ${accent}33` }}
+                  data-testid={`dfp-wish-${i}`}>
+                  <Heart className="w-3.5 h-3.5 mb-2" style={{ color: accent }} />
+                  <p className="text-sm italic" style={{ color: textOnBg }}>"{w.text}"</p>
+                  <div className="text-[10px] tracking-[0.25em] uppercase mt-2" style={{ color: mutedText }}>— {w.from}</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 text-center">
+              <button className="text-[11px] tracking-[0.25em] uppercase px-4 py-2 rounded-md"
+                style={{ color: textOnBg, background: `${accent}15`, border: `1px solid ${accent}66` }}
+                data-testid="dfp-wish-cta">
+                <MessageSquare className="w-3.5 h-3.5 inline-block mr-2 -mt-0.5" />
+                Send your wish
+              </button>
+            </div>
+          </Panel>
+
+          {/* RSVP */}
+          <Panel pageBg={pageBg} accent={accent} testId="rsvp-section">
+            <Eyebrow accent={accent}>◆ Will you be there?</Eyebrow>
+            <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+              Kindly <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>respond.</em>
+            </SectionHeading>
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input placeholder="Your name" data-testid="dfp-rsvp-name"
+                className="px-3 py-2.5 rounded-md text-sm outline-none"
+                style={{ background: `${pageBg}EE`, color: textOnBg, border: `1px solid ${accent}55` }} />
+              <input placeholder="Phone (+91)" data-testid="dfp-rsvp-phone"
+                className="px-3 py-2.5 rounded-md text-sm outline-none"
+                style={{ background: `${pageBg}EE`, color: textOnBg, border: `1px solid ${accent}55` }} />
+              <select data-testid="dfp-rsvp-attending"
+                className="px-3 py-2.5 rounded-md text-sm outline-none"
+                style={{ background: `${pageBg}EE`, color: textOnBg, border: `1px solid ${accent}55` }}>
+                <option>Yes, with joy</option>
+                <option>Regretfully no</option>
+                <option>Trying my best</option>
+              </select>
+              <input type="number" min={1} max={10} defaultValue={1} placeholder="Guests" data-testid="dfp-rsvp-guests"
+                className="px-3 py-2.5 rounded-md text-sm outline-none"
+                style={{ background: `${pageBg}EE`, color: textOnBg, border: `1px solid ${accent}55` }} />
+            </div>
+            <textarea rows={2} placeholder="A message for the couple (optional)"
+              className="mt-3 w-full px-3 py-2.5 rounded-md text-sm outline-none"
+              style={{ background: `${pageBg}EE`, color: textOnBg, border: `1px solid ${accent}55`, resize: 'vertical' }}
+              data-testid="dfp-rsvp-message" />
+            <div className="mt-4 text-right">
+              <button className="text-[11px] tracking-[0.3em] uppercase px-5 py-2.5 rounded-md inline-flex items-center gap-2"
+                style={{ color: pageBg, background: accent }}
+                data-testid="dfp-rsvp-submit">
+                Send RSVP <Send className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </Panel>
+
+          {/* LIVE PHOTO WALL teaser */}
+          <Panel pageBg={pageBg} accent={accent} testId="live-photo-wall-section">
+            <Eyebrow accent={accent}>◆ Live Photo Wall</Eyebrow>
+            <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+              Photos appear <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>live.</em>
+            </SectionHeading>
+            <p className="mt-3 text-sm" style={{ color: mutedText }}>
+              The photographer's hand-picked moments stream here as the wedding unfolds.
+            </p>
+            <div className="mt-4">
+              <button className="text-[11px] tracking-[0.3em] uppercase px-5 py-2.5 rounded-md inline-flex items-center gap-2"
+                style={{ color: pageBg, background: accent }}
+                data-testid="dfp-live-wall-cta">
+                <Camera className="w-3.5 h-3.5" /> View live wall
+              </button>
+            </div>
+          </Panel>
+
+          {/* FIND MY PHOTOS */}
+          <Panel pageBg={pageBg} accent={accent} testId="find-photos-section">
+            <Eyebrow accent={accent}>◆ AI-powered photo search</Eyebrow>
+            <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+              Find <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>your photos</em> from the wedding.
+            </SectionHeading>
+            <p className="mt-3 text-sm" style={{ color: mutedText }}>
+              Upload one selfie. Our AI will surface every photo of you from the day.
+            </p>
+            <div className="mt-4">
+              <button className="text-[11px] tracking-[0.3em] uppercase px-5 py-2.5 rounded-md inline-flex items-center gap-2"
+                style={{ color: pageBg, background: accent }}
+                data-testid="dfp-find-photos-cta">
+                <Search className="w-3.5 h-3.5" /> Find My Photos
+              </button>
+            </div>
+          </Panel>
+
+          {/* TRAVEL & STAY */}
+          {Array.isArray(sampleData?.travel) && sampleData.travel.length > 0 && (
+            <Panel pageBg={pageBg} accent={accent} testId="travel-section">
+              <Eyebrow accent={accent}>◆ Travel &amp; Stay</Eyebrow>
+              <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+                How to <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>reach us.</em>
+              </SectionHeading>
+              <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
+                {sampleData.travel.map((v, i) => {
+                  const Icon = (v.type || '').toLowerCase().includes('airport') ? Plane
+                    : (v.type || '').toLowerCase().includes('stay') ? Hotel
+                    : Building2;
+                  return (
+                    <div key={i} className="px-4 py-3 rounded-md flex items-start gap-3"
+                      style={{ background: `${accent}10`, border: `1px solid ${accent}33` }}
+                      data-testid={`dfp-travel-${i}`}>
+                      <div className="w-9 h-9 rounded-full grid place-items-center flex-shrink-0"
+                        style={{ background: `${accent}25`, color: accent }}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-[10px] tracking-[0.25em] uppercase mb-1" style={{ color: mutedText }}>{v.type}</div>
+                        <div className="text-base font-semibold" style={{ color: textOnBg, fontFamily: headingFont }}>{v.name}</div>
+                        <div className="text-sm" style={{ color: mutedText }}>{v.note}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Panel>
+          )}
+
+          {/* GIFT REGISTRY */}
+          {sampleData?.gifts && (
+            <Panel pageBg={pageBg} accent={accent} testId="gifts-section">
+              <Eyebrow accent={accent}><Gift className="w-3 h-3 inline-block mr-2 -mt-0.5" /> Gifts</Eyebrow>
+              <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+                {sampleData.gifts.headline}
+              </SectionHeading>
+              <p className="mt-3 text-sm leading-relaxed" style={{ color: mutedText }}>
+                {sampleData.gifts.message}
+              </p>
+            </Panel>
+          )}
+
+          {/* DIGITAL SHAGUN */}
+          {sampleData?.shagun && (
+            <Panel pageBg={pageBg} accent={accent} testId="shagun-section">
+              <Eyebrow accent={accent}>◆ Digital Shagun</Eyebrow>
+              <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+                Send your <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>blessings.</em>
+              </SectionHeading>
+              <p className="mt-3 text-sm" style={{ color: mutedText }}>{sampleData.shagun.msg}</p>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="px-4 py-3 rounded-md" style={{ background: `${accent}10`, border: `1px solid ${accent}33` }}>
+                  <div className="text-[10px] tracking-[0.25em] uppercase mb-1" style={{ color: mutedText }}>UPI ID</div>
+                  <div className="font-mono text-sm" style={{ color: textOnBg }}>{sampleData.shagun.upi}</div>
+                </div>
+                <div className="px-4 py-3 rounded-md" style={{ background: `${accent}10`, border: `1px solid ${accent}33` }}>
+                  <div className="text-[10px] tracking-[0.25em] uppercase mb-1" style={{ color: mutedText }}>Payee</div>
+                  <div className="text-sm" style={{ color: textOnBg }}>{sampleData.shagun.payee || `${text.bride} & ${text.groom}`}</div>
+                </div>
+              </div>
+            </Panel>
+          )}
+
+          {/* MAJA REFERRAL */}
+          <Panel pageBg={pageBg} accent={accent} testId="referral-section">
+            <Eyebrow accent={accent}><Sparkles className="w-3 h-3 inline-block mr-2 -mt-0.5" /> Loved this invitation?</Eyebrow>
+            <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+              Crafted by <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>MAJA Creations.</em>
+            </SectionHeading>
+            <p className="mt-3 text-sm" style={{ color: mutedText }}>
+              Want one for your own wedding? Refer your photographer to MAJA and unlock cinematic invitations for any culture.
+            </p>
+          </Panel>
+
+          {/* VARIANT SWITCHER */}
+          <Panel pageBg={pageBg} accent={accent} compact>
+            <div className="flex items-baseline justify-between flex-wrap gap-4">
+              <div>
+                <div className="text-[10px] tracking-[0.5em] uppercase mb-2" style={{ color: accent }}>
+                  ◈ {themeMeta.name} · {event} · Design {idx + 1}
+                </div>
+                <div className="text-xl md:text-2xl" style={{ fontFamily: headingFont, color: textOnBg }}>
+                  {resolved.design.title}
+                </div>
+                <p className="text-sm max-w-xl mt-1.5" style={{ color: mutedText }}>{resolved.design.description}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[0, 1, 2].map((i) => (
+                  <button key={i}
+                    onClick={() => navigate(`/themes/${themeId}/events/${event}/design/${i}`)}
+                    className="text-[11px] tracking-[0.25em] uppercase px-3 py-2 rounded-md"
+                    style={{
+                      color: i === idx ? pageBg : textOnBg,
+                      background: i === idx ? accent : `${accent}15`,
+                      border: `1px solid ${accent}66`,
+                    }}
+                    data-testid={`switch-design-${i}`}>
+                    Design {i + 1}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Panel>
+        </main>
+
+        {/* Edit panel */}
+        {editMode && (
+          <motion.div
+            initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed bottom-0 left-0 right-0 z-50 px-5 md:px-10 pb-6 pt-5"
+            style={{
+              background: `linear-gradient(0deg, ${pageBg}F4 0%, ${pageBg}AA 70%, ${pageBg}00 100%)`,
+              backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+            }}
+            data-testid="edit-text-panel"
+          >
+            <div className="max-w-5xl mx-auto space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <EditField label="Bride" value={text.bride} onChange={(v) => setText(s => ({ ...s, bride: v }))} testId="edit-bride" accent={accent} textOnBg={textOnBg} pageBg={pageBg} />
+                <EditField label="Groom" value={text.groom} onChange={(v) => setText(s => ({ ...s, groom: v }))} testId="edit-groom" accent={accent} textOnBg={textOnBg} pageBg={pageBg} />
+                <EditField label="Date"  value={text.date}  onChange={(v) => setText(s => ({ ...s, date: v }))}  testId="edit-date"  accent={accent} textOnBg={textOnBg} pageBg={pageBg} />
+                <EditField label="Venue" value={text.venue} onChange={(v) => setText(s => ({ ...s, venue: v }))} testId="edit-venue" accent={accent} textOnBg={textOnBg} pageBg={pageBg} />
+              </div>
+              <PhotoEditor
+                value={text.photo}
+                onChange={(v) => setText((s) => ({ ...s, photo: v }))}
+                accent={accent} textOnBg={textOnBg} pageBg={pageBg}
+              />
+            </div>
+          </motion.div>
+        )}
+
+        {/* page-level keyframes */}
+        <style>{`
+          @keyframes card-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+          @keyframes side-orb-drift {
+            0%   { transform: translate(0,0)   rotate(0deg); }
+            50%  { transform: translate(8px,-12px) rotate(8deg); }
+            100% { transform: translate(0,0)   rotate(0deg); }
+          }
+        `}</style>
+
+        {/* Closing-animation sentinel — when the photographer/customer
+            scrolls to this element the per-theme closing fires. */}
+        <div ref={footerRef} data-testid="dfp-closing-sentinel" style={{ height: 60 }} />
+
+        {/* Footer with the couple photo as full-bleed background — last
+            thing the guest sees before the closing animation. */}
+        <PreviewFooter
+          couplePhoto={text.photo}
+          bride={text.bride}
+          groom={text.groom}
+          accent={accent}
+          headingFont={headingFont}
+        />
+        {openingDone && (
+          <ClosingOrchestrator
+            themeId={themeId}
+            eventType={event}
+            image={resolved?.design?.image}
+            bride={text.bride}
+            groom={text.groom}
+            date={text.date}
+          />
+        )}
+      </div>
+    </AnimationProvider>
+  );
+};
+
+/* ────────────────────────────────────────────────────────────────────
+   SoftDesignBackdrop — Renders the SAME design image as a soft, blurred
+   full-viewport backdrop so the design extends edge-to-edge of the page
+   (instead of just sitting inside a centered card on a flat shade). The
+   center hero card still pops because it uses the crisp, un-blurred
+   variant via UniversalDesignRenderer + a strong drop-shadow.
+   ──────────────────────────────────────────────────────────────────── */
+const SoftDesignBackdrop = ({ image, accent, pageBg = '#1A130B' }) => {
+  if (!image) {
+    // Pure-CSS fallback when no image URL (kept GPU-cheap)
+    return (
+      <div
+        aria-hidden
+        style={{
+          position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
+          background: `
+            radial-gradient(ellipse at top left, ${accent}1F 0%, transparent 55%),
+            radial-gradient(ellipse at bottom right, ${accent}14 0%, transparent 60%),
+            ${pageBg}
+          `,
+        }}
+      />
+    );
+  }
+  return (
+    <>
+      {/* The design image is the page background — full-bleed, crisp, no
+          heavy blur or dark tint. User explicitly asked (2026-06-06) for
+          the artwork itself (e.g. Kerala palms / brass lamps) to be the
+          visible background instead of a teal / black overlay. */}
+      <img
+        aria-hidden
+        src={image}
+        alt=""
+        draggable={false}
+        loading="eager"
+        decoding="async"
+        style={{
+          position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
+          width: '100%', height: '100%', objectFit: 'cover',
+          // Very mild softening to avoid hard crop edges on ultra-wide
+          // screens. Crisp enough that the artwork stays recognisable.
+          filter: 'blur(4px) saturate(1.05)',
+          transform: 'scale(1.04)',
+          transformOrigin: 'center center',
+          opacity: 1,
+          willChange: 'transform',
+        }}
+        data-testid="design-page-background"
+      />
+      {/* Soft accent orbs — kept from previous design for cinematic feel.
+          Heavy `pageBg` tinting wash was REMOVED so the artwork shows. */}
+      <div
+        aria-hidden
+        style={{
+          position: 'fixed', left: '4vw', top: '40vh',
+          width: 220, height: 220, zIndex: 1, pointerEvents: 'none',
+          background: `radial-gradient(circle, ${accent}33 0%, transparent 70%)`,
+          filter: 'blur(20px)',
+          animation: 'side-orb-drift 18s ease-in-out infinite',
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          position: 'fixed', right: '4vw', top: '60vh',
+          width: 260, height: 260, zIndex: 1, pointerEvents: 'none',
+          background: `radial-gradient(circle, ${accent}28 0%, transparent 70%)`,
+          filter: 'blur(22px)',
+          animation: 'side-orb-drift 22s ease-in-out infinite reverse',
+        }}
+      />
+    </>
+  );
+};
+
+/* ────────────────────────────────────────────────────────────────────
+   Panel — a translucent parchment-tinted container used by every
+   section so the design backdrop is always visible underneath.
+   ──────────────────────────────────────────────────────────────────── */
+const Panel = ({ pageBg, accent, children, variant, compact, testId }) => {
+  const isHero = variant === 'hero';
+  return (
+    <section
+      data-testid={testId}
+      className="relative px-6 md:px-16"
+      style={{
+        paddingTop:    isHero ? '3rem' : (compact ? '2.6rem' : '4.5rem'),
+        paddingBottom: isHero ? '4rem' : (compact ? '2.6rem' : '4.5rem'),
+      }}
+    >
+      <div
+        className="max-w-3xl mx-auto rounded-2xl px-6 md:px-10 py-8 md:py-10"
+        style={{
+          background: isHero ? 'transparent' : `${pageBg}CC`,
+          backdropFilter: isHero ? 'none' : 'blur(8px)',
+          WebkitBackdropFilter: isHero ? 'none' : 'blur(8px)',
+          border: isHero ? 'none' : `1px solid ${accent}44`,
+          boxShadow: isHero ? 'none' : '0 16px 50px rgba(0,0,0,0.10)',
+        }}
+      >
+        {children}
+      </div>
+    </section>
+  );
+};
+
+const Eyebrow = ({ accent, children }) => (
+  <div className="text-[10px] tracking-[0.4em] uppercase mb-3" style={{ color: accent }}>{children}</div>
+);
+
+const SectionHeading = ({ children, font, color }) => (
+  <h2
+    className="leading-tight"
+    style={{ fontFamily: font, color, fontSize: 'clamp(1.6rem, 3.2vw, 2.5rem)' }}
+  >
+    {children}
+  </h2>
+);
+
+const EditField = ({ label, value, onChange, testId, accent, textOnBg, pageBg }) => (
+  <label className="block">
+    <span
+      className="text-[10px] tracking-[0.3em] uppercase block mb-1.5 font-semibold"
+      style={{ color: textOnBg, opacity: 0.85 }}
+    >
+      {label}
+    </span>
+    <input value={value} onChange={(e) => onChange(e.target.value)}
+      className="w-full px-3 py-2.5 rounded-md text-[15px] outline-none"
+      style={{ background: `${pageBg}EE`, color: textOnBg, border: `1px solid ${accent}77`, fontFamily: '"Cormorant Garamond", serif' }}
+      data-testid={testId} />
+  </label>
+);
+
+/* ────────────────────────────────────────────────────────────────────
+   PhotoEditor — drag-and-drop file upload + click to upload + URL paste
+   ──────────────────────────────────────────────────────────────────── */
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024; // 5 MB
+
+const PhotoEditor = ({ value, onChange, accent, textOnBg, pageBg }) => {
+  const [dragOver, setDragOver] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+  const [error, setError] = useState('');
+  const fileRef = useRef(null);
+
+  const ingestFile = useCallback((file) => {
+    setError('');
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Please drop an image file (jpg / png / webp).');
+      return;
+    }
+    if (file.size > MAX_PHOTO_BYTES) {
+      setError('Image is larger than 5 MB. Pick a smaller photo.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => onChange(e.target.result);
+    reader.onerror = () => setError('Could not read the file.');
+    reader.readAsDataURL(file);
+  }, [onChange]);
+
+  const onDrop = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    setDragOver(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) ingestFile(file);
+  };
+  const onDragOver = (e) => { e.preventDefault(); setDragOver(true); };
+  const onDragLeave = (e) => { e.preventDefault(); setDragOver(false); };
+  const onFilePick = (e) => { const f = e.target.files?.[0]; if (f) ingestFile(f); };
+  const onUrlApply = () => {
+    if (!urlInput.trim()) return;
+    setError('');
+    onChange(urlInput.trim());
+    setUrlInput('');
+  };
+
+  return (
+    <div className="rounded-md p-3" style={{ background: `${pageBg}EE`, border: `1px solid ${accent}55` }}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] tracking-[0.3em] uppercase" style={{ color: accent }}>Couple Photo</span>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="text-[10px] tracking-[0.2em] uppercase inline-flex items-center gap-1 opacity-75 hover:opacity-100"
+            style={{ color: textOnBg }}
+            data-testid="clear-photo"
+          >
+            <X className="w-3 h-3" /> Remove
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-col md:flex-row items-stretch gap-3">
+        {/* Drop / upload zone */}
+        <div
+          onDrop={onDrop}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onClick={() => fileRef.current?.click()}
+          className="flex-1 rounded-md cursor-pointer transition-colors"
+          style={{
+            border: `2px dashed ${dragOver ? accent : accent + '66'}`,
+            background: dragOver ? `${accent}18` : 'transparent',
+            padding: 14,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}
+          data-testid="photo-dropzone"
+        >
+          {value ? (
+            <img
+              src={value}
+              alt="Couple"
+              style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: `2px solid ${accent}`, flexShrink: 0 }}
+            />
+          ) : (
+            <div style={{ width: 56, height: 56, borderRadius: '50%', display: 'grid', placeItems: 'center', background: `${accent}18`, flexShrink: 0 }}>
+              <ImageIcon className="w-6 h-6" style={{ color: accent }} />
+            </div>
+          )}
+          <div className="text-left">
+            <div className="text-[12px] font-medium inline-flex items-center gap-1.5" style={{ color: textOnBg }}>
+              <Upload className="w-3.5 h-3.5" /> Drag &amp; drop or click to upload
+            </div>
+            <div className="text-[10px] mt-0.5 opacity-75" style={{ color: textOnBg }}>
+              JPG / PNG / WEBP, up to 5&nbsp;MB
+            </div>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" onChange={onFilePick} className="hidden" data-testid="photo-file-input" />
+        </div>
+
+        {/* URL input */}
+        <div className="flex-1 rounded-md flex items-stretch gap-2" style={{ border: `1px solid ${accent}55`, padding: 6 }}>
+          <span className="grid place-items-center px-2" style={{ color: accent }}><LinkIcon className="w-4 h-4" /></span>
+          <input
+            type="url"
+            value={urlInput}
+            placeholder="…or paste an image URL"
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onUrlApply(); } }}
+            className="flex-1 px-2 py-2 rounded-md text-[13px] outline-none"
+            style={{ background: 'transparent', color: textOnBg, border: 'none' }}
+            data-testid="photo-url-input"
+          />
+          <button
+            type="button"
+            onClick={onUrlApply}
+            className="px-3 text-[10px] tracking-[0.25em] uppercase rounded-md"
+            style={{ background: accent, color: pageBg, border: `1px solid ${accent}` }}
+            data-testid="photo-url-apply"
+          >
+            Use
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="text-[11px] mt-2" style={{ color: '#B83A2C' }} data-testid="photo-error">{error}</div>
+      )}
+    </div>
+  );
+};
+
+/* Quick brightness check on a #RRGGBB string — true if light (need dark text) */
+function isLightHex(hex) {
+  return isLightColor(hex);
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   PhotoGallerySection — buttery-smooth horizontal photo carousel.
+
+   The user complained that the previous scroller was laggy. Fixes:
+   - Wrap each tile in a fixed-size flex item so the browser doesn't
+     reflow on every frame.
+   - Force GPU compositing via `transform: translate3d(0,0,0)` and
+     `will-change: transform` so scrolling animates on the GPU.
+   - Use native `overflow-x: auto` + `scroll-snap` + `overscroll-behavior`
+     so iOS/Android momentum scroll is preserved.
+   - Lazy-load tiles + `decoding="async"` to keep paint cost low.
+   - Custom prev/next chips that nudge by one tile via `scrollBy`.
+   ──────────────────────────────────────────────────────────────────── */
+const GALLERY_PHOTOS = [
+  'https://images.unsplash.com/photo-1604017011826-d3b4c23f8914?w=1200&q=82&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1583939003579-730e3918a45a?w=1200&q=82&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1601471075416-8c19a6a565c5?w=1200&q=82&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1519741497674-611481863552?w=1200&q=82&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1606800052052-a08af7148866?w=1200&q=82&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1591604466107-ec97de577aff?w=1200&q=82&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=1200&q=82&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1529636798458-92182e662485?w=1200&q=82&auto=format&fit=crop',
+];
+
+const PhotoGallerySection = ({ pageBg, accent, textOnBg, mutedText, headingFont, heroPhoto }) => {
+  const scrollerRef = React.useRef(null);
+  const photos = React.useMemo(() => {
+    const list = heroPhoto ? [heroPhoto, ...GALLERY_PHOTOS] : GALLERY_PHOTOS;
+    // dedupe while preserving order
+    return Array.from(new Set(list));
+  }, [heroPhoto]);
+
+  const nudge = (dir) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const card = el.querySelector('[data-gallery-tile]');
+    const step = (card?.getBoundingClientRect().width || 280) + 16; // gap
+    el.scrollBy({ left: dir * step, behavior: 'smooth' });
+  };
+
+  return (
+    <section
+      className="relative"
+      data-testid="gallery-section"
+      style={{ paddingTop: '4.5rem', paddingBottom: '4.5rem' }}
+    >
+      <div className="max-w-5xl mx-auto px-6 md:px-16 mb-5 flex items-end justify-between gap-4">
+        <div>
+          <Eyebrow accent={accent}>◆ Memories</Eyebrow>
+          <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+            A few <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>frozen frames.</em>
+          </SectionHeading>
+          <p className="mt-2 text-sm" style={{ color: mutedText }}>
+            Swipe through. Your wedding gallery will live here.
+          </p>
+        </div>
+        <div className="hidden md:flex gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => nudge(-1)}
+            aria-label="Previous photos"
+            className="w-10 h-10 rounded-full grid place-items-center transition-transform active:scale-95"
+            style={{ background: `${accent}22`, color: textOnBg, border: `1px solid ${accent}66` }}
+            data-testid="gallery-prev"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => nudge(1)}
+            aria-label="Next photos"
+            className="w-10 h-10 rounded-full grid place-items-center transition-transform active:scale-95"
+            style={{ background: accent, color: pageBg, border: `1px solid ${accent}` }}
+            data-testid="gallery-next"
+          >
+            <ArrowLeft className="w-4 h-4 rotate-180" />
+          </button>
+        </div>
+      </div>
+
+      <div
+        ref={scrollerRef}
+        className="gallery-scroller flex gap-4 px-6 md:px-16 pb-4"
+        style={{
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          scrollSnapType: 'x mandatory',
+          overscrollBehaviorX: 'contain',
+          WebkitOverflowScrolling: 'touch',
+          scrollBehavior: 'smooth',
+          willChange: 'scroll-position',
+          // GPU compositing — keeps animation off the main thread
+          transform: 'translate3d(0,0,0)',
+        }}
+        data-testid="gallery-scroller"
+      >
+        {photos.map((src, i) => (
+          <figure
+            key={`${src}-${i}`}
+            data-gallery-tile
+            className="relative flex-shrink-0 rounded-xl overflow-hidden"
+            style={{
+              width: 'min(72vw, 320px)',
+              aspectRatio: '4 / 5',
+              scrollSnapAlign: 'start',
+              background: `${accent}18`,
+              border: `1px solid ${accent}44`,
+              boxShadow: '0 14px 30px rgba(0,0,0,0.18)',
+              transform: 'translate3d(0,0,0)',
+            }}
+            data-testid={`gallery-tile-${i}`}
+          >
+            <img
+              src={src}
+              alt={`Memory ${i + 1}`}
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+              className="w-full h-full object-cover"
+              style={{ willChange: 'transform', transform: 'translate3d(0,0,0)' }}
+            />
+          </figure>
+        ))}
+      </div>
+
+      <style>{`
+        /* Slim, themed scrollbar (WebKit + Firefox) */
+        .gallery-scroller::-webkit-scrollbar { height: 6px; }
+        .gallery-scroller::-webkit-scrollbar-track { background: transparent; }
+        .gallery-scroller::-webkit-scrollbar-thumb {
+          background: rgba(212,175,55,0.4);
+          border-radius: 999px;
+        }
+        .gallery-scroller { scrollbar-color: rgba(212,175,55,0.5) transparent; scrollbar-width: thin; }
+      `}</style>
+    </section>
+  );
+};
+
+/* ────────────────────────────────────────────────────────────────────
+   CountdownSection — live D-H-M-S ticker until the wedding moment.
+   Parses `weddingDate` flexibly ("14 February 2026", ISO, etc.). When
+   the date is in the past or unparseable, the section renders a
+   graceful "Just married" badge instead.
+   ──────────────────────────────────────────────────────────────────── */
+const parseWeddingDate = (s) => {
+  if (!s) return null;
+  const t = Date.parse(s);
+  if (!Number.isNaN(t)) return new Date(t);
+  // "14 February 2026" style
+  const m = String(s).match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+  if (m) {
+    const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+    const mi = months.indexOf(m[2].toLowerCase());
+    if (mi >= 0) return new Date(Number(m[3]), mi, Number(m[1]));
+  }
+  return null;
+};
+
+const CountdownSection = ({ pageBg, accent, textOnBg, mutedText, headingFont, weddingDate }) => {
+  const target = React.useMemo(() => parseWeddingDate(weddingDate), [weddingDate]);
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (!target) return null;
+  const diff = target.getTime() - now;
+  const past = diff <= 0;
+  const total = Math.max(0, diff);
+  const days = Math.floor(total / 86_400_000);
+  const hours = Math.floor((total % 86_400_000) / 3_600_000);
+  const mins = Math.floor((total % 3_600_000) / 60_000);
+  const secs = Math.floor((total % 60_000) / 1_000);
+  const cells = [
+    { v: days,  k: 'Days'    },
+    { v: hours, k: 'Hours'   },
+    { v: mins,  k: 'Minutes' },
+    { v: secs,  k: 'Seconds' },
+  ];
+  return (
+    <section
+      className="relative"
+      data-testid="countdown-section"
+      style={{ paddingTop: '4rem', paddingBottom: '4rem' }}
+    >
+      <div className="max-w-3xl mx-auto px-6 md:px-16 text-center">
+        <Eyebrow accent={accent}>◆ Countdown</Eyebrow>
+        <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+          {past ? (
+            <>Just <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>married.</em></>
+          ) : (
+            <>Until <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>we say I do.</em></>
+          )}
+        </SectionHeading>
+        {!past && (
+          <div className="mt-6 grid grid-cols-4 gap-3 md:gap-5">
+            {cells.map((c) => (
+              <div
+                key={c.k}
+                className="rounded-xl py-4 md:py-5 px-1 transition-transform"
+                style={{
+                  background: `${accent}14`,
+                  border: `1px solid ${accent}44`,
+                  color: textOnBg,
+                  boxShadow: `0 8px 26px rgba(0,0,0,0.25), inset 0 0 0 1px ${accent}22`,
+                }}
+                data-testid={`countdown-${c.k.toLowerCase()}`}
+              >
+                <div className="font-display text-3xl md:text-5xl" style={{ color: accent }}>
+                  {String(c.v).padStart(2, '0')}
+                </div>
+                <div className="mt-1 text-[10px] tracking-[0.3em] uppercase" style={{ color: mutedText }}>
+                  {c.k}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+
+
+/* ────────────────────────────────────────────────────────────────────
+   SequentialPhotoReveal — NEW FLOW (Feb 2026 user spec):
+     • Slide 1: Groom photo enters from the LEFT, bio text on the RIGHT
+     • Slide 2: Bride photo enters from the RIGHT, bio text on the LEFT
+     • Slide 3: Couple photo centered with couple-story text below
+     • Slide 4: "Wedding Details" panel — date, time, nakshatram, muhurtam, venue
+
+   Each slide animates in via IntersectionObserver as the user scrolls.
+   The couple shot is also rendered as a soft blurred background behind
+   slide 3 so the moment of "Together" feels cinematic.
+   ──────────────────────────────────────────────────────────────────── */
+const REVEAL_SHOTS = {
+  groom: 'https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=1200&q=82&auto=format&fit=crop',
+  bride: 'https://images.unsplash.com/photo-1591604466107-ec97de577aff?w=1200&q=82&auto=format&fit=crop',
+};
+
+const SideRevealSlide = ({
+  side,           // 'left' | 'right'  — which side the PHOTO enters from
+  label,
+  name,
+  bio,
+  photo,
+  accent,
+  textOnBg,
+  mutedText,
+  headingFont,
+  testid,
+}) => {
+  const ref = React.useRef(null);
+  const [visible, setVisible] = React.useState(false);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setVisible(true); return; }
+    const io = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
+      { threshold: 0.25 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  const photoEnter  = visible ? 'translateX(0)' : (side === 'left' ? 'translateX(-80px)' : 'translateX(80px)');
+  const textEnter   = visible ? 'translateX(0)' : (side === 'left' ? 'translateX(60px)'  : 'translateX(-60px)');
+  return (
+    <div
+      ref={ref}
+      className={`relative grid grid-cols-1 md:grid-cols-2 items-center gap-6 md:gap-12 px-6 md:px-16 py-14 ${
+        side === 'right' ? 'md:[direction:rtl]' : ''
+      }`}
+      data-testid={testid}
+    >
+      {/* Photo column */}
+      <div
+        className="relative rounded-2xl overflow-hidden transition-all duration-[1100ms] ease-out md:[direction:ltr]"
+        style={{
+          width: '100%',
+          maxWidth: 460,
+          aspectRatio: '4/5',
+          background: `${accent}18`,
+          border: `1px solid ${accent}55`,
+          boxShadow: '0 30px 60px rgba(0,0,0,0.4)',
+          opacity: visible ? 1 : 0,
+          transform: photoEnter,
+          justifySelf: side === 'right' ? 'end' : 'start',
+        }}
+      >
+        <img
+          src={photo}
+          alt={`${label} portrait`}
+          loading="lazy"
+          decoding="async"
+          className="w-full h-full object-cover"
+          style={{ transform: 'translate3d(0,0,0)' }}
+        />
+        <div
+          className="absolute inset-0 flex flex-col justify-end p-5 md:[direction:ltr]"
+          style={{ background: 'linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.7) 100%)' }}
+        >
+          <div className="text-[10px] tracking-[0.4em] uppercase" style={{ color: '#FFF8DC' }}>{label}</div>
+          <div className="font-display text-2xl mt-1" style={{ color: '#FFF8DC', fontFamily: `${headingFont}, serif` }}>{name}</div>
+        </div>
+      </div>
+
+      {/* Text column */}
+      <div
+        className="md:[direction:ltr] transition-all duration-[1100ms] ease-out"
+        style={{
+          opacity: visible ? 1 : 0,
+          transform: textEnter,
+          transitionDelay: '180ms',
+        }}
+      >
+        <div className="text-[10px] tracking-[0.4em] uppercase mb-2" style={{ color: accent }}>{label}</div>
+        <div className="font-display text-3xl md:text-4xl mb-3" style={{ color: textOnBg, fontFamily: `${headingFont}, serif` }}>
+          {name}
+        </div>
+        <p className="text-[15px] leading-relaxed" style={{ color: mutedText }}>
+          {bio || `A short story about ${name} will appear here once the photographer fills in the bio inside the Couple step.`}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+const CoupleTogetherSlide = ({ bride, groom, photo, story, accent, textOnBg, mutedText, headingFont }) => {
+  const ref = React.useRef(null);
+  const [visible, setVisible] = React.useState(false);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setVisible(true); return; }
+    const io = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
+      { threshold: 0.3 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <div
+      ref={ref}
+      className="relative grid place-items-center min-h-[90vh] py-16"
+      data-testid="reveal-slide-couple"
+    >
+      {photo && (
+        <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none" style={{ opacity: 0.2 }}>
+          <img src={photo} alt="" className="w-full h-full object-cover blur-lg scale-110" />
+        </div>
+      )}
+      <div
+        className="relative text-center max-w-2xl px-6 md:px-16 transition-all duration-[1200ms] ease-out"
+        style={{
+          opacity: visible ? 1 : 0,
+          transform: visible ? 'scale(1) translateY(0)' : 'scale(0.95) translateY(40px)',
+        }}
+      >
+        <div
+          className="relative mx-auto mb-6 rounded-2xl overflow-hidden"
+          style={{
+            width: 'min(72vw, 380px)',
+            aspectRatio: '4/5',
+            background: `${accent}18`,
+            border: `1px solid ${accent}55`,
+            boxShadow: '0 35px 70px rgba(0,0,0,0.55)',
+          }}
+        >
+          <img src={photo} alt="Couple" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+        </div>
+        <div className="text-[10px] tracking-[0.4em] uppercase mb-2" style={{ color: accent }}>Together</div>
+        <div
+          className="font-display text-4xl md:text-5xl mb-3"
+          style={{ color: textOnBg, fontFamily: `${headingFont}, serif` }}
+        >
+          {groom} <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>&amp;</em> {bride}
+        </div>
+        <p className="text-[15px] leading-relaxed" style={{ color: mutedText }}>
+          {story || `Their story will be filled in by the photographer in the Couple step — the joint paragraph of how they met, fell in love, and decided to spend forever together.`}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+const WeddingDetailsSlide = ({ date, time, nakshatram, muhurtam, venue, accent, textOnBg, mutedText, headingFont }) => {
+  const rows = [
+    { label: 'Date',       value: date,       testid: 'detail-date' },
+    { label: 'Time',       value: time,       testid: 'detail-time' },
+    { label: 'Muhurtam',   value: muhurtam,   testid: 'detail-muhurtam' },
+    { label: 'Nakshatram', value: nakshatram, testid: 'detail-nakshatram' },
+    { label: 'Venue',      value: venue,      testid: 'detail-venue' },
+  ].filter((r) => r.value);
+  if (rows.length === 0) return null;
+  return (
+    <section
+      className="relative max-w-3xl mx-auto px-6 md:px-16 py-16"
+      data-testid="wedding-details-panel"
+    >
+      <Eyebrow accent={accent}>◆ Wedding details</Eyebrow>
+      <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+        Save the <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>moment.</em>
+      </SectionHeading>
+      <dl
+        className="mt-6 rounded-2xl divide-y"
+        style={{
+          background: `${accent}10`,
+          border: `1px solid ${accent}33`,
+        }}
+      >
+        {rows.map((r) => (
+          <div
+            key={r.testid}
+            className="flex items-baseline justify-between gap-6 py-3 px-5"
+            style={{ borderColor: `${accent}22` }}
+            data-testid={r.testid}
+          >
+            <dt className="text-[11px] tracking-[0.3em] uppercase" style={{ color: mutedText }}>{r.label}</dt>
+            <dd className="font-display text-lg text-right" style={{ color: textOnBg }}>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+};
+
+const SequentialPhotoReveal = ({
+  pageBg, accent, textOnBg, mutedText, headingFont,
+  bride, groom, heroPhoto,
+  brideBio, groomBio, coupleStory,
+  weddingDate, weddingTime, venue, nakshatram, muhurtam,
+}) => (
+  <section
+    className="relative"
+    data-testid="sequential-photo-reveal"
+    style={{ paddingTop: '2rem', paddingBottom: '2rem', background: pageBg }}
+  >
+    <div className="max-w-3xl mx-auto px-6 md:px-16 text-center mb-6">
+      <Eyebrow accent={accent}>◆ Meet the couple</Eyebrow>
+      <SectionHeading font={headingFont} color={textOnBg} accent={accent}>
+        Two stories <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>one love.</em>
+      </SectionHeading>
+      <p className="mt-2 text-sm" style={{ color: mutedText }}>
+        Scroll to meet {groom}, then {bride}, then the two of them together.
+      </p>
+    </div>
+
+    <SideRevealSlide
+      side="left"
+      label="The Groom"
+      name={groom}
+      bio={groomBio}
+      photo={REVEAL_SHOTS.groom}
+      accent={accent}
+      textOnBg={textOnBg}
+      mutedText={mutedText}
+      headingFont={headingFont}
+      testid="reveal-slide-groom"
+    />
+    <SideRevealSlide
+      side="right"
+      label="The Bride"
+      name={bride}
+      bio={brideBio}
+      photo={REVEAL_SHOTS.bride}
+      accent={accent}
+      textOnBg={textOnBg}
+      mutedText={mutedText}
+      headingFont={headingFont}
+      testid="reveal-slide-bride"
+    />
+    <CoupleTogetherSlide
+      bride={bride}
+      groom={groom}
+      photo={heroPhoto}
+      story={coupleStory}
+      accent={accent}
+      textOnBg={textOnBg}
+      mutedText={mutedText}
+      headingFont={headingFont}
+    />
+    <WeddingDetailsSlide
+      date={weddingDate}
+      time={weddingTime}
+      venue={venue}
+      nakshatram={nakshatram}
+      muhurtam={muhurtam}
+      accent={accent}
+      textOnBg={textOnBg}
+      mutedText={mutedText}
+      headingFont={headingFont}
+    />
+  </section>
+);
+
+
+/* ────────────────────────────────────────────────────────────────────
+   PetalBurstOverlay — petal-shower bursts on scroll / touch.
+   Listens to wheel + touchmove and emits a short-lived cluster of
+   animated petals from the cursor / touch point. Uses requestAnimationFrame
+   for 60fps, and removes finished petals via a state cleanup so we never
+   leak DOM nodes.
+   ──────────────────────────────────────────────────────────────────── */
+const PetalBurstOverlay = ({ accent = '#D4AF37' }) => {
+  const [petals, setPetals] = React.useState([]);
+  const lastEmit = React.useRef(0);
+
+  React.useEffect(() => {
+    const emit = (x, y) => {
+      const now = Date.now();
+      if (now - lastEmit.current < 150) return; // throttle
+      lastEmit.current = now;
+      const burst = Array.from({ length: 5 }).map((_, i) => ({
+        id: `${now}-${i}`,
+        x: x + (Math.random() - 0.5) * 40,
+        y: y + (Math.random() - 0.5) * 20,
+        dx: (Math.random() - 0.5) * 140,
+        dy: 120 + Math.random() * 200,
+        rot: (Math.random() - 0.5) * 540,
+        size: 10 + Math.random() * 14,
+        hue: ['#F5C2D6', '#FCE0A6', accent, '#FFB0C5', '#FFD8A8'][Math.floor(Math.random() * 5)],
+        born: now,
+      }));
+      setPetals((p) => [...p, ...burst].slice(-80));
+    };
+
+    const onWheel = (e) => emit(e.clientX || window.innerWidth / 2, e.clientY || 120);
+    const onTouchMove = (e) => {
+      const t = e.touches?.[0];
+      if (t) emit(t.clientX, t.clientY);
+    };
+    let lastPointerEmit = 0;
+    const onPointerMove = (e) => {
+      // Pointer-move can fire 100+ times/sec — throttle stricter than scroll.
+      const now = Date.now();
+      if (now - lastPointerEmit < 250) return;
+      lastPointerEmit = now;
+      emit(e.clientX, e.clientY);
+    };
+    window.addEventListener('wheel',       onWheel,       { passive: true });
+    window.addEventListener('touchmove',   onTouchMove,   { passive: true });
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+
+    const sweep = setInterval(() => {
+      const cutoff = Date.now() - 2200;
+      setPetals((p) => p.filter((x) => x.born > cutoff));
+    }, 600);
+
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('pointermove', onPointerMove);
+      clearInterval(sweep);
+    };
+  }, [accent]);
+
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: 'fixed',
+        inset: 0,
+        pointerEvents: 'none',
+        zIndex: 30,
+        overflow: 'hidden',
+      }}
+      data-testid="petal-burst-overlay"
+    >
+      {petals.map((p) => (
+        <span
+          key={p.id}
+          style={{
+            position: 'absolute',
+            left: p.x,
+            top: p.y,
+            width: p.size,
+            height: p.size * 1.4,
+            borderRadius: '40% 60% 60% 40% / 60% 30% 70% 40%',
+            background: `linear-gradient(180deg, ${p.hue}cc, ${p.hue}99)`,
+            boxShadow: `0 0 12px ${p.hue}66`,
+            transform: 'translate3d(0,0,0)',
+            animation: 'maja-petal-fall 2.1s ease-out forwards',
+            '--dx': `${p.dx}px`,
+            '--dy': `${p.dy}px`,
+            '--rot': `${p.rot}deg`,
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes maja-petal-fall {
+          0%   { opacity: 0;  transform: translate3d(0, -10px, 0) rotate(0deg); }
+          15%  { opacity: 1; }
+          100% { opacity: 0;  transform: translate3d(var(--dx, 0), var(--dy, 100px), 0) rotate(var(--rot, 180deg)); }
+        }
+      `}</style>
+    </div>
+  );
+};
+
+/* ────────────────────────────────────────────────────────────────────
+   PreviewFooter — the very last thing the guest scrolls into.
+   Renders the couple photo as a full-bleed background (zoomed slow),
+   with the bride+groom names overlaid in a glassy card. Caps the rich
+   preview with a "matched bookend" to the opening banner.
+   ──────────────────────────────────────────────────────────────────── */
+const PreviewFooter = ({ couplePhoto, bride, groom, accent, headingFont }) => {
+  const ref = React.useRef(null);
+  const [visible, setVisible] = React.useState(false);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setVisible(true); return; }
+    const io = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
+      { threshold: 0.2 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <section
+      ref={ref}
+      className="relative overflow-hidden"
+      style={{ minHeight: '70vh' }}
+      data-testid="preview-footer"
+    >
+      {/* Couple-photo bg — zoomed and slow-panned via CSS keyframes */}
+      <div aria-hidden className="absolute inset-0 pointer-events-none">
+        {couplePhoto && (
+          <img
+            src={couplePhoto}
+            alt=""
+            className="w-full h-full object-cover"
+            style={{
+              transform: visible ? 'scale(1.05)' : 'scale(1.15)',
+              transition: 'transform 6s ease-out',
+              opacity: 0.45,
+            }}
+          />
+        )}
+        <div
+          aria-hidden
+          className="absolute inset-0"
+          style={{
+            background: 'linear-gradient(180deg, rgba(8,5,3,0.4) 0%, rgba(8,5,3,0.85) 100%)',
+          }}
+        />
+      </div>
+
+      <div
+        className="relative grid place-items-center text-center px-6 md:px-16"
+        style={{ minHeight: '70vh' }}
+      >
+        <div
+          className="rounded-2xl px-8 py-10 max-w-xl"
+          style={{
+            background: 'rgba(8,5,3,0.4)',
+            border: `1px solid ${accent}55`,
+            backdropFilter: 'blur(8px)',
+            opacity: visible ? 1 : 0,
+            transform: visible ? 'translateY(0)' : 'translateY(40px)',
+            transition: 'opacity 1.2s ease-out, transform 1.2s ease-out',
+          }}
+          data-testid="preview-footer-card"
+        >
+          <div className="text-[10px] tracking-[0.4em] uppercase mb-3" style={{ color: accent }}>
+            ◆ With love
+          </div>
+          <div
+            className="font-display text-4xl md:text-5xl mb-3"
+            style={{ color: '#FFF8DC', fontFamily: `${headingFont}, serif` }}
+          >
+            {groom} <em style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>&amp;</em> {bride}
+          </div>
+          <div className="text-sm tracking-[0.2em] uppercase" style={{ color: 'rgba(255,248,220,0.7)' }}>
+            Thank you for being part of our forever
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+export default DesignFullPreview;
+===== frontend/src/pages/EventDesignPicker.jsx =====
+/**
+ * EventDesignPicker — Step C of the design picker flow.
+ *
+ * Route: /themes/:themeId/events/:event
+ *
+ * Shows the 3 photo-design variants for the chosen (theme, event)
+ * pair rendered via `UniversalDesignRenderer` (image + theme wash +
+ * animated overlays + text). Clicking → /themes/:themeId/events/:event/design/:idx.
+ */
+import React, { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Eye, Coins, ShoppingBag } from 'lucide-react';
+import axios from 'axios';
+import UniversalDesignRenderer from '@/themes/UniversalDesignRenderer';
+import { ALL_DESIGNS, useThemeDesigns } from '@/themes/allDesigns';
+import { KERALA_COLORS } from '@/themes/kerala_backwaters/kerala.colors';
+import { getThemeById } from '@/themes/masterThemes';
+import { normaliseEvent, resolveDesign } from '@/themes/themeDesignResolver';
+import { getThemeSampleData } from '@/themes/sampleData';
+import { AnimationProvider } from '@/components/animations';
+import ThemeAnimatedBackground from '@/components/ThemeAnimatedBackground';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 32, filter: 'blur(10px)' },
+  visible: (i = 0) => ({
+    opacity: 1, y: 0, filter: 'blur(0px)',
+    transition: { duration: 0.9, delay: i * 0.12, ease: [0.22, 1, 0.36, 1] },
+  }),
+};
+
+const SAMPLE_PHOTO = 'https://images.unsplash.com/photo-1519741497674-611481863552?w=400&h=400&fit=crop&q=85';
+
+const EventDesignPicker = () => {
+  const { themeId, event: rawEvent } = useParams();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const themeMeta = useMemo(() => getThemeById(themeId), [themeId]);
+  const event = useMemo(() => normaliseEvent(rawEvent), [rawEvent]);
+  // PHASE 8: lazy-load the selected theme's design config.
+  const themeDesigns = useThemeDesigns(themeId);
+
+  // Per-design credit cost — fetched once and used to render a "Credits cost: N"
+  // badge on every design card.  Falls back to 1 when pricing data isn't
+  // available (matches user_create_profile defaulting to 1 credit).
+  const [pricing, setPricing] = useState({});
+  useEffect(() => {
+    axios.get(`${API_URL}/api/public/design-pricing`)
+      .then((r) => setPricing(r.data?.pricing || {}))
+      .catch(() => setPricing({}));
+  }, []);
+
+  // Theme-specific dummy couple/date so each theme's preview shows
+  // culturally resonant placeholders.
+  const SAMPLE = useMemo(() => {
+    const s = getThemeSampleData(themeId) || {};
+    return {
+      bride: s.bride || 'Anaya',
+      groom: s.groom || 'Vihaan',
+      date:  s.weddingDate || '14 Feb 2026',
+      venue: s.venue || 'The Mandap',
+      photo: SAMPLE_PHOTO,
+    };
+  }, [themeId]);
+
+  const variants = useMemo(() => {
+    return [0, 1, 2]
+      .map((idx) => {
+        const r = resolveDesign(themeId, event, idx);
+        return r ? { ...r, index: idx } : null;
+      })
+      .filter(Boolean);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeId, event, themeDesigns]);
+
+  const tokens = variants[0]?.theme?.tokens || (themeId === 'kerala_backwaters'
+    ? { background: KERALA_COLORS.water, text: KERALA_COLORS.text, accent: KERALA_COLORS.secondary }
+    : (themeDesigns?.tokens || ALL_DESIGNS[themeId]?.tokens || { background: '#0a0a0a', text: '#F5ECD7', accent: '#D4AF37' }));
+
+  useEffect(() => {
+    const prevBody = document.body.style.background;
+    // Keep WHITE background
+    document.body.style.background = '#FFFFFF';
+    document.body.classList.remove('luxe', 'luxe-grain', 'luxe-vignette');
+    return () => { document.body.style.background = prevBody; };
+  }, [tokens.background]);
+
+  if (!themeMeta || variants.length === 0) {
+    return (
+      <div className="min-h-screen grid place-items-center px-6" style={{ background: '#0a0a0a', color: '#FFF8DC' }}>
+        <div className="text-center">
+          <h2 className="font-display text-3xl mb-3">No designs found for this event.</h2>
+          <button onClick={() => navigate(`/themes/${themeId}/events`)} className="lux-btn lux-btn-ghost">
+            Back to ceremonies
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const accent = tokens.accentGold || tokens.accent;
+  // CRITICAL FIX (Bucket 1 — invisible text): some themes ship pale `tokens.text`
+  // (beach #FFF8F2, christian #F8F4EC, muslim #F5ECD7). The design-picker page
+  // forces a white background, so we auto-darken those before they reach the
+  // page chrome. Card previews keep their own colours.
+  const isLightText = (hex) => {
+    if (!hex || typeof hex !== 'string') return false;
+    const h = hex.replace('#', '');
+    if (h.length !== 6) return false;
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.7;
+  };
+  const text = isLightText(tokens.text) ? '#1a1410' : tokens.text;
+  const headingFont = tokens.heading || '"Cormorant Garamond", serif';
+
+  return (
+    <AnimationProvider>
+      {/* 3D Animated Background */}
+      <ThemeAnimatedBackground theme={themeId} />
+      
+      <div className="relative min-h-screen" style={{ background: 'transparent', color: text }} data-testid={`design-picker-${themeId}-${event.toLowerCase()}`}>
+        <div className="px-6 md:px-16 pt-12 pb-8 max-w-6xl mx-auto">
+          <button
+            onClick={() => navigate(`/themes/${themeId}/events`)}
+            className="inline-flex items-center gap-2 text-xs tracking-[0.3em] uppercase mb-8 opacity-80 hover:opacity-100 transition-opacity"
+            style={{ color: text }}
+            data-testid="back-to-events"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back to Events
+          </button>
+
+          <motion.div variants={fadeUp} initial="hidden" animate="visible">
+            <span className="block mb-4 text-[10px] tracking-[0.5em] uppercase" style={{ color: accent }}>
+              ◈ Step 3 of 3 · {themeMeta.name} · {event}
+            </span>
+            <h1 className="leading-[1.02]" style={{ color: text, fontFamily: headingFont, fontSize: 'clamp(2.4rem, 6vw, 4.6rem)' }}>
+              Three designs.{' '}
+              <span style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>
+                One love.
+              </span>
+            </h1>
+            <p className="mt-6 max-w-2xl text-[1.05rem] leading-relaxed opacity-80" style={{ color: text }}>
+              Each design is a complete, animated scene — pick the one that feels like you. The
+              names and dates below are samples; you'll edit them in the next step.
+            </p>
+          </motion.div>
+        </div>
+
+        <div className="px-6 md:px-16 pb-24 max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7">
+            {variants.map((v, i) => {
+              const designId = v.design.id;
+              const cost = pricing?.[designId]?.credits ?? 1;
+              // Carry forward any addons/expiry that came from the wizard
+              const qs = searchParams.toString();
+              const previewHref = `/themes/${themeId}/events/${event}/design/${v.index}`;
+              const buyHref = `/user/buy-design/${themeId}/${event}/${designId}${qs ? `?${qs}` : ''}`;
+              return (
+              <motion.div key={designId} variants={fadeUp} custom={i} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.15 }} data-testid={`design-variant-${v.index}`}>
+                <div className="w-full text-left transition-transform hover:-translate-y-1 relative">
+                  {/* Credit cost badge — top-right of the card */}
+                  <div
+                    className="absolute top-3 right-3 z-10 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] tracking-[0.18em] uppercase"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(212,175,55,0.95), rgba(180,140,40,0.9))',
+                      color: '#16110C',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                      border: '1px solid rgba(255,248,220,0.35)',
+                      fontWeight: 700,
+                    }}
+                    data-testid={`design-credit-badge-${v.index}`}
+                  >
+                    <Coins className="w-3 h-3" strokeWidth={2.4} />
+                    {cost} credit{cost === 1 ? '' : 's'}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => navigate(previewHref)}
+                    className="block w-full"
+                    data-testid={`design-pick-${v.index}`}
+                  >
+                    <UniversalDesignRenderer
+                      design={v.design}
+                      theme={v.theme}
+                      bride={SAMPLE.bride}
+                      groom={SAMPLE.groom}
+                      date={SAMPLE.date}
+                      venue={SAMPLE.venue}
+                      photo={SAMPLE.photo}
+                    />
+                  </button>
+
+                  <div className="mt-4 px-1">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] tracking-[0.3em] uppercase" style={{ color: accent }}>
+                        Design {v.index + 1} of 3
+                      </span>
+                    </div>
+                    <div className="text-[16px] leading-snug" style={{ color: text, fontFamily: headingFont }}>
+                      {v.design.title}
+                    </div>
+                    <div className="text-[12px] mt-1 leading-relaxed opacity-75" style={{ color: text }}>
+                      {v.design.description}
+                    </div>
+
+                    {/* Action buttons — Preview (ghost) + Buy this design (filled) */}
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => navigate(previewHref)}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-[11px] tracking-[0.18em] uppercase transition-all hover:opacity-80"
+                        style={{ background: 'transparent', border: `1px solid ${accent}`, color: text }}
+                        data-testid={`design-preview-btn-${v.index}`}
+                      >
+                        <Eye className="w-3.5 h-3.5" /> Preview
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(buyHref)}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-[11px] tracking-[0.18em] uppercase transition-all hover:scale-[1.02]"
+                        style={{
+                          background: 'linear-gradient(135deg,#D4AF37,#B8941F)',
+                          color: '#16110C',
+                          fontWeight: 600,
+                        }}
+                        data-testid={`design-buy-btn-${v.index}`}
+                      >
+                        <ShoppingBag className="w-3.5 h-3.5" /> Buy this design
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </AnimationProvider>
+  );
+};
+
+export default EventDesignPicker;
+===== frontend/src/pages/KeralaDesignGallery.jsx =====
+/**
+ * KeralaDesignGallery — Showcase page for all 18 Kerala Backwaters designs.
+ *
+ * Renders every event (Engagement → Sangeeth) with its 3 design variants.
+ * Each design is fully live: real animations on real poster images.
+ *
+ * Route: /themes/kerala_backwaters/gallery (added in App.js)
+ */
+import React, { useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Sparkles } from 'lucide-react';
+import KeralaDesignRenderer from '@/themes/kerala_backwaters/KeralaDesignRenderer';
+import { KERALA_DESIGNS, KERALA_EVENTS } from '@/themes/kerala_backwaters/kerala.designs';
+import { KERALA_COLORS, keralaStyle } from '@/themes/kerala_backwaters/kerala.colors';
+import KeralaBackground from '@/themes/kerala_backwaters/KeralaBackground';
+import { AnimationProvider } from '@/components/animations';
+
+const fadeUp = {
+  hidden:  { opacity: 0, y: 24, filter: 'blur(6px)' },
+  visible: (i = 0) => ({
+    opacity: 1, y: 0, filter: 'blur(0px)',
+    transition: { duration: 0.8, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] },
+  }),
+};
+
+const KeralaDesignGallery = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    document.body.classList.add('luxe', 'luxe-grain', 'luxe-vignette');
+    return () => document.body.classList.remove('luxe', 'luxe-grain', 'luxe-vignette');
+  }, []);
+
+  return (
+    <AnimationProvider>
+      <div
+        className="min-h-screen relative"
+        style={{ ...keralaStyle(), background: KERALA_COLORS.background }}
+        data-testid="kerala-design-gallery"
+      >
+        {/* Ambient backwater behind everything */}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>
+          <KeralaBackground intensity="subtle" />
+        </div>
+
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          {/* Header */}
+          <div className="px-6 md:px-16 pt-12 pb-8 max-w-6xl mx-auto">
+            <button
+              onClick={() => navigate('/themes')}
+              className="inline-flex items-center gap-2 text-xs tracking-[0.3em] uppercase mb-8"
+              style={{ color: KERALA_COLORS.textMuted }}
+              data-testid="kerala-gallery-back"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Themes
+            </button>
+
+            <motion.div variants={fadeUp} initial="hidden" animate="visible">
+              <span
+                className="block mb-4 text-[10px] tracking-[0.5em] uppercase"
+                style={{ color: KERALA_COLORS.secondary }}
+              >
+                ◈ Kerala Backwaters · The Full Catalogue
+              </span>
+              <h1
+                className="leading-[1.02]"
+                style={{
+                  color: KERALA_COLORS.text,
+                  fontFamily: '"Cormorant Garamond", serif',
+                  fontSize: 'clamp(2.4rem, 6vw, 4.6rem)',
+                  letterSpacing: '0.02em',
+                }}
+              >
+                Eighteen designs.
+                <br />
+                <span
+                  style={{
+                    color: KERALA_COLORS.secondary,
+                    fontFamily: '"Great Vibes", cursive',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  one slow backwater.
+                </span>
+              </h1>
+              <p
+                className="mt-6 max-w-2xl text-[1.05rem] leading-relaxed"
+                style={{ color: KERALA_COLORS.textMuted }}
+              >
+                Six ceremonies, three designs each — every card is a living scene:
+                water that ripples, lotus that blooms, brass lamps that flicker,
+                houseboats that drift. Pick the one that feels like your wedding.
+              </p>
+            </motion.div>
+          </div>
+
+          {/* Per-event sections */}
+          {KERALA_EVENTS.map((event, ei) => (
+            <section
+              key={event}
+              className="px-6 md:px-16 py-10 max-w-6xl mx-auto"
+              data-testid={`kerala-event-${event.toLowerCase()}`}
+            >
+              <motion.div
+                variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.2 }}
+                className="flex items-baseline justify-between mb-7"
+              >
+                <h2
+                  style={{
+                    color: KERALA_COLORS.text,
+                    fontFamily: '"Cormorant Garamond", serif',
+                    fontSize: 'clamp(1.6rem, 3vw, 2.2rem)',
+                  }}
+                >
+                  {event}
+                  <Sparkles className="inline w-5 h-5 ml-3" style={{ color: KERALA_COLORS.secondary }} />
+                </h2>
+                <span
+                  className="text-[10px] tracking-[0.3em] uppercase"
+                  style={{ color: KERALA_COLORS.textMuted }}
+                >
+                  {String(ei + 1).padStart(2, '0')} · 3 designs
+                </span>
+              </motion.div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {KERALA_DESIGNS[event].map((design, di) => (
+                  <motion.div
+                    key={design.id}
+                    variants={fadeUp}
+                    custom={di}
+                    initial="hidden"
+                    whileInView="visible"
+                    viewport={{ once: true, amount: 0.15 }}
+                    data-testid={`design-card-${design.id}`}
+                  >
+                    <KeralaDesignRenderer
+                      design={design}
+                      bride="Meera"
+                      groom="Arjun"
+                      date="12 Sep 2026"
+                      venue="Kumarakom"
+                    />
+                    <div className="mt-3 px-1">
+                      <div
+                        className="text-[10px] tracking-[0.3em] uppercase mb-1"
+                        style={{ color: KERALA_COLORS.secondary }}
+                      >
+                        Design {di + 1}
+                      </div>
+                      <div
+                        className="text-[14px] leading-snug"
+                        style={{ color: KERALA_COLORS.text, fontFamily: '"Cormorant Garamond", serif' }}
+                      >
+                        {design.title}
+                      </div>
+                      <div
+                        className="text-[12px] mt-1 leading-relaxed"
+                        style={{ color: KERALA_COLORS.textMuted }}
+                      >
+                        {design.description}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </section>
+          ))}
+
+          <div className="h-32" />
+        </div>
+      </div>
+    </AnimationProvider>
+  );
+};
+
+export default KeralaDesignGallery;
+===== frontend/src/pages/ThemeDesignGallery.jsx =====
+/**
+ * ThemeDesignGallery — Generic gallery for any theme in `ALL_DESIGNS`.
+ *
+ * Route: /themes/:themeId/gallery
+ *
+ * Reads the themeId from the URL, looks up the theme tokens + 18 designs
+ * (6 events × 3 designs), and renders them through UniversalDesignRenderer.
+ *
+ * Kerala has its own dedicated gallery (`/themes/kerala_backwaters/gallery`)
+ * because it was shipped first with theme-specific background ambience.
+ */
+import React, { useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Sparkles } from 'lucide-react';
+import UniversalDesignRenderer from '@/themes/UniversalDesignRenderer';
+import { ALL_DESIGNS, EVENTS, useThemeDesigns } from '@/themes/allDesigns';
+import { getThemeById } from '@/themes/masterThemes';
+import { getThemeSampleData } from '@/themes/sampleData';
+import { AnimationProvider } from '@/components/animations';
+
+const fadeUp = {
+  hidden:  { opacity: 0, y: 24, filter: 'blur(6px)' },
+  visible: (i = 0) => ({
+    opacity: 1, y: 0, filter: 'blur(0px)',
+    transition: { duration: 0.8, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] },
+  }),
+};
+
+const ThemeDesignGallery = () => {
+  const { themeId } = useParams();
+  const navigate = useNavigate();
+  const themeMeta = useMemo(() => getThemeById(themeId), [themeId]);
+  // PHASE 8: lazy-load only the selected theme's design config.
+  const themeData = useThemeDesigns(themeId);
+  const tokens = themeData?.tokens;
+  const SAMPLE = useMemo(() => {
+    const s = getThemeSampleData(themeId) || {};
+    return {
+      bride: s.bride || 'Anaya',
+      groom: s.groom || 'Vihaan',
+      date:  s.weddingDate || '14 Feb 2026',
+      venue: s.venue || (themeMeta?.name?.split(' ')[0] || ''),
+    };
+  }, [themeId, themeMeta]);
+
+  useEffect(() => {
+    if (!tokens) return;
+    const prevBody = document.body.style.background;
+    const prevHtml = document.documentElement.style.background;
+    document.body.style.background = tokens.background;
+    document.documentElement.style.background = tokens.background;
+    // Remove leftover dark theme classes
+    document.body.classList.remove('luxe', 'luxe-grain', 'luxe-vignette');
+    return () => {
+      document.body.style.background = prevBody;
+      document.documentElement.style.background = prevHtml;
+    };
+  }, [tokens]);
+
+  if (!themeData) {
+    return (
+      <div className="luxe min-h-screen grid place-items-center px-6">
+        <div className="lux-glass p-10 max-w-md text-center">
+          <h2 className="font-display text-3xl mb-3" style={{ color: '#FFF8DC' }}>
+            Gallery not yet available.
+          </h2>
+          <p className="mb-6" style={{ color: 'rgba(255,248,220,0.65)' }}>
+            This theme is on the roadmap. Try the live ones.
+          </p>
+          <button onClick={() => navigate('/themes')} className="lux-btn lux-btn-ghost">
+            Browse all themes
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const tokensLocal = themeData.tokens;
+  const bg = tokensLocal.background;
+  const text = tokensLocal.text;
+  const accent = tokensLocal.accent;
+  const accentGold = tokensLocal.accentGold || tokensLocal.accent;
+
+  return (
+    <AnimationProvider>
+      <div
+        className="relative"
+        style={{ background: bg, color: text, minHeight: '100vh', width: '100%' }}
+        data-testid={`theme-gallery-${themeId}`}
+      >
+        {/* Header */}
+        <div className="px-6 md:px-16 pt-12 pb-8 max-w-6xl mx-auto">
+          <button
+            onClick={() => navigate('/themes')}
+            className="inline-flex items-center gap-2 text-xs tracking-[0.3em] uppercase mb-8 opacity-80"
+            style={{ color: text }}
+            data-testid="theme-gallery-back"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Themes
+          </button>
+
+          <motion.div variants={fadeUp} initial="hidden" animate="visible">
+            <span
+              className="block mb-4 text-[10px] tracking-[0.5em] uppercase"
+              style={{ color: accentGold }}
+            >
+              ◈ {themeMeta?.culture || themeId} · The Full Catalogue
+            </span>
+            <h1
+              className="leading-[1.02]"
+              style={{
+                color: text,
+                fontFamily: tokensLocal.heading || '"Cormorant Garamond", serif',
+                fontSize: 'clamp(2.4rem, 6vw, 4.6rem)',
+                letterSpacing: '0.02em',
+              }}
+            >
+              Eighteen designs.
+              <br />
+              <span
+                style={{
+                  color: accentGold,
+                  fontFamily: '"Great Vibes", cursive',
+                  fontStyle: 'italic',
+                }}
+              >
+                {themeMeta?.name || 'a single story'}.
+              </span>
+            </h1>
+            <p
+              className="mt-6 max-w-2xl text-[1.05rem] leading-relaxed opacity-80"
+              style={{ color: text }}
+            >
+              {themeMeta?.description ||
+                'Six ceremonies, three designs each — every card a living scene.'}
+            </p>
+          </motion.div>
+        </div>
+
+        {/* Events */}
+        {EVENTS.map((event, ei) => {
+          const designs = themeData.events[event] || [];
+          if (designs.length === 0) return null;
+          return (
+            <section
+              key={event}
+              className="px-6 md:px-16 py-10 max-w-6xl mx-auto"
+              data-testid={`event-${themeId}-${event.toLowerCase()}`}
+            >
+              <motion.div
+                variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.2 }}
+                className="flex items-baseline justify-between mb-7"
+              >
+                <h2
+                  style={{
+                    color: text,
+                    fontFamily: tokensLocal.heading || '"Cormorant Garamond", serif',
+                    fontSize: 'clamp(1.6rem, 3vw, 2.2rem)',
+                  }}
+                >
+                  {event}
+                  <Sparkles className="inline w-5 h-5 ml-3" style={{ color: accentGold }} />
+                </h2>
+                <span
+                  className="text-[10px] tracking-[0.3em] uppercase opacity-70"
+                  style={{ color: text }}
+                >
+                  {String(ei + 1).padStart(2, '0')} · {designs.length} designs
+                </span>
+              </motion.div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {designs.map((design, di) => (
+                  <motion.div
+                    key={design.id}
+                    variants={fadeUp}
+                    custom={di}
+                    initial="hidden"
+                    whileInView="visible"
+                    viewport={{ once: true, amount: 0.15 }}
+                    data-testid={`design-card-${design.id}`}
+                  >
+                    <UniversalDesignRenderer
+                      design={design}
+                      theme={{ tokens }}
+                      bride={SAMPLE.bride}
+                      groom={SAMPLE.groom}
+                      date={SAMPLE.date}
+                      venue={SAMPLE.venue}
+                      /* PHASE 4: only the first event's first design loads eagerly.
+                         Everything else defers until IntersectionObserver fires,
+                         so we never request 18 oversized PNGs at once. */
+                      eager={ei === 0 && di === 0}
+                    />
+                    <div className="mt-3 px-1">
+                      <div
+                        className="text-[10px] tracking-[0.3em] uppercase mb-1"
+                        style={{ color: accentGold }}
+                      >
+                        Design {di + 1}
+                      </div>
+                      <div
+                        className="text-[14px] leading-snug"
+                        style={{ color: text, fontFamily: tokensLocal.heading || '"Cormorant Garamond", serif' }}
+                      >
+                        {design.title}
+                      </div>
+                      <div
+                        className="text-[12px] mt-1 leading-relaxed opacity-75"
+                        style={{ color: text }}
+                      >
+                        {design.description}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </section>
+          );
+        })}
+
+        <div className="h-32" />
+      </div>
+    </AnimationProvider>
+  );
+};
+
+export default ThemeDesignGallery;
+===== frontend/src/pages/ThemeEventPicker.jsx =====
+/**
+ * ThemeEventPicker — Step B of the design picker flow.
+ *
+ * Route: /themes/:themeId/events
+ *
+ * Shows 6 large ceremony cards (Engagement, Haldi, Mehandi, Sangeeth,
+ * Marriage, Reception) for the chosen theme. Each card previews the
+ * first photo design of that event as the card background with the
+ * ceremony name + description overlaid on top.
+ */
+import React, { useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { ALL_DESIGNS, EVENTS, useThemeDesigns } from '@/themes/allDesigns';
+import { KERALA_COLORS } from '@/themes/kerala_backwaters/kerala.colors';
+import { getThemeById } from '@/themes/masterThemes';
+import { resolveDesign } from '@/themes/themeDesignResolver';
+import { getThemeSampleData } from '@/themes/sampleData';
+import { AnimationProvider } from '@/components/animations';
+import UniversalDesignRenderer from '@/themes/UniversalDesignRenderer';
+import ThemeAnimatedBackground from '@/components/ThemeAnimatedBackground';
+
+const SAMPLE_PHOTO = 'https://images.unsplash.com/photo-1519741497674-611481863552?w=400&h=400&fit=crop&q=85';
+
+const EVENT_DESCRIPTIONS = {
+  Engagement: 'Where the promise begins — rings, blessings and the first glance of forever.',
+  Haldi: 'Turmeric, laughter and golden glow — the morning that sets every cheek aglow.',
+  Mehandi: 'Henna, music and the slow, intricate art of staining hands for love.',
+  Sangeeth: 'A night of song, dance and a dholna that will not sleep until the sky does.',
+  Marriage: 'The seven steps, the sacred fire — two families becoming one before God.',
+  Reception: 'A grand welcome of the newlyweds — chandeliers, toasts and a thousand smiles.',
+};
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 28, filter: 'blur(8px)' },
+  visible: (i = 0) => ({
+    opacity: 1, y: 0, filter: 'blur(0px)',
+    transition: { duration: 0.8, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] },
+  }),
+};
+
+const ThemeEventPicker = () => {
+  const { themeId } = useParams();
+  const navigate = useNavigate();
+  const themeMeta = useMemo(() => getThemeById(themeId), [themeId]);
+  // PHASE 8: lazy-load only the selected theme. Triggers re-render once loaded.
+  const themeDesigns = useThemeDesigns(themeId);
+
+  // Theme-specific dummy couple, so previews are visibly themed.
+  const SAMPLE_INVITATION = useMemo(() => {
+    const s = getThemeSampleData(themeId) || {};
+    return {
+      bride: s.bride || 'Anaya',
+      groom: s.groom || 'Vihaan',
+      date:  s.weddingDate || '14 Feb 2026',
+      venue: s.venue || 'Falaknuma Palace',
+      photo: SAMPLE_PHOTO,
+    };
+  }, [themeId]);
+
+  // Resolve the first design image per event to use as card background
+  const eventPreviews = useMemo(() => {
+    return EVENTS.map((evt) => {
+      const r = resolveDesign(themeId, evt, 0);
+      const hasDesign = !!(r?.design);
+      return { event: evt, design: r?.design || null, tokens: r?.theme?.tokens || null, locked: !hasDesign };
+    });
+  }, [themeId]);
+
+  const tokens = useMemo(() => {
+    if (themeId === 'kerala_backwaters') {
+      return { background: KERALA_COLORS.water, text: KERALA_COLORS.text, accent: KERALA_COLORS.secondary };
+    }
+    const entry = ALL_DESIGNS[themeId];
+    if (entry) return entry.tokens;
+    return { background: '#0a0a0a', text: '#F5ECD7', accent: '#D4AF37' };
+  }, [themeId]);
+
+  useEffect(() => {
+    const prevBody = document.body.style.background;
+    // Keep WHITE background for ceremony selection
+    document.body.style.background = '#FFFFFF';  // Pure white
+    document.body.classList.remove('luxe', 'luxe-grain', 'luxe-vignette');
+    return () => { document.body.style.background = prevBody; };
+  }, [tokens.background]);
+
+  if (!themeMeta) {
+    return (
+      <div className="min-h-screen grid place-items-center px-6" style={{ background: '#0a0a0a', color: '#FFF8DC' }}>
+        <div className="text-center">
+          <h2 className="font-display text-3xl mb-3">Theme not found.</h2>
+          <button onClick={() => navigate('/themes')} className="lux-btn lux-btn-ghost">Back to themes</button>
+        </div>
+      </div>
+    );
+  }
+
+  const accent = tokens.accentGold || tokens.accent;
+  // CRITICAL FIX (Bucket 1 — invisible text):
+  // The page background is forced WHITE for the ceremony picker, but several
+  // themes (beach, christian, muslim) have light/cream `tokens.text` (#FFF8F2,
+  // #F8F4EC, #F5ECD7) which becomes invisible on white. We auto-darken text
+  // for page chrome whenever the theme's own text colour is too light to be
+  // readable on white. Card previews still use their own dark bg via the
+  // UniversalDesignRenderer so their text isn't affected by this.
+  const isLightText = (hex) => {
+    if (!hex || typeof hex !== 'string') return false;
+    const h = hex.replace('#', '');
+    if (h.length !== 6) return false;
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    // Perceived luminance > 0.7 → too light against white
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.7;
+  };
+  const text = isLightText(tokens.text) ? '#1a1410' : tokens.text;
+  const headingFont = tokens.heading || '"Cormorant Garamond", serif';
+
+  return (
+    <AnimationProvider>
+      {/* 3D Animated Background on WHITE */}
+      <ThemeAnimatedBackground theme={themeId} />
+      
+      <div className="relative min-h-screen" style={{ background: 'transparent', color: text }} data-testid={`event-picker-${themeId}`}>
+        <div className="px-6 md:px-16 pt-12 pb-8 max-w-6xl mx-auto">
+          <button
+            onClick={() => navigate('/themes')}
+            className="inline-flex items-center gap-2 text-xs tracking-[0.3em] uppercase mb-8 opacity-80 hover:opacity-100 transition-opacity"
+            style={{ color: text }}
+            data-testid="back-to-themes"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back to Themes
+          </button>
+
+          <motion.div variants={fadeUp} initial="hidden" animate="visible">
+            <span className="block mb-4 text-[10px] tracking-[0.5em] uppercase" style={{ color: accent }}>
+              ◈ Step 2 of 3 · {themeMeta.name}
+            </span>
+            <h1
+              className="leading-[1.02]"
+              style={{ color: text, fontFamily: headingFont, fontSize: 'clamp(2.4rem, 6vw, 4.6rem)', letterSpacing: '0.01em' }}
+            >
+              Choose your{' '}
+              <span style={{ color: accent, fontFamily: '"Great Vibes", cursive', fontStyle: 'italic' }}>
+                ceremony.
+              </span>
+            </h1>
+            <p className="mt-6 max-w-2xl text-[1.05rem] leading-relaxed opacity-80" style={{ color: text }}>
+              Six ceremonies — every one with three hand-crafted backgrounds waiting for your names.
+              Tap one to see its designs.
+            </p>
+          </motion.div>
+        </div>
+
+        <div className="px-6 md:px-16 pb-24 max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {eventPreviews.map(({ event, design, tokens: dtokens, locked }, i) => (
+              <motion.button
+                key={event}
+                type="button"
+                variants={fadeUp}
+                custom={i}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, amount: 0.1 }}
+                whileHover={locked ? undefined : { y: -6, scale: 1.015 }}
+                transition={{ type: 'spring', stiffness: 220, damping: 22 }}
+                onClick={() => { if (!locked) navigate(`/themes/${themeId}/events/${event}`); }}
+                disabled={locked}
+                className="group relative overflow-hidden text-left"
+                style={{
+                  borderRadius: 18,
+                  border: `1px solid ${accent}40`,
+                  boxShadow: '0 30px 80px rgba(0,0,0,0.45), 0 8px 24px rgba(0,0,0,0.30)',
+                  cursor: locked ? 'not-allowed' : 'pointer',
+                  opacity: locked ? 0.55 : 1,
+                  background: tokens.background,
+                }}
+                data-testid={`event-card-${event.toLowerCase()}${locked ? '-locked' : ''}`}
+              >
+                {/* Live sample invitation as the card preview */}
+                {design && dtokens ? (
+                  <div className="relative">
+                    <UniversalDesignRenderer
+                      design={design}
+                      theme={{ tokens: dtokens }}
+                      bride={SAMPLE_INVITATION.bride}
+                      groom={SAMPLE_INVITATION.groom}
+                      date={SAMPLE_INVITATION.date}
+                      venue={SAMPLE_INVITATION.venue}
+                      photo={SAMPLE_INVITATION.photo}
+                      testId={`event-preview-${event.toLowerCase()}`}
+                    />
+                    {/* Bottom label strip with ceremony name */}
+                    <div
+                      className="absolute left-0 right-0 bottom-0 p-4 z-40 pointer-events-none"
+                      style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.78) 100%)' }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-[10px] tracking-[0.4em] uppercase" style={{ color: accent }}>
+                            Event {String(i + 1).padStart(2, '0')}
+                          </div>
+                          <h3 style={{ fontFamily: headingFont, color: '#FFF8DC', fontSize: 'clamp(1.5rem, 2.4vw, 2rem)', lineHeight: 1.05, textShadow: '0 4px 24px rgba(0,0,0,0.6)' }}>
+                            {event}
+                          </h3>
+                        </div>
+                        <span className="text-[10px] tracking-[0.3em] uppercase opacity-90 px-2.5 py-1 rounded-full"
+                              style={{ background: 'rgba(0,0,0,0.45)', color: '#F5ECD7', border: `1px solid ${accent}66` }}>
+                          3 designs
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs leading-snug" style={{ color: 'rgba(255,248,220,0.85)', textShadow: '0 2px 12px rgba(0,0,0,0.55)' }}>
+                        {EVENT_DESCRIPTIONS[event]}
+                      </p>
+                      <span className="mt-2 inline-flex items-center gap-1.5 text-[11px] tracking-[0.3em] uppercase" style={{ color: accent }}>
+                        Choose design <ChevronRight className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ aspectRatio: '4 / 5', background: `linear-gradient(135deg, ${accent}40, ${tokens.background})` }} />
+                )}
+                {/* Locked overlay — shown when this theme has no designs for the event */}
+                {locked && (
+                  <div
+                    className="absolute inset-0 z-50 flex items-center justify-center"
+                    style={{ background: 'rgba(8,5,3,0.72)', backdropFilter: 'blur(2px)' }}
+                    data-testid={`event-card-${event.toLowerCase()}-locked-badge`}
+                  >
+                    <div
+                      className="px-4 py-2 rounded-full text-[11px] tracking-[0.3em] uppercase"
+                      style={{ background: 'rgba(212,175,55,0.18)', color: accent, border: `1px solid ${accent}66` }}
+                    >
+                      ◇ Coming Soon
+                    </div>
+                  </div>
+                )}
+              </motion.button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </AnimationProvider>
+  );
+};
+
+export default ThemeEventPicker;
+===== frontend/src/pages/ThemeInvitationPreview.jsx =====
+/**
+ * ThemeInvitationPreview
+ * -----------------------------------------------------------------------------
+ * A pure "demo" version of the public wedding invitation. It renders the same
+ * cinematic layout used by LuxuryPublicInvitation but populates every section
+ * with theme-specific dummy data from `sampleData.js` instead of fetching
+ * from the backend. This lets a homepage visitor preview EXACTLY what the
+ * final invitation will look like — without ever logging in, picking events
+ * or buying credits.
+ *
+ * Route: /preview/theme/:themeId
+ */
+import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { Calendar, MapPin, Send, Sparkles, MessageCircle, Heart, Gift, Plane, Hotel, Building2, ChevronRight, Eye } from 'lucide-react';
+import { toast, Toaster } from 'sonner';
+
+import { OpeningOrchestrator, ClosingOrchestrator } from '@/themes/shared/ThemeAnimationOrchestrator';
+import PetalConfetti from '@/components/luxury/PetalConfetti';
+import WatermarkOverlay from '@/components/luxury/WatermarkOverlay';
+import ScrollSection from '@/components/luxury/ScrollSection';
+import ThemeAnimatedBackground from '@/components/ThemeAnimatedBackground';
+import UniversalDesignRenderer from '@/themes/UniversalDesignRenderer';
+import { getThemeById } from '@/themes/masterThemes';
+import { resolveDesign, resolveHeroDesign, normaliseEvent, pageBgForDesign } from '@/themes/themeDesignResolver';
+import { getThemeSampleData } from '@/themes/sampleData';
+import { HeroCover, Countdown, BrideGroomCoupleShowcase } from './LuxuryPublicInvitation';
+import { DEFAULT_COUPLE_PHOTO, DEFAULT_BRIDE_PHOTO, DEFAULT_GROOM_PHOTO } from '@/themes/samplePhotos';
+import '@/styles/luxury.css';
+
+const EVENT_TYPE_GUESS = (title = '') => {
+  const t = title.toLowerCase();
+  if (t.includes('engage') || t.includes('roka') || t.includes('ashirbaad')) return 'Engagement';
+  if (t.includes('haldi') || t.includes('pellikuthuru') || t.includes('gaye holud')) return 'Haldi';
+  if (t.includes('mehndi') || t.includes('mehendi') || t.includes('mehandi') || t.includes('chooda')) return 'Mehandi';
+  if (t.includes('sangeet') || t.includes('sangeeth') || t.includes('cocktail')) return 'Sangeeth';
+  if (t.includes('reception') || t.includes('walima') || t.includes('bou bhaat')) return 'Reception';
+  // default: marriage, nikah, biye, muhurtham, holy matrimony, phera wedding, vows, baraat
+  return 'Marriage';
+};
+
+const ThemeInvitationPreview = () => {
+  const { themeId } = useParams();
+  const navigate = useNavigate();
+  const sample = getThemeSampleData(themeId);
+  const theme = getThemeById(themeId) || getThemeById('royal_mughal');
+  const bride = sample.bride;
+  const groom = sample.groom;
+  const monogram = `${sample.bride_initial} & ${sample.groom_initial}`;
+  const weddingDate = new Date(sample.weddingDateISO);
+  const formattedDate = weddingDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+  const [openingDone, setOpeningDone] = useState(false);
+  const [rsvpConfetti, setRsvpConfetti] = useState(false);
+
+  // SAFETY: never trap users on a blank screen. If the opening animation chunk
+  // takes longer than 4.5 s (slow network, low-end mobile, lazy chunk still
+  // downloading) we declare the opening done so the real content fades in.
+  useEffect(() => {
+    if (openingDone) return;
+    const id = setTimeout(() => setOpeningDone(true), 4500);
+    return () => clearTimeout(id);
+  }, [openingDone]);
+
+  // Resolve hero + per-event designs from the master design catalogue using
+  // sample event titles. Each event gets its own design so the preview shows
+  // the full ceremony-specific artwork — not the same hero on repeat.
+  const heroResolved = resolveHeroDesign(themeId);
+  const resolvedPerEvent = (sample.events || []).map((evt, i) => {
+    const evtKey = normaliseEvent(EVENT_TYPE_GUESS(evt.title));
+    // Vary design index across events of the same type so consecutive
+    // events with the same key don't render the same artwork.
+    const r = resolveDesign(themeId, evtKey, i % 3);
+    return r ? { evt, ...r } : { evt, theme: null, design: null, event: evtKey };
+  });
+
+  const primaryEventType = (() => {
+    const marriageEvt = (sample.events || []).find((e) => EVENT_TYPE_GUESS(e.title) === 'Marriage');
+    return marriageEvt ? 'Marriage' : EVENT_TYPE_GUESS(sample.events?.[0]?.title || 'Marriage');
+  })();
+
+  useEffect(() => {
+    document.body.classList.add('luxe');
+    document.body.classList.remove('luxe-grain', 'luxe-vignette');
+    document.body.style.background = 'linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%)';
+    return () => {
+      document.body.classList.remove('luxe');
+      document.body.style.background = '';
+    };
+  }, []);
+
+  const demoBlock = (label) => {
+    toast.info(`Demo preview · ${label} works on real invitations`, {
+      description: 'Pick this theme to enable it for your wedding.',
+      duration: 2800,
+    });
+  };
+
+  return (
+    <>
+      <Toaster theme="dark" position="top-center" richColors />
+      <ThemeAnimatedBackground theme={themeId || 'temple'} />
+
+      {!openingDone && (
+        <OpeningOrchestrator
+          themeId={themeId}
+          eventType={primaryEventType}
+          image={heroResolved?.design?.image}
+          bride={bride}
+          groom={groom}
+          date={formattedDate}
+          monogram={monogram}
+          onComplete={() => setOpeningDone(true)}
+        />
+      )}
+
+      <div
+        className="luxe min-h-screen relative"
+        data-testid="theme-invitation-preview"
+        style={{
+          opacity: openingDone ? 1 : 0,
+          transition: 'opacity 0.55s ease',
+          pointerEvents: openingDone ? 'auto' : 'none',
+        }}
+      >
+        {/* Demo Watermark */}
+        <WatermarkOverlay />
+
+        {/* DEMO floating pill */}
+        <DemoPill themeName={theme?.name} />
+
+        {/* Hero */}
+        <HeroCover bride={bride} groom={groom} date={weddingDate} theme={theme} />
+
+        {/* Featured design card */}
+        {heroResolved && (
+          <ScrollSection className="px-6 md:px-16 py-16 max-w-3xl mx-auto" testid="section-featured-design">
+            <span className="lux-eyebrow block mb-4 text-center">◆ The Invitation</span>
+            <h2 className="font-display text-[2rem] md:text-[2.8rem] leading-[1.05] mb-8 text-center" style={{ color: '#FFF8DC' }}>
+              Our <span className="text-gold italic font-script">card.</span>
+            </h2>
+            <UniversalDesignRenderer
+              design={heroResolved.design}
+              theme={heroResolved.theme}
+              bride={bride}
+              groom={groom}
+              date={formattedDate}
+              venue={sample.venue}
+              testId="featured-design"
+              style={{ maxWidth: 540, margin: '0 auto' }}
+            />
+          </ScrollSection>
+        )}
+
+        {/* Bride / Groom / Couple Showcase — uses universal sample photos so
+            every preview surface (normal-user homepage, photographer, admin)
+            looks identical to the actual public link layout. */}
+        <BrideGroomCoupleShowcase
+          bride={bride}
+          groom={groom}
+          bridePhoto={DEFAULT_BRIDE_PHOTO}
+          groomPhoto={DEFAULT_GROOM_PHOTO}
+          couplePhoto={DEFAULT_COUPLE_PHOTO}
+          brideAbout={`${bride} is one half of our story — a soul shaped by music, books and quiet kindness.`}
+          groomAbout={`${groom} is the other half — steady, curious and always the first to laugh.`}
+          loveStory={sample.story}
+          eventType={primaryEventType}
+        />
+
+        {/* Story */}
+        {sample.story && (
+          <ScrollSection className="px-6 md:px-16 py-24 max-w-4xl mx-auto" testid="section-story">
+            <span className="lux-eyebrow block mb-5">◆ Our Story</span>
+            <h2 className="font-display text-[2.4rem] md:text-[3.4rem] leading-[1.05] mb-8" style={{ color: '#FFF8DC' }}>
+              How <span className="text-gold italic font-script">we</span> met
+            </h2>
+            <p className="font-heading text-[1.1rem] md:text-[1.25rem] leading-[1.85] whitespace-pre-wrap"
+              style={{ color: 'rgba(255,248,220,0.78)' }}>
+              {sample.story}
+            </p>
+          </ScrollSection>
+        )}
+
+        {/* Events section removed per requirement — Haldi/Mehendi/Sangeet/Engagement etc. no longer shown */}
+
+        {/* Venue */}
+        {sample.venue && (
+          <ScrollSection className="px-6 md:px-16 py-24 max-w-4xl mx-auto" testid="section-venue">
+            <span className="lux-eyebrow block mb-5">◆ Venue</span>
+            <h2 className="font-display text-[2.4rem] md:text-[3.4rem] leading-[1.05] mb-6" style={{ color: '#FFF8DC' }}>
+              The <span className="text-gold italic font-script">where.</span>
+            </h2>
+            <p className="text-[1.05rem] leading-relaxed mb-2" style={{ color: 'rgba(255,248,220,0.8)' }}>{sample.venue}</p>
+            {sample.city && <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(255,248,220,0.6)' }}>{sample.city}</p>}
+            <a target="_blank" rel="noreferrer" href={sample.mapsLink} className="lux-btn lux-btn-ghost">
+              Open in Maps <MapPin className="w-3.5 h-3.5" />
+            </a>
+          </ScrollSection>
+        )}
+
+        {/* Countdown */}
+        <Countdown date={weddingDate} />
+
+        {/* RSVP — demo (no API) */}
+        <ScrollSection className="px-6 md:px-16 py-24" testid="section-rsvp">
+          <div className="max-w-2xl mx-auto">
+            <span className="lux-eyebrow block mb-5">◆ Will you be there?</span>
+            <h2 className="font-display text-[2.4rem] md:text-[3.4rem] leading-[1.05] mb-8" style={{ color: '#FFF8DC' }}>
+              Kindly <span className="text-gold italic font-script">respond.</span>
+            </h2>
+            <DemoRSVPForm onSuccess={() => { setRsvpConfetti(true); demoBlock('RSVP'); }} />
+          </div>
+        </ScrollSection>
+
+        {/* Wishes wall — static sample */}
+        <DemoWishesWall wishes={sample.wishes} onAddWish={() => demoBlock('Wishes Wall')} />
+
+        {/* Live Photo Wall teaser — demo */}
+        <DemoLivePhotoWall onTap={() => demoBlock('Live Photo Wall')} />
+
+        {/* Find my photos CTA — demo */}
+        <section className="px-6 md:px-12 py-12 md:py-16 text-center" data-testid="find-photos-cta">
+          <motion.div initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.1 }}
+            transition={{ duration: 0.7 }} className="max-w-2xl mx-auto">
+            <span className="lux-eyebrow inline-block mb-3">◆ AI-powered photo search</span>
+            <h2 className="font-display text-[1.9rem] md:text-[2.6rem] mb-3" style={{ color: '#FFF8DC' }}>
+              Find <span className="font-script italic text-gold">your photos</span> from the wedding
+            </h2>
+            <p className="text-sm md:text-base mb-6" style={{ color: 'rgba(255,248,220,0.7)' }}>
+              Upload one selfie. Our AI will instantly find every photo of you from the captured at the wedding.
+            </p>
+            <button onClick={() => demoBlock('Find My Photos')} className="lux-btn inline-flex items-center gap-2"
+              data-testid="open-find-photos">
+              <Sparkles className="w-4 h-4" /> Find My Photos
+            </button>
+          </motion.div>
+        </section>
+
+        {/* Travel / Venues section — sample */}
+        <DemoVenuesSection items={sample.travel} />
+
+        {/* Gift registry — sample */}
+        <DemoGiftRegistry gifts={sample.gifts} />
+
+        {/* Digital Shagun — sample */}
+        <DemoDigitalShagun shagun={sample.shagun} couple={`${bride} & ${groom}`} />
+
+        {/* Photographer referral CTA — demo (visible) */}
+        <DemoReferralCTA />
+
+        {/* Closing animation */}
+        {openingDone && (
+          <ClosingOrchestrator
+            themeId={themeId}
+            eventType={primaryEventType}
+            image={heroResolved?.design?.image}
+            bride={bride}
+            groom={groom}
+            date={formattedDate}
+          />
+        )}
+
+        {/* Use This Theme CTA — sticky, gold */}
+        <UseThisThemeCTA onClick={() => navigate(`/themes/${themeId}/events`)} />
+
+        {/* Footer */}
+        <footer className="px-6 md:px-16 py-14 text-center border-t" style={{ borderColor: 'var(--lux-border)' }} data-testid="invitation-footer">
+          <div className="font-script text-3xl text-gold mb-2 italic">{bride} & {groom}</div>
+          <div className="text-xs tracking-[0.3em] uppercase" style={{ color: 'rgba(255,248,220,0.55)' }}>
+            Crafted with reverence · MAJA Creations
+          </div>
+        </footer>
+
+        <PetalConfetti trigger={rsvpConfetti ? Date.now() : false} count={42} duration={5200} />
+      </div>
+    </>
+  );
+};
+
+// ============================================================================
+// Sub-components used only in the preview
+// ============================================================================
+
+const DemoPill = ({ themeName }) => (
+  <motion.div
+    initial={{ opacity: 0, y: -10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: 0.4, duration: 0.6 }}
+    className="fixed top-4 left-1/2 -translate-x-1/2 z-50 inline-flex items-center gap-2 px-4 py-2 rounded-full"
+    style={{
+      background: 'rgba(22,17,12,0.85)',
+      backdropFilter: 'blur(14px)',
+      border: '1px solid rgba(212,175,55,0.45)',
+      boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
+    }}
+    data-testid="demo-preview-pill"
+  >
+    <Eye className="w-3.5 h-3.5" style={{ color: '#D4AF37' }} />
+    <span className="text-[10px] tracking-[0.25em] uppercase" style={{ color: '#FFF8DC' }}>
+      Demo preview {themeName ? `· ${themeName}` : ''}
+    </span>
+  </motion.div>
+);
+
+const UseThisThemeCTA = ({ onClick }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: 1.2, duration: 0.7 }}
+    className="fixed bottom-6 right-6 z-50"
+    data-testid="use-this-theme-cta-wrap"
+  >
+    <button
+      onClick={onClick}
+      className="lux-btn inline-flex items-center gap-2 shadow-2xl"
+      data-testid="use-this-theme-cta"
+      style={{
+        boxShadow: '0 16px 40px rgba(212,175,55,0.35), 0 4px 12px rgba(0,0,0,0.5)',
+      }}
+    >
+      <Sparkles className="w-4 h-4" /> Use this Theme <ChevronRight className="w-4 h-4" />
+    </button>
+  </motion.div>
+);
+
+const DemoRSVPForm = ({ onSuccess }) => {
+  const [form, setForm] = useState({ guest_name: '', email: '', guest_phone: '+91', status: 'yes', guest_count: 1, message: '' });
+  const [done, setDone] = useState(false);
+
+  const submit = (e) => {
+    e.preventDefault();
+    setDone(true);
+    onSuccess?.();
+  };
+
+  if (done) return (
+    <div className="lux-glass p-8 text-center" data-testid="demo-rsvp-success">
+      <Sparkles className="w-5 h-5 mx-auto mb-3" style={{ color: '#D4AF37' }} />
+      <h3 className="font-display text-2xl mb-2" style={{ color: '#FFF8DC' }}>Thank you.</h3>
+      <p className="text-sm" style={{ color: 'rgba(255,248,220,0.7)' }}>This was a demo — your real invitation will receive responses here.</p>
+    </div>
+  );
+
+  return (
+    <form onSubmit={submit} className="lux-glass p-7 space-y-4" data-testid="demo-rsvp-form">
+      <Row>
+        <LField label="Your Name"><input required type="text" value={form.guest_name} onChange={(e) => setForm({ ...form, guest_name: e.target.value })} style={lInput} data-testid="demo-rsvp-name" /></LField>
+        <LField label="Phone (with +91)"><input required type="tel" value={form.guest_phone} onChange={(e) => setForm({ ...form, guest_phone: e.target.value })} placeholder="+919876543210" style={lInput} data-testid="demo-rsvp-phone" /></LField>
+      </Row>
+      <Row>
+        <LField label="Attending"><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} style={{ ...lInput, cursor: 'pointer', appearance: 'none' }} data-testid="demo-rsvp-attending">
+          <option value="yes" style={{ background: '#1A130B' }}>Yes, with joy</option>
+          <option value="no" style={{ background: '#1A130B' }}>Regretfully no</option>
+          <option value="maybe" style={{ background: '#1A130B' }}>Trying my best</option>
+        </select></LField>
+        <LField label="Guests"><input type="number" min={1} max={10} value={form.guest_count} onChange={(e) => setForm({ ...form, guest_count: e.target.value })} style={lInput} data-testid="demo-rsvp-guests" /></LField>
+      </Row>
+      <LField label="Message (optional)"><textarea rows={2} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} style={{ ...lInput, resize: 'vertical' }} data-testid="demo-rsvp-message" /></LField>
+      <button type="submit" className="lux-btn w-full justify-center" data-testid="demo-rsvp-submit">
+        Send RSVP <Send className="w-3.5 h-3.5" />
+      </button>
+    </form>
+  );
+};
+
+const DemoWishesWall = ({ wishes = [], onAddWish }) => (
+  <ScrollSection className="px-6 md:px-16 py-24" testid="section-wishes">
+    <div className="max-w-5xl mx-auto">
+      <span className="lux-eyebrow block mb-5 text-center">◆ Wishes from loved ones</span>
+      <h2 className="font-display text-[2.4rem] md:text-[3.4rem] leading-[1.05] mb-10 text-center" style={{ color: '#FFF8DC' }}>
+        Blessings & <span className="text-gold italic font-script">wishes.</span>
+      </h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
+        {wishes.map((w, i) => (
+          <motion.div key={i}
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-10%', amount: 0.1 }}
+            transition={{ duration: 0.7, delay: i * 0.1 }}
+            className="lux-glass p-6"
+            data-testid={`demo-wish-${i}`}
+          >
+            <Heart className="w-4 h-4 mb-3" style={{ color: '#D4AF37' }} />
+            <p className="font-heading italic text-[0.95rem] leading-relaxed mb-4" style={{ color: 'rgba(255,248,220,0.85)' }}>
+              "{w.text}"
+            </p>
+            <div className="text-[10px] tracking-[0.25em] uppercase" style={{ color: 'rgba(255,248,220,0.55)' }}>— {w.from}</div>
+          </motion.div>
+        ))}
+      </div>
+      <div className="text-center">
+        <button onClick={onAddWish} className="lux-btn lux-btn-ghost inline-flex items-center gap-2" data-testid="demo-wish-add">
+          <MessageCircle className="w-4 h-4" /> Send your wish
+        </button>
+      </div>
+    </div>
+  </ScrollSection>
+);
+
+const DemoLivePhotoWall = ({ onTap }) => (
+  <ScrollSection className="px-6 md:px-16 py-20 max-w-5xl mx-auto" testid="section-live-photo-wall">
+    <div className="lux-glass p-10 text-center">
+      <span className="lux-eyebrow block mb-3">◆ Live Photo Wall</span>
+      <h3 className="font-display text-[1.7rem] md:text-[2.2rem] mb-3" style={{ color: '#FFF8DC' }}>
+        Photos appear <span className="font-script italic text-gold">live</span> as the wedding unfolds
+      </h3>
+      <p className="text-sm md:text-base mb-6" style={{ color: 'rgba(255,248,220,0.7)' }}>
+        Guests will see the photographer's hand-picked moments here, in real time.
+      </p>
+      <button onClick={onTap} className="lux-btn inline-flex items-center gap-2" data-testid="demo-live-wall-cta">
+        <Sparkles className="w-4 h-4" /> View live wall
+      </button>
+    </div>
+  </ScrollSection>
+);
+
+const DemoVenuesSection = ({ items = [] }) => {
+  if (!items.length) return null;
+  const iconFor = (type) => {
+    const t = (type || '').toLowerCase();
+    if (t.includes('airport')) return <Plane className="w-4 h-4" />;
+    if (t.includes('stay'))    return <Hotel className="w-4 h-4" />;
+    return <Building2 className="w-4 h-4" />;
+  };
+  return (
+    <ScrollSection className="px-6 md:px-16 py-24 max-w-5xl mx-auto" testid="section-travel">
+      <span className="lux-eyebrow block mb-5">◆ Travel & Stay</span>
+      <h2 className="font-display text-[2.4rem] md:text-[3.4rem] leading-[1.05] mb-10" style={{ color: '#FFF8DC' }}>
+        How to <span className="text-gold italic font-script">reach us.</span>
+      </h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {items.map((v, i) => (
+          <motion.div key={i}
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-10%', amount: 0.1 }}
+            transition={{ duration: 0.7, delay: i * 0.08 }}
+            className="lux-glass p-6 flex items-start gap-4"
+            data-testid={`demo-travel-${i}`}
+          >
+            <div className="w-10 h-10 rounded-full grid place-items-center flex-shrink-0"
+              style={{ background: 'rgba(212,175,55,0.18)', color: '#D4AF37' }}>
+              {iconFor(v.type)}
+            </div>
+            <div>
+              <div className="lux-eyebrow text-[10px] mb-1">◆ {v.type}</div>
+              <div className="font-display text-lg mb-1" style={{ color: '#FFF8DC' }}>{v.name}</div>
+              <div className="text-sm" style={{ color: 'rgba(255,248,220,0.7)' }}>{v.note}</div>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </ScrollSection>
+  );
+};
+
+const DemoGiftRegistry = ({ gifts }) => {
+  if (!gifts) return null;
+  return (
+    <ScrollSection className="px-6 md:px-16 py-24 max-w-3xl mx-auto" testid="section-gifts">
+      <div className="lux-glass p-10 text-center">
+        <Gift className="w-5 h-5 mx-auto mb-3" style={{ color: '#D4AF37' }} />
+        <span className="lux-eyebrow block mb-3">◆ Gifts</span>
+        <h3 className="font-display text-[1.8rem] md:text-[2.4rem] mb-4" style={{ color: '#FFF8DC' }}>
+          {gifts.headline}
+        </h3>
+        <p className="font-heading text-[1rem] md:text-[1.05rem] leading-relaxed" style={{ color: 'rgba(255,248,220,0.78)' }}>
+          {gifts.message}
+        </p>
+      </div>
+    </ScrollSection>
+  );
+};
+
+const DemoDigitalShagun = ({ shagun, couple }) => {
+  if (!shagun) return null;
+  return (
+    <ScrollSection className="px-6 md:px-16 py-24 max-w-3xl mx-auto" testid="section-shagun">
+      <div className="lux-glass p-10 text-center">
+        <span className="lux-eyebrow block mb-3">◆ Digital Shagun</span>
+        <h3 className="font-display text-[1.8rem] md:text-[2.4rem] mb-3" style={{ color: '#FFF8DC' }}>
+          Send your <span className="font-script italic text-gold">blessings</span>
+        </h3>
+        <p className="text-sm mb-6" style={{ color: 'rgba(255,248,220,0.7)' }}>{shagun.msg}</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-md mx-auto text-left">
+          <div className="p-4 rounded-md" style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.25)' }}>
+            <div className="text-[10px] tracking-[0.25em] uppercase mb-1" style={{ color: 'rgba(255,248,220,0.55)' }}>UPI ID</div>
+            <div className="font-mono text-sm" style={{ color: '#FFF8DC' }}>{shagun.upi}</div>
+          </div>
+          <div className="p-4 rounded-md" style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.25)' }}>
+            <div className="text-[10px] tracking-[0.25em] uppercase mb-1" style={{ color: 'rgba(255,248,220,0.55)' }}>Payee</div>
+            <div className="text-sm" style={{ color: '#FFF8DC' }}>{shagun.payee || couple}</div>
+          </div>
+        </div>
+      </div>
+    </ScrollSection>
+  );
+};
+
+const DemoReferralCTA = () => (
+  <ScrollSection className="px-6 md:px-16 py-20 max-w-4xl mx-auto" testid="section-referral">
+    <div className="lux-glass p-10 text-center">
+      <Sparkles className="w-5 h-5 mx-auto mb-3" style={{ color: '#D4AF37' }} />
+      <span className="lux-eyebrow block mb-3">◆ Loved this invitation?</span>
+      <h3 className="font-display text-[1.7rem] md:text-[2.2rem] mb-3" style={{ color: '#FFF8DC' }}>
+        Crafted by <span className="font-script italic text-gold">MAJA Creations</span>
+      </h3>
+      <p className="text-sm md:text-base mb-6" style={{ color: 'rgba(255,248,220,0.7)' }}>
+        Want one for your own wedding? Refer your photographer to MAJA and unlock cinematic invitations for any culture.
+      </p>
+    </div>
+  </ScrollSection>
+);
+
+// ============================================================================
+// shared form bits
+// ============================================================================
+const lInput = {
+  width: '100%', padding: '0.85rem 1rem', background: 'transparent', color: '#FFF8DC',
+  border: '1px solid var(--lux-border)', borderRadius: '0.5rem', outline: 'none',
+  fontFamily: 'Manrope, sans-serif', fontSize: '0.92rem', caretColor: '#D4AF37',
+};
+
+const Row = ({ children }) => <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{children}</div>;
+
+const LField = ({ label, children }) => (
+  <label className="block">
+    <span className="block text-[10px] tracking-[0.3em] uppercase mb-2" style={{ color: 'rgba(255,248,220,0.55)' }}>{label}</span>
+    {children}
+  </label>
+);
+
+export default ThemeInvitationPreview;
+===== frontend/src/pages/ThemeShowroom.jsx =====
+import React, { useEffect, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { ArrowLeft, Crown, Heart, ExternalLink } from 'lucide-react';
+import ScrollSection from '@/components/luxury/ScrollSection';
+import WaxSealOpening from '@/components/luxury/WaxSealOpening';
+import { getAllThemes, getThemeById, getCategoryLabel } from '@/themes/masterThemes';
+import { resolveDesign, resolveHeroDesign } from '@/themes/themeDesignResolver';
+import UniversalDesignRenderer from '@/themes/UniversalDesignRenderer';
+import { getThemeSampleData } from '@/themes/sampleData';
+import { usePricing } from '@/hooks/usePricing';
+import '@/styles/luxury.css';
+
+/**
+ * ThemeShowroom — Public theme catalog + per-theme preview pages.
+ *   /themes              → grid of all 10 cultural themes
+ *   /themes/:themeId     → cinematic preview of a single theme (couple-less sample)
+ *
+ * Purpose:
+ *   - SEO landing pages for each theme
+ *   - Share-able links photographers can send to couples to choose a style
+ *   - Demonstrates the locked-luxury layout without leaking real wedding data
+ */
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 24, filter: 'blur(6px)' },
+  visible: (i = 0) => ({
+    opacity: 1, y: 0, filter: 'blur(0px)',
+    transition: { duration: 0.8, delay: i * 0.05, ease: [0.22, 1, 0.36, 1] },
+  }),
+};
+
+const ThemeShowroom = () => {
+  const { themeId } = useParams();
+  const navigate = useNavigate();
+  const themes = useMemo(() => getAllThemes(), []);
+  const pricing = usePricing('normal_user');
+  const groups = useMemo(() => {
+    const map = new Map();
+    themes.forEach((t) => {
+      const k = t.category;
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(t);
+    });
+    return Array.from(map.entries());
+  }, [themes]);
+
+  useEffect(() => {
+    document.body.classList.add('luxe', 'luxe-grain', 'luxe-vignette');
+    return () => document.body.classList.remove('luxe', 'luxe-grain', 'luxe-vignette');
+  }, []);
+
+  // Detail mode
+  if (themeId) return <ThemeDetail themeId={themeId} navigate={navigate} />;
+
+  return (
+    <div className="luxe min-h-screen relative" data-testid="theme-showroom">
+      <Header navigate={navigate} />
+
+      <section className="px-6 md:px-16 pt-24 md:pt-28 pb-12 max-w-6xl mx-auto">
+        <ScrollSection>
+          <span className="lux-eyebrow block mb-5">◆ The Theme Library</span>
+          <h1 className="font-display text-[2.6rem] md:text-[4.4rem] leading-[1.02]" style={{ color: '#FFF8DC' }}>
+            Ten cinematic
+            <br />
+            <span className="text-gold italic font-script">love languages.</span>
+          </h1>
+          <p className="mt-6 max-w-2xl text-[1.05rem] leading-relaxed" style={{ color: 'rgba(255,248,220,0.7)' }}>
+            Every theme is a locked-luxury layout designed by hand — Royal Mughal palace nights,
+            South Indian temple gold, Bengali shaadi reds. Photographers customise content. The
+            design never breaks.
+          </p>
+        </ScrollSection>
+      </section>
+
+      {groups.map(([cat, list], gi) => (
+        <section key={cat} className="px-6 md:px-16 py-10 max-w-6xl mx-auto" data-testid={`theme-group-${cat}`}>
+          <ScrollSection>
+            <div className="flex items-baseline justify-between mb-7">
+              <h2 className="font-display text-2xl md:text-3xl" style={{ color: '#FFF8DC' }}>
+                {getCategoryLabel(cat)}
+              </h2>
+              <span className="text-[10px] tracking-[0.3em] uppercase" style={{ color: 'rgba(255,248,220,0.55)' }}>
+                {String(gi + 1).padStart(2, '0')} · {list.length} {list.length > 1 ? 'themes' : 'theme'}
+              </span>
+            </div>
+          </ScrollSection>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {list.map((t, i) => (
+              <motion.div
+                key={t.id} variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.1 }} custom={i}
+                className="lux-glass p-6 text-left transition-all group"
+                data-testid={`theme-card-${t.id}`}
+                style={{ background: `linear-gradient(160deg, ${t.colors.background}10, transparent 70%)` }}
+              >
+                <button
+                  type="button"
+                  onClick={() => navigate(`/themes/${t.id}/events`)}
+                  className="w-full text-left"
+                  data-testid={`theme-card-open-${t.id}`}
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <span className="text-[10px] tracking-[0.3em] uppercase" style={{ color: 'rgba(255,248,220,0.5)' }}>
+                      {String(t.order).padStart(2, '0')}
+                    </span>
+                    <div className="flex -space-x-1.5">
+                      {t.paletteSwatch.map((c, idx) => (
+                        <span key={idx} className="w-5 h-5 rounded-full border" style={{ background: c, borderColor: 'rgba(255,248,220,0.2)' }} />
+                      ))}
+                    </div>
+                  </div>
+                  <h3 className="font-display text-2xl mb-1.5" style={{ color: '#FFF8DC' }}>{t.name}</h3>
+                  <p className="text-xs mb-3" style={{ color: 'rgba(255,248,220,0.55)' }}>{t.culture}</p>
+                  <p className="text-sm mb-5 leading-relaxed" style={{ color: 'rgba(255,248,220,0.65)' }}>
+                    {t.description}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/themes/${t.id}/events`)}
+                  className="w-full mt-1 mb-2 flex items-center justify-center gap-2 text-[11px] tracking-[0.3em] uppercase py-2.5 rounded-md border transition-all hover:opacity-90"
+                  style={{ borderColor: t.colors.accent + '88', color: t.colors.accent, background: t.colors.accent + '12' }}
+                  data-testid={`theme-card-choose-${t.id}`}
+                >
+                  Choose Designs ✦
+                </button>
+                <div className="flex items-center justify-between text-[10px] tracking-[0.25em] uppercase pt-3 border-t" style={{ borderColor: 'var(--lux-border)', color: 'rgba(255,248,220,0.55)' }}>
+                  <span>{t.planRequired === 'FREE' ? 'Open to all' : t.planRequired}</span>
+                  <span className="text-gold" data-testid={`theme-credits-${t.id}`}>
+                    {pricing.themeCost(t.id, t.creditCost)} credit{pricing.themeCost(t.id, t.creditCost) > 1 ? 's' : ''}
+                  </span>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      <section className="px-6 md:px-16 py-24 max-w-3xl mx-auto text-center">
+        <ScrollSection>
+          <span className="lux-eyebrow block mb-5">◆ Ready to compose?</span>
+          <h2 className="font-display text-[2.2rem] md:text-[3.2rem] leading-[1.05]" style={{ color: '#FFF8DC' }}>
+            Pick a theme. <span className="text-gold italic font-script">Open studio.</span>
+          </h2>
+          <div className="mt-8 flex flex-wrap gap-3 justify-center">
+            <button
+              onClick={() => navigate('/themes/kerala_backwaters/gallery')}
+              className="lux-btn"
+              data-testid="cta-kerala-gallery"
+              style={{ background: 'linear-gradient(135deg, #0B3D45 0%, #0E6070 100%)', color: '#F5ECD7', borderColor: '#D4A24C' }}
+            >
+              Explore Kerala Backwaters · 18 designs <Heart className="w-4 h-4" />
+            </button>
+            <button onClick={() => navigate('/admin/login')} className="lux-btn lux-btn-ghost" data-testid="cta-studio-login">
+              Photographer Login <Crown className="w-4 h-4" />
+            </button>
+            <button onClick={() => navigate('/')} className="lux-btn lux-btn-ghost" data-testid="cta-back-landing">
+              Back to landing
+            </button>
+          </div>
+        </ScrollSection>
+      </section>
+    </div>
+  );
+};
+
+/* ────────────────────────────────────────────────────────────
+   ThemeDetail — single-theme cinematic showcase
+   ──────────────────────────────────────────────────────────── */
+
+const ThemeDetail = ({ themeId, navigate }) => {
+  const theme = getThemeById(themeId);
+  const heroDesign = useMemo(() => resolveHeroDesign(themeId), [themeId]);
+  const pricing = usePricing('normal_user');
+  // Theme-specific dummy couple + ceremonies — every theme renders with its
+  // own culturally resonant placeholder couple (Lakshmi & Karthik for South
+  // Indian, Simran & Arjun for Punjabi, etc.) so visitors see a finished
+  // invitation, not a generic skeleton.
+  const SAMPLE = useMemo(() => {
+    const s = getThemeSampleData(themeId) || {};
+    const venueStr = `${s.venue || 'Falaknuma Palace'}${s.city ? ' · ' + s.city.split(',')[0] : ''}`;
+    return {
+      bride: s.bride || 'Anaya',
+      groom: s.groom || 'Rohan',
+      date: s.weddingDate || 'Saturday, 14 February 2026',
+      venue: venueStr,
+      story: s.story || '',
+      events: (s.events || []).slice(0, 4).map((e) => ({
+        title: e.title,
+        date: e.date,
+        venue: e.venue,
+      })),
+    };
+  }, [themeId]);
+
+  // Map sample event titles to catalogue events for the new design system
+  const titleToEvent = (t = '') => {
+    const s = t.toLowerCase();
+    if (s.includes('sangeet')) return 'Sangeeth';
+    if (s.includes('mehndi') || s.includes('mehendi')) return 'Mehandi';
+    if (s.includes('haldi')) return 'Haldi';
+    if (s.includes('engage') || s.includes('roka')) return 'Engagement';
+    if (s.includes('recept') || s.includes('cocktail')) return 'Reception';
+    return 'Marriage';
+  };
+  const eventDesigns = useMemo(
+    () => SAMPLE.events.map((e) => resolveDesign(themeId, titleToEvent(e.title), 0)),
+    [themeId]
+  );
+
+  if (!theme) {
+    return (
+      <div className="luxe min-h-screen grid place-items-center px-6">
+        <div className="lux-glass p-10 max-w-md text-center">
+          <h2 className="font-display text-3xl mb-3" style={{ color: '#FFF8DC' }}>Theme not found.</h2>
+          <button onClick={() => navigate('/themes')} className="lux-btn lux-btn-ghost">Browse all themes</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <WaxSealOpening
+      monogram={`${SAMPLE.bride[0]} & ${SAMPLE.groom[0]}`}
+      subtitle={theme.name}
+      ctaLabel="Preview Invitation"
+      storageKey={`theme-preview-${themeId}`}
+    >
+      <div className="luxe min-h-screen relative" data-testid={`theme-detail-${themeId}`}>
+        <Header navigate={navigate} />
+
+        {/* Hero — split: design poster (left) + couple text (right) */}
+        <section className="relative min-h-[88vh] flex items-center justify-center px-6 md:px-16 py-20 overflow-hidden">
+          <div className="lux-orbit" style={{ width: 760, height: 760, top: -180, right: -180 }} />
+          <div className="lux-orbit" style={{ width: 1200, height: 1200, bottom: -400, left: -300, opacity: 0.45 }} />
+
+          <ScrollSection className="relative w-full max-w-6xl">
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-12 items-center">
+              {/* LEFT — new themed invitation poster from the 180-design catalogue */}
+              {heroDesign && (
+                <div className="max-w-md mx-auto lg:mx-0 w-full" data-testid="theme-detail-featured-design-wrap">
+                  <UniversalDesignRenderer
+                    design={heroDesign.design}
+                    theme={heroDesign.theme}
+                    bride={SAMPLE.bride}
+                    groom={SAMPLE.groom}
+                    date={SAMPLE.date}
+                    venue={SAMPLE.venue}
+                    testId="theme-detail-featured-design"
+                  />
+                  <p className="text-center text-[10px] tracking-[0.35em] uppercase mt-3" style={{ color: 'rgba(255,248,220,0.55)' }}>
+                    {heroDesign.design.headline}
+                  </p>
+                </div>
+              )}
+
+              {/* RIGHT — couple text + meta */}
+              <div className="text-center lg:text-left">
+                <div className="flex -space-x-2 justify-center lg:justify-start mb-6">
+                  {theme.paletteSwatch.map((c, i) => (
+                    <span key={i} className="w-7 h-7 rounded-full border-2"
+                      style={{ background: c, borderColor: 'rgba(255,248,220,0.25)' }} />
+                  ))}
+                </div>
+                <span className="lux-eyebrow block mb-4">◆ {theme.culture}</span>
+                <h1 className="font-display text-[2.6rem] md:text-[4.4rem] leading-[0.98]" style={{ color: '#FFF8DC' }}>
+                  {SAMPLE.bride}
+                  <span className="block text-gold italic font-script my-3 text-[2rem] md:text-[3rem]">&</span>
+                  {SAMPLE.groom}
+                </h1>
+                <p className="mt-6 text-sm tracking-[0.35em] uppercase" style={{ color: 'rgba(255,248,220,0.65)' }}>
+                  {SAMPLE.date}
+                </p>
+                <p className="mt-3 text-sm" style={{ color: 'rgba(255,248,220,0.55)' }}>{SAMPLE.venue}</p>
+
+                <div className="mt-8 inline-block px-5 py-2 rounded-full text-[10px] tracking-[0.3em] uppercase"
+                  style={{ background: 'rgba(212,175,55,0.10)', border: '1px solid var(--lux-border-strong)', color: '#D4AF37' }}>
+                  Theme Preview · No real wedding data
+                </div>
+              </div>
+            </div>
+          </ScrollSection>
+        </section>
+
+        {/* Featured Design — kept hidden, the hero now displays the poster directly */}
+        {false && heroDesign && (
+          <ScrollSection className="px-6 md:px-16 py-16 max-w-3xl mx-auto" testid="theme-detail-featured-design-extra">
+            <span className="lux-eyebrow block mb-5 text-center">◆ The Invitation</span>
+            <h2 className="font-display text-[2rem] md:text-[2.8rem] leading-tight mb-8 text-center" style={{ color: '#FFF8DC' }}>
+              Our <span className="text-gold italic font-script">card</span>
+            </h2>
+            <div className="max-w-md mx-auto">
+              <UniversalDesignRenderer
+                design={heroDesign.design}
+                theme={heroDesign.theme}
+                bride={SAMPLE.bride}
+                groom={SAMPLE.groom}
+                date={SAMPLE.date}
+                venue={SAMPLE.venue}
+                testId="theme-detail-featured-design-extra"
+              />
+            </div>
+          </ScrollSection>
+        )}
+        <ScrollSection className="px-6 md:px-16 py-20 max-w-3xl mx-auto" testid="theme-detail-description">
+          <span className="lux-eyebrow block mb-5">◆ The Mood</span>
+          <h2 className="font-display text-[2rem] md:text-[2.8rem] leading-tight mb-6" style={{ color: '#FFF8DC' }}>
+            {theme.name}
+          </h2>
+          <p className="font-heading text-[1.1rem] leading-[1.85] mb-8" style={{ color: 'rgba(255,248,220,0.78)' }}>
+            {theme.description}
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[10px] tracking-[0.25em] uppercase"
+            style={{ color: 'rgba(255,248,220,0.55)' }}>
+            <Spec label="Plan" value={theme.planRequired} />
+            <Spec label="Credits" value={`${pricing.themeCost(theme.id, theme.creditCost)}`} />
+            <Spec label="Layout" value={theme.layoutType} />
+            <Spec label="Animation" value={theme.defaultAnimationLevel} />
+          </div>
+        </ScrollSection>
+
+        {/* Story */}
+        <ScrollSection className="px-6 md:px-16 py-20 max-w-3xl mx-auto" testid="theme-detail-story">
+          <span className="lux-eyebrow block mb-5">◆ Our Story</span>
+          <h2 className="font-display text-[2rem] md:text-[2.8rem] leading-tight mb-6" style={{ color: '#FFF8DC' }}>
+            How <span className="text-gold italic font-script">we</span> met
+          </h2>
+          <p className="font-heading text-[1.08rem] leading-[1.85]" style={{ color: 'rgba(255,248,220,0.78)' }}>
+            {SAMPLE.story}
+          </p>
+        </ScrollSection>
+
+        {/* Events section removed per requirement */}
+
+        {/* CTA */}
+        <ScrollSection className="px-6 md:px-16 py-24 max-w-3xl mx-auto text-center">
+          <span className="lux-eyebrow block mb-5">◆ Use this theme</span>
+          <h2 className="font-display text-[2rem] md:text-[2.8rem] leading-[1.05] mb-6" style={{ color: '#FFF8DC' }}>
+            Compose with <span className="text-gold italic font-script">{theme.name}.</span>
+          </h2>
+          <div className="flex flex-wrap gap-3 justify-center">
+            <button onClick={() => navigate('/admin/login')} className="lux-btn" data-testid="theme-detail-cta-login">
+              Enter Studio <Crown className="w-4 h-4" />
+            </button>
+            <button onClick={() => navigate('/themes')} className="lux-btn lux-btn-ghost" data-testid="theme-detail-cta-back">
+              <ArrowLeft className="w-3.5 h-3.5" /> All themes
+            </button>
+          </div>
+        </ScrollSection>
+
+        <footer className="px-6 md:px-16 py-12 text-center border-t" style={{ borderColor: 'var(--lux-border)' }}>
+          <div className="font-script text-3xl text-gold mb-2 italic">{theme.name}</div>
+          <div className="text-xs tracking-[0.3em] uppercase" style={{ color: 'rgba(255,248,220,0.55)' }}>
+            A sample · MAJA Creations
+          </div>
+        </footer>
+      </div>
+    </WaxSealOpening>
+  );
+};
+
+const Header = ({ navigate }) => (
+  <header className="absolute top-0 left-0 right-0 z-20 px-6 md:px-12 py-6 flex items-center justify-between">
+    <button onClick={() => navigate('/')} className="flex items-center gap-3 group" data-testid="theme-header-home">
+      <div className="w-9 h-9 rounded-full grid place-items-center"
+        style={{ background: 'radial-gradient(circle at 30% 30%, #E8C766, #8C6A1A)' }}>
+        <Heart className="w-4 h-4" style={{ color: '#16110C' }} strokeWidth={2.4} />
+      </div>
+      <span className="font-display text-lg" style={{ color: '#FFF8DC' }}>
+        MAJA<span className="text-gold"> </span>Creations
+      </span>
+    </button>
+    <div className="flex items-center gap-4">
+      <button onClick={() => navigate('/themes')} className="text-xs tracking-[0.3em] uppercase hidden md:inline"
+        style={{ color: 'rgba(255,248,220,0.7)' }} data-testid="theme-header-themes">
+        Themes
+      </button>
+      <button onClick={() => navigate('/admin/login')} className="lux-btn text-xs" data-testid="theme-header-login">
+        Photographer Login <ExternalLink className="w-3 h-3" />
+      </button>
+    </div>
+  </header>
+);
+
+const Spec = ({ label, value }) => (
+  <div>
+    <div className="mb-1" style={{ color: 'rgba(255,248,220,0.45)' }}>{label}</div>
+    <div className="font-display text-base normal-case tracking-normal text-gold">{value}</div>
+  </div>
+);
+
+export default ThemeShowroom;
+===== frontend/src/pages/ThemeSettingsPage.jsx =====
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Save, Eye, Palette, Sparkles, Settings } from 'lucide-react';
+import axios from 'axios';
+import ThemeSelector from '../components/ThemeSelector';
+import ThemePreview from '../components/ThemePreview';
+import { getThemeById, getPlanLabel } from '../themes/masterThemes';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001/api';
+
+/**
+ * PHASE 34: Theme Settings Page
+ * Admin interface for managing premium themes
+ */
+const ThemeSettingsPage = () => {
+  const { profileId } = useParams();
+  const navigate = useNavigate();
+  
+  const [profile, setProfile] = useState(null);
+  const [currentTheme, setCurrentTheme] = useState(null);
+  const [themeSettings, setThemeSettings] = useState(null);
+  const [previewTheme, setPreviewTheme] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchProfileAndTheme();
+  }, [profileId]);
+
+  const fetchProfileAndTheme = async () => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      
+      const profileResponse = await axios.get(
+        `${BACKEND_URL}/profiles/${profileId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setProfile(profileResponse.data);
+
+      const themeResponse = await axios.get(
+        `${BACKEND_URL}/profiles/${profileId}/theme`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setThemeSettings(themeResponse.data.theme_settings);
+      setCurrentTheme(themeResponse.data.theme_data);
+    } catch (error) {
+      console.error('Error fetching theme data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleThemeSelect = async (themeId) => {
+    try {
+      setSaving(true);
+      const token = localStorage.getItem('admin_token');
+      
+      await axios.put(
+        `${BACKEND_URL}/profiles/${profileId}/theme`,
+        { theme_id: themeId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      await fetchProfileAndTheme();
+      alert('Theme updated successfully!');
+    } catch (error) {
+      console.error('Error updating theme:', error);
+      if (error.response?.status === 403) {
+        alert(error.response.data.detail);
+      } else {
+        alert('Failed to update theme');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSettingChange = async (key, value) => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      
+      await axios.put(
+        `${BACKEND_URL}/profiles/${profileId}/theme`,
+        { [key]: value },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setThemeSettings(prev => ({ ...prev, [key]: value }));
+    } catch (error) {
+      console.error('Error updating setting:', error);
+      alert('Failed to update setting');
+    }
+  };
+
+  const handleApplyPreview = async (settings) => {
+    try {
+      setSaving(true);
+      const token = localStorage.getItem('admin_token');
+      
+      await axios.put(
+        `${BACKEND_URL}/profiles/${profileId}/theme`,
+        settings,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      await fetchProfileAndTheme();
+      setPreviewTheme(null);
+      alert('Theme applied successfully!');
+    } catch (error) {
+      console.error('Error applying theme:', error);
+      alert('Failed to apply theme');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="luxe min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-600"></div>
+      </div>
+    );
+  }
+
+  const userPlan = profile?.plan_type || 'FREE';
+
+  return (
+    <div className="luxe min-h-screen ">
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigate(`/admin/profile/${profileId}`)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-600" />
+              </button>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                  <Palette className="w-6 h-6 text-rose-600" />
+                  Theme & Design Settings
+                </h1>
+                <p className="text-sm text-gray-600 mt-1">
+                  {profile?.groom_name} & {profile?.bride_name}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-xl shadow-sm p-6 sticky top-24">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-rose-600" />
+                Current Theme
+              </h3>
+
+              {currentTheme && (
+                <div>
+                  <div
+                    className="h-32 rounded-lg mb-4 flex items-center justify-center"
+                    style={{
+                      background: `linear-gradient(135deg, ${currentTheme.colors.primary} 0%, ${currentTheme.colors.accent} 100%)`
+                    }}
+                  >
+                    <div
+                      className="text-white text-center"
+                      style={{ fontFamily: currentTheme.typography.heading }}
+                    >
+                      <div className="text-3xl font-bold drop-shadow-lg">Aa</div>
+                    </div>
+                  </div>
+
+                  <h4 className="font-semibold text-gray-900 mb-1">{currentTheme.name}</h4>
+                  <p className="text-sm text-gray-600 mb-4">{currentTheme.description}</p>
+
+                  <div className="space-y-4 pt-4 border-t border-gray-200">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <Settings className="w-4 h-4 inline mr-1" />
+                        Animation Level
+                      </label>
+                      <select
+                        value={themeSettings?.animation_level || 'subtle'}
+                        onChange={(e) => handleSettingChange('animation_level', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      >
+                        <option value="none">None</option>
+                        <option value="subtle">Subtle</option>
+                        <option value="festive">Festive</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">Glass Effect</span>
+                        <button
+                          onClick={() => handleSettingChange('glassmorphism_enabled', !themeSettings?.glassmorphism_enabled)}
+                          className={`w-12 h-6 rounded-full transition-colors relative ${themeSettings?.glassmorphism_enabled ? 'bg-rose-600' : 'bg-gray-300'}`}
+                        >
+                          <span
+                            className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${themeSettings?.glassmorphism_enabled ? 'translate-x-6' : ''}`}
+                          />
+                        </button>
+                      </label>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Hero Type
+                      </label>
+                      <select
+                        value={themeSettings?.hero_type || 'static'}
+                        onChange={(e) => handleSettingChange('hero_type', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      >
+                        <option value="static">Static Image</option>
+                        <option value="video">Video</option>
+                        <option value="animated">Animated</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setPreviewTheme(currentTheme.id)}
+                    className="w-full mt-6 px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors flex items-center justify-center gap-2 font-medium"
+                  >
+                    <Eye className="w-4 h-4" />
+                    Preview Current Theme
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-6">
+                Choose a Theme
+              </h3>
+              
+              {saving && (
+                <div className="mb-4 bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-700">
+                  Saving changes...
+                </div>
+              )}
+
+              <ThemeSelector
+                profileId={profileId}
+                currentThemeId={themeSettings?.theme_id}
+                userPlan={userPlan}
+                onThemeSelect={handleThemeSelect}
+                onPreview={(theme) => setPreviewTheme(theme.id)}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {previewTheme && (
+        <ThemePreview
+          themeId={previewTheme}
+          onClose={() => setPreviewTheme(null)}
+          onApply={handleApplyPreview}
+        />
+      )}
+    </div>
+  );
+};
+
+export default ThemeSettingsPage;
+===== frontend/src/pages/EventPhotosPanel.jsx =====
+/* ════════════════════════════════════════════════════════════════════════
+ * EventPhotosPanel — drag-and-drop photo uploader for a single event
+ * invitation card.
+ *
+ * Mounted as a modal from EventInvitationWizard.  Lets the photographer:
+ *   • Drop or click-pick multiple image files at once
+ *   • See real-time upload progress (per-batch)
+ *   • Browse a thumbnail grid of already-uploaded photos for THIS event
+ *   • Delete individual photos
+ *
+ * All photos are tagged with `event_invitation_id` server-side via the
+ * /api/admin/profiles/{profile_id}/gallery/bulk-upload endpoint so the
+ * public guest gallery can later filter by ceremony.
+ * ════════════════════════════════════════════════════════════════════════ */
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useDropzone } from 'react-dropzone';
+import axios from 'axios';
+import {
+  X, Upload, Image as ImageIcon, Loader2, Trash2, CheckCircle2, AlertTriangle,
+} from 'lucide-react';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+const MAX_BATCH_BYTES = 80 * 1024 * 1024;  // 80MB per batch (UX cap, backend allows 20MB/file)
+
+export default function EventPhotosPanel({ profileId, invitation, onClose }) {
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);   // 0..100
+  const [error, setError] = useState('');
+  const [galleryEnabled, setGalleryEnabled] = useState(true);
+  const [enabling, setEnabling] = useState(false);
+  const [lastResult, setLastResult] = useState(null);   // { uploaded, failed }
+  const mountedRef = useRef(true);
+
+  const headers = useCallback(() => ({
+    Authorization: `Bearer ${localStorage.getItem('admin_token')}`,
+  }), []);
+
+  const loadPhotos = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      // Check gallery enabled status first
+      const statsRes = await axios.get(
+        `${API_URL}/api/admin/profiles/${profileId}/gallery/stats`,
+        { headers: headers() },
+      );
+      if (!statsRes.data?.enabled) {
+        setGalleryEnabled(false);
+        setLoading(false);
+        return;
+      }
+      setGalleryEnabled(true);
+      const res = await axios.get(
+        `${API_URL}/api/admin/profiles/${profileId}/gallery/photos`,
+        {
+          params: { event_invitation_id: invitation.id, limit: 200 },
+          headers: headers(),
+        },
+      );
+      if (mountedRef.current) setPhotos(res.data?.photos || []);
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed to load photos');
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [profileId, invitation.id, headers]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    loadPhotos();
+    return () => { mountedRef.current = false; };
+  }, [loadPhotos]);
+
+  const enableGallery = async () => {
+    setEnabling(true); setError('');
+    try {
+      await axios.post(
+        `${API_URL}/api/admin/profiles/${profileId}/gallery/enable`,
+        { enabled: true },
+        { headers: headers() },
+      );
+      setGalleryEnabled(true);
+      await loadPhotos();
+    } catch (e) {
+      setError(e.response?.data?.detail
+        || 'Failed to enable gallery. Check AWS keys in backend/.env.');
+    } finally {
+      setEnabling(false);
+    }
+  };
+
+  const onDrop = useCallback(async (acceptedFiles) => {
+    if (!acceptedFiles?.length) return;
+    const totalBytes = acceptedFiles.reduce((s, f) => s + f.size, 0);
+    if (totalBytes > MAX_BATCH_BYTES) {
+      setError('Batch exceeds 80MB. Upload in smaller chunks.');
+      return;
+    }
+    setUploading(true); setError(''); setProgress(0); setLastResult(null);
+
+    const form = new FormData();
+    acceptedFiles.forEach((f) => form.append('files', f));
+    form.append('event_invitation_id', invitation.id);
+
+    try {
+      const res = await axios.post(
+        `${API_URL}/api/admin/profiles/${profileId}/gallery/bulk-upload`,
+        form,
+        {
+          headers: { ...headers(), 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (e) => {
+            if (e.total) setProgress(Math.round((e.loaded / e.total) * 100));
+          },
+        },
+      );
+      setLastResult({
+        uploaded: res.data?.uploaded || 0,
+        failed: res.data?.failed || 0,
+      });
+      await loadPhotos();
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Upload failed');
+    } finally {
+      if (mountedRef.current) { setUploading(false); setProgress(0); }
+    }
+  }, [profileId, invitation.id, headers, loadPhotos]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.heic', '.heif', '.webp'] },
+    disabled: uploading || !galleryEnabled,
+    multiple: true,
+  });
+
+  const deletePhoto = async (photoId) => {
+    if (!window.confirm('Delete this photo? This cannot be undone.')) return;
+    try {
+      await axios.delete(
+        `${API_URL}/api/admin/profiles/${profileId}/gallery/photos/${photoId}`,
+        { headers: headers() },
+      );
+      setPhotos((p) => p.filter((x) => x.id !== photoId));
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed to delete photo');
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-8"
+      style={{ background: 'rgba(8,5,3,0.82)', backdropFilter: 'blur(10px)' }}
+      data-testid="event-photos-panel"
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 24, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 16, scale: 0.97 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="lux-glass w-full max-w-5xl max-h-[92vh] overflow-y-auto p-7 md:p-9 relative"
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-5 right-5 w-9 h-9 rounded-full grid place-items-center"
+          style={{ border: '1px solid var(--lux-border)', color: 'rgba(255,248,220,0.7)' }}
+          data-testid="event-photos-close"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        <div className="mb-6">
+          <span className="lux-eyebrow block mb-2">◆ Event Gallery</span>
+          <h2 className="font-display text-3xl md:text-4xl" style={{ color: '#FFF8DC' }}>
+            Photos for{' '}
+            <span className="text-gold italic font-script">
+              {(invitation.event_type || 'event').charAt(0).toUpperCase()
+                + (invitation.event_type || 'event').slice(1)}
+            </span>
+          </h2>
+          <p className="mt-2 text-sm" style={{ color: 'rgba(255,248,220,0.65)' }}>
+            Drop the wedding photos you want guests to find under this ceremony.
+            Each photo is automatically face-indexed so guests can search for themselves.
+          </p>
+        </div>
+
+        {!galleryEnabled && !loading && (
+          <div
+            className="lux-glass p-6 mb-5 flex items-center justify-between gap-4 flex-wrap"
+            data-testid="gallery-disabled-banner"
+          >
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color: '#E8C766' }} />
+              <div>
+                <div className="font-display text-lg" style={{ color: '#FFF8DC' }}>
+                  Gallery not enabled yet
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'rgba(255,248,220,0.65)' }}>
+                  Enable the live photo gallery for this wedding to start uploading.
+                  Requires AWS credentials in <code>backend/.env</code>.
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={enableGallery}
+              disabled={enabling}
+              className="lux-btn"
+              data-testid="enable-gallery-btn"
+            >
+              {enabling ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {enabling ? 'Enabling…' : 'Enable Gallery'}
+            </button>
+          </div>
+        )}
+
+        {/* Dropzone */}
+        {galleryEnabled && (
+          <div
+            {...getRootProps()}
+            className="rounded-2xl p-8 md:p-12 text-center cursor-pointer transition-all"
+            style={{
+              border: `2px dashed ${isDragActive ? '#D4AF37' : 'rgba(212,175,55,0.4)'}`,
+              background: isDragActive ? 'rgba(212,175,55,0.08)' : 'rgba(255,248,220,0.02)',
+              opacity: uploading ? 0.7 : 1,
+            }}
+            data-testid="event-photos-dropzone"
+          >
+            <input {...getInputProps()} data-testid="event-photos-file-input" />
+            <div
+              className="w-14 h-14 rounded-full grid place-items-center mx-auto mb-4"
+              style={{ background: 'radial-gradient(circle at 30% 30%, #E8C766, #8C6A1A)' }}
+            >
+              {uploading
+                ? <Loader2 className="w-6 h-6 animate-spin" style={{ color: '#16110C' }} />
+                : <Upload className="w-6 h-6" style={{ color: '#16110C' }} />
+              }
+            </div>
+            <div className="font-display text-xl mb-1" style={{ color: '#FFF8DC' }}>
+              {uploading
+                ? `Uploading… ${progress}%`
+                : isDragActive ? 'Release to upload' : 'Drag photos here or click to choose'}
+            </div>
+            <div className="text-xs" style={{ color: 'rgba(255,248,220,0.55)' }}>
+              JPG / PNG / HEIC / WEBP · Up to 20MB per photo · 80MB per batch
+            </div>
+            {uploading && (
+              <div className="mt-4 h-1.5 rounded-full overflow-hidden mx-auto" style={{ maxWidth: 360, background: 'rgba(255,248,220,0.08)' }}>
+                <div
+                  className="h-full transition-all"
+                  style={{ width: `${progress}%`, background: '#D4AF37' }}
+                  data-testid="upload-progress-bar"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Result banner */}
+        {lastResult && (
+          <div
+            className="mt-4 px-4 py-3 rounded-lg flex items-center gap-3 text-sm"
+            style={{
+              background: lastResult.failed
+                ? 'rgba(139,0,0,0.18)'
+                : 'rgba(60,140,80,0.18)',
+              border: `1px solid ${lastResult.failed ? 'rgba(255,120,90,0.4)' : 'rgba(120,200,140,0.4)'}`,
+              color: '#FFF8DC',
+            }}
+            data-testid="upload-result-banner"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            Uploaded {lastResult.uploaded}{lastResult.failed ? ` · ${lastResult.failed} failed` : ''}
+          </div>
+        )}
+
+        {error && (
+          <div
+            className="mt-4 px-4 py-3 rounded-lg flex items-center gap-3 text-sm"
+            style={{ background: 'rgba(139,0,0,0.18)', border: '1px solid rgba(255,120,90,0.4)', color: '#FFD7C9' }}
+            data-testid="upload-error-banner"
+          >
+            <AlertTriangle className="w-4 h-4" /> {error}
+          </div>
+        )}
+
+        {/* Photo grid */}
+        <div className="mt-7">
+          <div className="flex items-baseline justify-between mb-3">
+            <span className="lux-eyebrow">
+              ◇ {photos.length} {photos.length === 1 ? 'photo' : 'photos'} in this event
+            </span>
+            {loading && <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#D4AF37' }} />}
+          </div>
+
+          {!loading && photos.length === 0 && (
+            <div
+              className="rounded-xl py-12 text-center"
+              style={{ background: 'rgba(255,248,220,0.03)', border: '1px solid var(--lux-border)' }}
+              data-testid="event-photos-empty"
+            >
+              <ImageIcon className="w-7 h-7 mx-auto mb-2" style={{ color: 'rgba(255,248,220,0.4)' }} />
+              <div className="text-sm" style={{ color: 'rgba(255,248,220,0.55)' }}>
+                No photos uploaded for this ceremony yet.
+              </div>
+            </div>
+          )}
+
+          {photos.length > 0 && (
+            <div
+              className="grid gap-3"
+              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}
+              data-testid="event-photos-grid"
+            >
+              <AnimatePresence>
+                {photos.map((p) => (
+                  <motion.div
+                    key={p.id}
+                    layout
+                    initial={{ opacity: 0, scale: 0.92 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.92 }}
+                    transition={{ duration: 0.25 }}
+                    className="relative group rounded-lg overflow-hidden"
+                    style={{
+                      aspectRatio: '1 / 1',
+                      background: 'rgba(255,248,220,0.04)',
+                      border: '1px solid var(--lux-border)',
+                    }}
+                    data-testid={`event-photo-${p.id}`}
+                  >
+                    <img
+                      src={p.thumb_url}
+                      alt=""
+                      loading="lazy"
+                      className="w-full h-full object-cover"
+                    />
+                    {p.face_count > 0 && (
+                      <span
+                        className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full text-[9px] tracking-[0.15em] uppercase"
+                        style={{ background: 'rgba(0,0,0,0.65)', color: '#FFE5A0', backdropFilter: 'blur(4px)' }}
+                      >
+                        {p.face_count} face{p.face_count > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => deletePhoto(p.id)}
+                      className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ background: 'rgba(139,0,0,0.7)', color: '#FFD7C9' }}
+                      data-testid={`event-photo-delete-${p.id}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}

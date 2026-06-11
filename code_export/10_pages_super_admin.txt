@@ -1,0 +1,3805 @@
+===== frontend/src/pages/LuxurySuperAdminDashboard.jsx =====
+import React, { useEffect, useState, useMemo, lazy, Suspense } from 'react';
+import { motion } from 'framer-motion';
+import axios from 'axios';
+import {
+  Users, UserPlus, Wallet, ShieldCheck, ShieldOff, Plus, Minus,
+  Search, TrendingUp, FileText, Crown, X, Check, Eye, Coins, FilePlus2,
+  IndianRupee, BarChart3, Trophy, Tag, Gift, Calendar, Layers,
+  Ban, Mail, Phone, UserCheck, Heart,
+} from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import LuxuryShell from '@/components/luxury/LuxuryShell';
+import MandalaLoader from '@/components/luxury/MandalaLoader';
+import ScrollSection from '@/components/luxury/ScrollSection';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Area, AreaChart,
+} from 'recharts';
+import '@/styles/luxury.css';
+
+// Pricing tab now redirects to the unified /super-admin/pricing hub.
+// The legacy GuidedPricingFlow, SuperAdminPricingEditor, etc. have been
+// consolidated into a single audience-aware page.
+
+const PRICING_SUBTABS = [];
+
+const PlansPricingHub = () => {
+  const navigate = useNavigate();
+  useEffect(() => { navigate('/super-admin/pricing'); }, [navigate]);
+  return (
+    <div data-testid="plans-pricing-hub" className="py-12 text-center">
+      <p className="text-sm" style={{ color: 'rgba(245,236,215,0.6)' }}>
+        Redirecting to the unified Pricing Hub…
+      </p>
+    </div>
+  );
+};
+
+// Lazy-load SuperAdminGiftCodes only when its tab is opened
+const SuperAdminGiftCodes = lazy(() => import('./SuperAdminGiftCodes'));
+// 2026 — Universal categories
+const EventCategoriesPanel = lazy(() => import('@/components/EventCategoriesPanel'));
+
+// Embed the gift-codes admin component without its outer LuxuryShell.
+// We just lazy-load SuperAdminGiftCodes inside an offset wrapper so its
+// own back-button can take you back here.
+const InlineGiftCodes = () => (
+  <div className="-mx-1 -my-1" data-testid="inline-gift-codes-embed">
+    <SuperAdminGiftCodes />
+  </div>
+);
+
+const ExternalLink = ({ to, title, desc }) => (
+  <div className="text-center py-12 px-6" data-testid="external-link-block">
+    <h4 className="font-display text-2xl mb-2" style={{ color: '#FFF8DC' }}>{title}</h4>
+    <p className="text-sm mb-5 max-w-xl mx-auto" style={{ color: 'rgba(255,248,220,0.6)' }}>{desc}</p>
+    <a
+      href={to}
+      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-[11px] tracking-[0.3em] uppercase font-medium"
+      style={{ background: '#D4AF37', color: '#1A0F08' }}
+    >
+      Open editor →
+    </a>
+  </div>
+);
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 16, filter: 'blur(6px)' },
+  visible: (i = 0) => ({ opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.6, delay: i * 0.04, ease: [0.22, 1, 0.36, 1] } }),
+};
+
+const LuxurySuperAdminDashboard = () => {
+  const navigate = useNavigate();
+  const { admin, loading: authLoading } = useAuth();
+  const [tab, setTab] = useState('admins');
+  const [admins, setAdmins] = useState([]);
+  // ── Normal-user (couple / guest) management — July 2025
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [userSearch, setUserSearch] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState('all');
+  const [userDetailFor, setUserDetailFor] = useState(null);          // { user_id }
+  const [userCreditModal, setUserCreditModal] = useState(null);      // { user }
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [creditModal, setCreditModal] = useState(null);  // { admin, mode: 'add'|'deduct' }
+  const [ledgerFor, setLedgerFor] = useState(null);
+  const [ledger, setLedger] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [analytics, setAnalytics] = useState({
+    summary: null,
+    series: [],
+    leaderboard: [],
+    range: 30,
+  });
+  const [analyticsBusy, setAnalyticsBusy] = useState(false);
+
+  useEffect(() => {
+    if (authLoading) return; // wait for auth to hydrate from localStorage
+    if (!admin) { navigate('/super-admin/login'); return; }
+    if (admin.role !== 'super_admin' && admin.role !== 'SUPER_ADMIN') { navigate('/admin/dashboard'); return; }
+    fetchAdmins();
+    fetchAuditLogs();
+    fetchAnalytics(30);
+    fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admin, authLoading]);
+
+  const fetchAnalytics = async (days = 30) => {
+    setAnalyticsBusy(true);
+    try {
+      const [sum, ts, lb] = await Promise.all([
+        axios.get(`${API_URL}/api/super-admin/v2/revenue/summary?days=${days}`).then(r => r.data).catch(() => null),
+        axios.get(`${API_URL}/api/super-admin/v2/revenue/timeseries?days=${days}`).then(r => r.data).catch(() => ({ series: [] })),
+        axios.get(`${API_URL}/api/super-admin/v2/leaderboard/photographers?by=revenue`).then(r => r.data).catch(() => ({ items: [] })),
+      ]);
+      setAnalytics({
+        summary: sum,
+        series: ts?.series || [],
+        leaderboard: lb?.items || [],
+        range: days,
+      });
+    } finally {
+      setAnalyticsBusy(false);
+    }
+  };
+
+  const fetchAdmins = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/api/super-admin/admins`);
+      setAdmins(res.data || []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  // ── Normal-user management (July 2025)
+  const fetchUsers = async (q, statusFilter) => {
+    setUsersLoading(true);
+    try {
+      const params = {};
+      const qVal = (q !== undefined ? q : userSearch).trim();
+      if (qVal) params.q = qVal;
+      const sf = statusFilter !== undefined ? statusFilter : userStatusFilter;
+      if (sf && sf !== 'all') params.status = sf;
+      const res = await axios.get(`${API_URL}/api/super-admin/users`, { params });
+      setUsers(res.data?.users || []);
+    } catch (e) {
+      console.error(e);
+      setUsers([]);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const toggleUserStatus = async (u, nextStatus) => {
+    const wanted = nextStatus || (u.status === 'active' ? 'suspended' : 'active');
+    const reason = wanted === 'active'
+      ? 'Re-activated by super-admin'
+      : window.prompt(`Reason for setting status to "${wanted}" (optional):`, '') || '';
+    try {
+      await axios.put(`${API_URL}/api/super-admin/users/${u.user_id}/status`, {
+        status: wanted, reason,
+      });
+      fetchUsers();
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Failed to update user status');
+    }
+  };
+
+  const userStats = useMemo(() => {
+    const total = users.length;
+    const active = users.filter((u) => (u.status || 'active') === 'active').length;
+    const suspended = users.filter((u) => u.status === 'suspended').length;
+    const blocked = users.filter((u) => u.status === 'blocked').length;
+    const totalCredits = users.reduce((s, u) => s + (u.credits || 0), 0);
+    return { total, active, suspended, blocked, totalCredits };
+  }, [users]);
+
+  const fetchAuditLogs = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/api/admin/audit-logs`);
+      setAuditLogs(res.data || []);
+    } catch (e) { /* optional */ }
+  };
+
+  const fetchLedger = async (a) => {
+    try {
+      const res = await axios.get(`${API_URL}/api/super-admin/credits/ledger/${a.id}`);
+      setLedger(res.data || []);
+      setLedgerFor(a);
+    } catch (e) { setLedger([]); setLedgerFor(a); }
+  };
+
+  const stats = useMemo(() => {
+    const photographers = admins.filter((a) => a.role === 'admin');
+    const totalCredits = photographers.reduce((s, a) => s + (a.total_credits || 0), 0);
+    const usedCredits  = photographers.reduce((s, a) => s + (a.used_credits || 0), 0);
+    const activeCount  = photographers.filter((a) => a.status === 'active').length;
+    return {
+      photographers: photographers.length,
+      active: activeCount,
+      totalCredits, usedCredits,
+      availableCredits: totalCredits - usedCredits,
+    };
+  }, [admins]);
+
+  const filteredAdmins = useMemo(() => {
+    const photographers = admins.filter((a) => a.role === 'admin');
+    if (!search.trim()) return photographers;
+    const q = search.toLowerCase();
+    return photographers.filter((a) =>
+      (a.email || '').toLowerCase().includes(q) ||
+      (a.name || '').toLowerCase().includes(q)
+    );
+  }, [admins, search]);
+
+  const toggleStatus = async (a) => {
+    const newStatus = a.status === 'active' ? 'suspended' : 'active';
+    try {
+      await axios.put(`${API_URL}/api/super-admin/admins/${a.id}/status`, { status: newStatus });
+      fetchAdmins();
+    } catch (e) { alert(e.response?.data?.detail || 'Failed to update status'); }
+  };
+
+  return (
+    <LuxuryShell
+      eyebrow="◆ Platform Sovereignty"
+      title="Super Admin Console"
+      showCredits={false}
+      testid="luxury-super-admin-dashboard"
+    >
+      <div className="px-6 md:px-10 py-10 max-w-[1400px] mx-auto">
+        {/* Header */}
+        <ScrollSection className="mb-12">
+          <span className="lux-eyebrow block mb-4">◆ Platform Control</span>
+          <h1 className="font-display text-[2.6rem] md:text-[4rem] leading-[1.02] tracking-tight" style={{ color: '#FFF8DC' }}>
+            Sovereign <span className="text-gold italic font-script">command.</span>
+          </h1>
+          <p className="mt-4 max-w-xl text-[1.02rem]" style={{ color: 'rgba(255,248,220,0.65)' }}>
+            Manage every photographer, credit, theme and feature flag from one console.
+          </p>
+        </ScrollSection>
+
+        {/* Stat tiles */}
+        <motion.div initial="hidden" animate="visible" variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
+          className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+          <Stat label="Photographers"    value={stats.photographers} icon={Users}      testid="stat-photographers" />
+          <Stat label="Active Studios"   value={stats.active}        icon={ShieldCheck} testid="stat-active" />
+          <Stat label="Normal Users"     value={userStats.total}     icon={Heart}      testid="stat-users-total" />
+          <Stat label="Credits Issued"   value={stats.totalCredits}  icon={Wallet}     testid="stat-credits-issued" />
+          <Stat label="Credits Consumed" value={stats.usedCredits}   icon={TrendingUp} testid="stat-credits-used" />
+        </motion.div>
+
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6 flex-wrap">
+          {[
+            { id: 'analytics',  label: 'Analytics' },
+            { id: 'admins',     label: 'Photographers' },
+            { id: 'users',      label: 'Normal Users' },
+            { id: 'audit',      label: 'Audit Log' },
+            { id: 'plans',      label: 'Plans & Pricing' },
+            { id: 'events',     label: 'Event Categories' },
+            // BUG 5 FIX: SuperAdminGiftCodes + InlineGiftCodes were
+            // already imported/defined but had no tab entry, so the page
+            // was effectively orphaned in the super-admin shell.
+            { id: 'gift_codes', label: 'Gift Codes' },
+          ].map((t) => (
+            <button
+              key={t.id} onClick={() => setTab(t.id)}
+              className="px-5 py-2 rounded-full text-xs tracking-[0.25em] uppercase transition-all"
+              style={tab === t.id
+                ? { background: '#D4AF37', color: '#16110C', fontWeight: 600 }
+                : { background: 'transparent', color: 'rgba(255,248,220,0.7)', border: '1px solid var(--lux-border)' }}
+              data-testid={`tab-${t.id}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Action bar */}
+        {tab === 'admins' && (
+          <div className="lux-glass p-5 mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => navigate('/admin/profile/new?as=super-admin')} className="lux-btn" data-testid="sa-create-invitation-btn">
+                <FilePlus2 className="w-4 h-4" /> Create Invitation
+              </button>
+              <button onClick={() => navigate('/super-admin/pricing')} className="lux-btn lux-btn-ghost" data-testid="pricing-hub-btn">
+                <Coins className="w-4 h-4" /> Credits &amp; Pricing
+              </button>
+              <button onClick={() => navigate('/super-admin/expiry-tiers')} className="lux-btn lux-btn-ghost" data-testid="expiry-tiers-btn">
+                <Coins className="w-4 h-4" /> Expiry Tiers
+              </button>
+            </div>
+            <div className="relative w-full md:w-64">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'rgba(255,248,220,0.45)' }} />
+              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name or email"
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-transparent outline-none text-sm"
+                style={{ color: '#FFF8DC', border: '1px solid var(--lux-border)' }}
+                data-testid="search-admins"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Tab content */}
+        {tab === 'analytics' && (
+          <AnalyticsPanel data={analytics} busy={analyticsBusy} onRange={fetchAnalytics} />
+        )}
+
+        {tab === 'admins' && (
+          loading ? (
+            <div className="py-20 grid place-items-center"><MandalaLoader /></div>
+          ) : filteredAdmins.length === 0 ? (
+            <div className="lux-glass p-10 text-center">
+              <p className="font-display text-2xl mb-2" style={{ color: '#FFF8DC' }}>No photographers yet</p>
+              <p className="text-sm" style={{ color: 'rgba(255,248,220,0.6)' }}>Create your first studio above.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="admins-list">
+              {filteredAdmins.map((a, i) => (
+                <motion.div key={a.id} variants={fadeUp} custom={i} initial="hidden" animate="visible"
+                  className="lux-glass p-6"
+                  data-testid={`admin-row-${a.id}`}
+                >
+                  <div className="flex items-start justify-between mb-3 gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-display text-xl mb-0.5 truncate" style={{ color: '#FFF8DC' }}>{a.name || a.email}</h3>
+                      <p className="text-xs truncate" style={{ color: 'rgba(255,248,220,0.55)' }}>{a.email}</p>
+                    </div>
+                    <span className="text-[9px] tracking-[0.25em] uppercase px-2 py-1 rounded-full shrink-0"
+                      style={a.status === 'active'
+                        ? { background: 'rgba(138,154,91,0.16)', color: '#A5B97A', border: '1px solid rgba(138,154,91,0.35)' }
+                        : { background: 'rgba(139,0,0,0.18)', color: '#FFB0A0', border: '1px solid rgba(139,0,0,0.4)' }}>
+                      {a.status}
+                    </span>
+                  </div>
+
+                  <div className="lux-hairline mb-4" />
+
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    <Mini label="Total"     value={a.total_credits ?? 0} />
+                    <Mini label="Used"      value={a.used_credits ?? 0} />
+                    <Mini label="Available" value={(a.total_credits ?? 0) - (a.used_credits ?? 0)} highlight />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <ActionBtn icon={Eye}      label="Details" onClick={() => navigate(`/super-admin/photographers/${a.id}`)} testid={`view-detail-${a.id}`} />
+                    <ActionBtn icon={Plus}    label="Add"    onClick={() => setCreditModal({ admin: a, mode: 'add' })}    testid={`add-credits-${a.id}`} />
+                    <ActionBtn icon={Minus}   label="Deduct" onClick={() => setCreditModal({ admin: a, mode: 'deduct' })} testid={`deduct-credits-${a.id}`} />
+                    <ActionBtn icon={FileText} label="Ledger" onClick={() => fetchLedger(a)} testid={`ledger-${a.id}`} />
+                    <ActionBtn icon={a.status === 'active' ? ShieldOff : ShieldCheck}
+                      label={a.status === 'active' ? 'Suspend' : 'Activate'}
+                      onClick={() => toggleStatus(a)} testid={`toggle-status-${a.id}`} danger={a.status === 'active'} />
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )
+        )}
+
+        {tab === 'users' && (
+          <div data-testid="users-panel">
+            {/* Action bar — search + status filter */}
+            <div className="lux-glass p-5 mb-6 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex gap-2 flex-wrap" data-testid="users-status-filter">
+                {[
+                  { id: 'all',       label: 'All' },
+                  { id: 'active',    label: 'Active' },
+                  { id: 'suspended', label: 'Suspended' },
+                  { id: 'blocked',   label: 'Blocked' },
+                ].map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => { setUserStatusFilter(s.id); fetchUsers(undefined, s.id); }}
+                    className="px-4 py-1.5 rounded-full text-[10px] tracking-[0.25em] uppercase"
+                    style={userStatusFilter === s.id
+                      ? { background: '#D4AF37', color: '#16110C', fontWeight: 600 }
+                      : { background: 'transparent', color: 'rgba(255,248,220,0.7)', border: '1px solid var(--lux-border)' }}
+                    data-testid={`user-status-${s.id}`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <form
+                onSubmit={(e) => { e.preventDefault(); fetchUsers(userSearch); }}
+                className="relative w-full md:w-72"
+              >
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'rgba(255,248,220,0.45)' }} />
+                <input
+                  type="text"
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  placeholder="Search by name, email, phone"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-transparent outline-none text-sm"
+                  style={{ color: '#FFF8DC', border: '1px solid var(--lux-border)' }}
+                  data-testid="search-users"
+                />
+              </form>
+            </div>
+
+            {/* Mini user stat tiles */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <MiniStat label="Active"    value={userStats.active}       tone="ok"     testid="ustat-active" />
+              <MiniStat label="Suspended" value={userStats.suspended}    tone="warn"   testid="ustat-suspended" />
+              <MiniStat label="Blocked"   value={userStats.blocked}      tone="bad"    testid="ustat-blocked" />
+              <MiniStat label="Credits in Wallets" value={userStats.totalCredits} tone="gold" testid="ustat-credits" />
+            </div>
+
+            {/* User list */}
+            {usersLoading ? (
+              <div className="py-20 grid place-items-center"><MandalaLoader /></div>
+            ) : users.length === 0 ? (
+              <div className="lux-glass p-10 text-center">
+                <p className="font-display text-2xl mb-2" style={{ color: '#FFF8DC' }}>No users found</p>
+                <p className="text-sm" style={{ color: 'rgba(255,248,220,0.6)' }}>
+                  Couples haven't signed up yet, or your filter is too narrow.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="users-list">
+                {users.map((u, i) => (
+                  <motion.div
+                    key={u.user_id}
+                    variants={fadeUp} custom={i} initial="hidden" animate="visible"
+                    className="lux-glass p-6"
+                    data-testid={`user-row-${u.user_id}`}
+                  >
+                    <div className="flex items-start justify-between mb-3 gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-display text-xl mb-0.5 truncate" style={{ color: '#FFF8DC' }}>
+                          {u.name || u.email}
+                        </h3>
+                        <p className="text-xs truncate flex items-center gap-1.5" style={{ color: 'rgba(255,248,220,0.55)' }}>
+                          <Mail className="w-3 h-3 shrink-0" /> {u.email}
+                        </p>
+                        {u.phone && (
+                          <p className="text-xs truncate mt-0.5 flex items-center gap-1.5" style={{ color: 'rgba(255,248,220,0.45)' }}>
+                            <Phone className="w-3 h-3 shrink-0" /> {u.phone}
+                          </p>
+                        )}
+                      </div>
+                      <UserStatusPill status={u.status || 'active'} />
+                    </div>
+
+                    <div className="lux-hairline mb-4" />
+
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <Mini label="Credits"     value={u.credits || 0} highlight />
+                      <Mini label="Invitations" value={u.profiles_count || 0} />
+                      <Mini label="Joined"      value={u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'} small />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <ActionBtn icon={Eye} label="Details"
+                        onClick={() => setUserDetailFor(u)}
+                        testid={`view-user-${u.user_id}`} />
+                      <ActionBtn icon={Gift} label="Grant Credits"
+                        onClick={() => setUserCreditModal({ user: u })}
+                        testid={`grant-user-credits-${u.user_id}`} />
+                      {(u.status || 'active') === 'active' && (
+                        <>
+                          <ActionBtn icon={ShieldOff} label="Suspend"
+                            onClick={() => toggleUserStatus(u, 'suspended')}
+                            danger testid={`suspend-user-${u.user_id}`} />
+                          <ActionBtn icon={Ban} label="Block"
+                            onClick={() => toggleUserStatus(u, 'blocked')}
+                            danger testid={`block-user-${u.user_id}`} />
+                        </>
+                      )}
+                      {(u.status === 'suspended' || u.status === 'blocked') && (
+                        <ActionBtn icon={UserCheck} label="Re-activate"
+                          onClick={() => toggleUserStatus(u, 'active')}
+                          testid={`activate-user-${u.user_id}`} />
+                      )}
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'audit' && (
+          <div className="lux-glass p-6">
+            <h3 className="font-display text-2xl mb-4" style={{ color: '#FFF8DC' }}>Audit Trail</h3>
+            {auditLogs.length === 0 ? (
+              <p className="text-sm" style={{ color: 'rgba(255,248,220,0.6)' }}>No audit entries yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-[600px] overflow-y-auto pr-2" data-testid="audit-logs-list">
+                {auditLogs.slice(0, 100).map((log) => (
+                  <div key={log.id} className="px-4 py-3 rounded-lg flex items-center justify-between gap-4"
+                    style={{ background: 'rgba(255,248,220,0.03)', border: '1px solid var(--lux-border)' }}>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-heading text-sm truncate" style={{ color: '#FFF8DC' }}>{log.action || log.event}</div>
+                      <div className="text-xs truncate" style={{ color: 'rgba(255,248,220,0.5)' }}>{log.details || log.description || ''}</div>
+                    </div>
+                    <div className="text-xs whitespace-nowrap" style={{ color: 'rgba(255,248,220,0.45)' }}>
+                      {log.created_at ? new Date(log.created_at).toLocaleString() : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'plans' && (
+          <div className="lux-glass p-6 sm:p-8" data-testid="credit-packs-panel">
+            <PlansPricingHub />
+          </div>
+        )}
+
+        {tab === 'events' && (
+          <Suspense fallback={<div className="lux-glass p-12 text-center" style={{ color: 'rgba(255,248,220,0.5)' }}>Loading…</div>}>
+            <EventCategoriesPanel />
+          </Suspense>
+        )}
+
+        {/* BUG 5 FIX: render the Gift Codes admin panel (lazy-loaded
+            from SuperAdminGiftCodes via the InlineGiftCodes wrapper). */}
+        {tab === 'gift_codes' && (
+          <Suspense fallback={<div className="lux-glass p-12 text-center" style={{ color: 'rgba(255,248,220,0.5)' }}>Loading…</div>}>
+            <InlineGiftCodes />
+          </Suspense>
+        )}
+      </div>
+
+      {showCreate && <CreateAdminModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); fetchAdmins(); }} />}
+      {creditModal && <CreditModal data={creditModal} onClose={() => setCreditModal(null)} onDone={() => { setCreditModal(null); fetchAdmins(); }} />}
+      {ledgerFor && <LedgerModal admin={ledgerFor} ledger={ledger} onClose={() => { setLedgerFor(null); setLedger([]); }} />}
+      {userDetailFor && (
+        <UserDetailModal
+          userRow={userDetailFor}
+          onClose={() => setUserDetailFor(null)}
+          onChange={() => fetchUsers()}
+          onGrantCredits={(u) => { setUserDetailFor(null); setUserCreditModal({ user: u }); }}
+          toggleStatus={toggleUserStatus}
+        />
+      )}
+      {userCreditModal && (
+        <UserCreditModal
+          user={userCreditModal.user}
+          onClose={() => setUserCreditModal(null)}
+          onDone={() => { setUserCreditModal(null); fetchUsers(); }}
+        />
+      )}
+    </LuxuryShell>
+  );
+};
+
+const Stat = ({ label, value, icon: Icon, testid }) => (
+  <motion.div variants={fadeUp} className="lux-glass p-5 flex flex-col gap-3" data-testid={testid}>
+    <div className="flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase" style={{ color: 'rgba(255,248,220,0.55)' }}>
+      <Icon className="w-3.5 h-3.5" style={{ color: '#D4AF37' }} /> {label}
+    </div>
+    <div className="font-display text-4xl text-gold leading-none">{value}</div>
+  </motion.div>
+);
+
+const Mini = ({ label, value, highlight }) => (
+  <div className="text-center">
+    <div className="text-[9px] tracking-[0.25em] uppercase mb-1" style={{ color: 'rgba(255,248,220,0.5)' }}>{label}</div>
+    <div className={`font-display text-xl ${highlight ? 'text-gold' : ''}`} style={!highlight ? { color: '#FFF8DC' } : {}}>{value}</div>
+  </div>
+);
+
+const ActionBtn = ({ icon: Icon, label, onClick, testid, danger }) => (
+  <button onClick={onClick} data-testid={testid}
+    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all"
+    style={{
+      background: 'transparent',
+      color: danger ? '#FFB0A0' : 'rgba(255,248,220,0.78)',
+      border: `1px solid ${danger ? 'rgba(139,0,0,0.4)' : 'var(--lux-border)'}`,
+    }}
+  >
+    <Icon className="w-3 h-3" /> {label}
+  </button>
+);
+
+const ModalShell = ({ title, eyebrow, onClose, children, testid }) => (
+  <motion.div
+    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    className="fixed inset-0 z-[70] flex items-center justify-center p-4 luxe luxe-grain"
+    style={{ background: 'rgba(8,5,3,0.7)', backdropFilter: 'blur(8px)' }}
+    onClick={onClose}
+    data-testid={testid}
+  >
+    <motion.div
+      initial={{ opacity: 0, y: 30, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+      onClick={(e) => e.stopPropagation()}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      className="lux-glass relative w-full max-w-lg max-h-[90vh] overflow-y-auto p-8"
+      style={{ background: 'rgba(14,10,6,0.95)' }}
+    >
+      <button onClick={onClose} className="absolute top-4 right-4 w-9 h-9 rounded-full grid place-items-center"
+        style={{ color: 'rgba(255,248,220,0.6)', border: '1px solid var(--lux-border)' }}>
+        <X className="w-4 h-4" />
+      </button>
+      {eyebrow && <span className="lux-eyebrow block mb-3">◆ {eyebrow}</span>}
+      <h2 className="font-display text-2xl md:text-3xl mb-6" style={{ color: '#FFF8DC' }}>{title}</h2>
+      {children}
+    </motion.div>
+  </motion.div>
+);
+
+const labelStyle = { color: 'rgba(255,248,220,0.55)' };
+const inputStyle = {
+  width: '100%', padding: '0.85rem 1rem', background: 'transparent', color: '#FFF8DC',
+  border: '1px solid var(--lux-border)', borderRadius: '0.5rem', outline: 'none',
+  fontFamily: 'Manrope, sans-serif', fontSize: '0.92rem', caretColor: '#D4AF37',
+};
+
+const CreateAdminModal = ({ onClose, onCreated }) => {
+  const [form, setForm] = useState({ email: '', password: '', name: '', initial_credits: 50 });
+  const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+
+  // Friendly error formatter — converts pydantic validation arrays into readable lines
+  const friendlyError = (detail) => {
+    if (!detail) return 'Failed to create photographer';
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+      return detail.map((d) => {
+        const field = (d.loc || []).slice(-1)[0] || 'field';
+        return `${field}: ${d.msg || 'invalid'}`;
+      }).join(' · ');
+    }
+    return JSON.stringify(detail);
+  };
+
+  const submit = async (e) => {
+    e.preventDefault(); setErr(''); setBusy(true);
+    if ((form.password || '').length < 8) {
+      setErr('Password must be at least 8 characters long');
+      setBusy(false);
+      return;
+    }
+    try {
+      await axios.post(`${API_URL}/api/super-admin/admins`, {
+        email: form.email, password: form.password, name: form.name,
+        initial_credits: parseInt(form.initial_credits, 10) || 0,
+      });
+      onCreated();
+    } catch (ex) { setErr(friendlyError(ex.response?.data?.detail)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <ModalShell title="Create Photographer" eyebrow="New Studio" onClose={onClose} testid="create-admin-modal">
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Studio Name"><input type="text" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} placeholder="Mani's Studio" data-testid="new-admin-name" /></Field>
+        <Field label="Email"><input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} placeholder="studio@example.com" data-testid="new-admin-email" /></Field>
+        <Field label="Password (min 8 characters)"><input type="password" required minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={inputStyle} placeholder="At least 8 characters" data-testid="new-admin-password" /></Field>
+        <Field label="Initial Credits"><input type="number" min={0} required value={form.initial_credits} onChange={(e) => setForm({ ...form, initial_credits: e.target.value })} style={inputStyle} data-testid="new-admin-credits" /></Field>
+        {err && <div className="text-sm px-3 py-2.5 rounded-md flex items-start gap-2" style={{ background: 'rgba(139,0,0,0.18)', color: '#FFD7C9', border: '1px solid rgba(139,0,0,0.4)' }} data-testid="create-admin-error">
+          <X className="w-4 h-4 shrink-0 mt-0.5" /> {err}
+        </div>}
+        <button type="submit" disabled={busy} className="lux-btn w-full justify-center" data-testid="submit-create-admin">
+          {busy ? 'Creating…' : 'Create Studio'} <Crown className="w-4 h-4" />
+        </button>
+      </form>
+    </ModalShell>
+  );
+};
+
+const CreditModal = ({ data, onClose, onDone }) => {
+  const { admin, mode } = data;
+  const [amount, setAmount] = useState(10); const [reason, setReason] = useState('');
+  const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault(); setErr(''); setBusy(true);
+    const path = mode === 'add' ? 'credits/add' : 'credits/deduct';
+    try {
+      await axios.post(`${API_URL}/api/super-admin/${path}`, {
+        admin_id: admin.id, amount: parseInt(amount, 10) || 0, reason: reason || `Manual ${mode}`,
+      });
+      onDone();
+    } catch (e) { setErr(e.response?.data?.detail || 'Failed'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <ModalShell
+      title={`${mode === 'add' ? 'Add' : 'Deduct'} Credits`}
+      eyebrow={admin.name || admin.email}
+      onClose={onClose} testid="credit-modal"
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Amount"><input type="number" min={1} required value={amount} onChange={(e) => setAmount(e.target.value)} style={inputStyle} data-testid="credit-amount" /></Field>
+        <Field label="Reason"><input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Welcome bonus" style={inputStyle} data-testid="credit-reason" /></Field>
+        {err && <div className="text-sm px-3 py-2 rounded-md" style={{ background: 'rgba(139,0,0,0.18)', color: '#FFD7C9' }}>{err}</div>}
+        <button type="submit" disabled={busy} className="lux-btn w-full justify-center" data-testid="submit-credit-op">
+          {busy ? 'Processing…' : `${mode === 'add' ? 'Add' : 'Deduct'} ${amount} credits`} <Check className="w-4 h-4" />
+        </button>
+      </form>
+    </ModalShell>
+  );
+};
+
+const LedgerModal = ({ admin, ledger, onClose }) => (
+  <ModalShell title="Credit Ledger" eyebrow={admin.name || admin.email} onClose={onClose} testid="ledger-modal">
+    {ledger.length === 0 ? (
+      <p className="text-sm" style={{ color: 'rgba(255,248,220,0.6)' }}>No entries yet.</p>
+    ) : (
+      <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1" data-testid="ledger-entries">
+        {ledger.map((entry) => {
+          const positive = (entry.amount || 0) >= 0 && entry.transaction_type !== 'deduct' && entry.transaction_type !== 'consume';
+          return (
+            <div key={entry.id} className="px-4 py-3 rounded-lg flex items-center justify-between gap-4"
+              style={{ background: 'rgba(255,248,220,0.03)', border: '1px solid var(--lux-border)' }}>
+              <div className="min-w-0 flex-1">
+                <div className="font-heading text-sm truncate" style={{ color: '#FFF8DC' }}>
+                  {entry.transaction_type || entry.action || 'transaction'}
+                </div>
+                <div className="text-xs truncate" style={{ color: 'rgba(255,248,220,0.5)' }}>{entry.reason || ''}</div>
+              </div>
+              <div className="font-display text-lg whitespace-nowrap"
+                style={{ color: positive ? '#D4AF37' : '#FFB0A0' }}>
+                {positive ? '+' : ''}{entry.amount}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    )}
+  </ModalShell>
+);
+
+const Field = ({ label, children }) => (
+  <label className="block">
+    <span className="block text-[10px] tracking-[0.3em] uppercase mb-2" style={labelStyle}>{label}</span>
+    {children}
+  </label>
+);
+
+// ──────────────────────────────────────────────────────────────────
+// Phase 8 — Analytics panel: summary tiles, revenue chart, leaderboard
+// ──────────────────────────────────────────────────────────────────
+const AnalyticsPanel = ({ data, busy, onRange }) => {
+  const fmtINR = (n) => '₹' + (Number(n || 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  const fmtNum = (n) => (Number(n || 0)).toLocaleString('en-IN');
+  const summary = data.summary || { revenue_inr: 0, credits_sold: 0, purchases: 0, days: data.range };
+  const rangeOpts = [
+    { v: 7, l: '7d' },
+    { v: 30, l: '30d' },
+    { v: 90, l: '90d' },
+    { v: 365, l: '1y' },
+  ];
+
+  const tooltipStyle = {
+    background: 'rgba(20, 12, 4, 0.95)',
+    border: '1px solid rgba(212,175,55,0.45)',
+    borderRadius: 6,
+    fontSize: 12,
+    color: '#FFF8DC',
+    padding: '8px 12px',
+  };
+
+  return (
+    <div data-testid="analytics-panel">
+      {/* Range selector */}
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-gold" />
+          <h3 className="font-display text-2xl" style={{ color: '#FFF8DC' }}>Revenue Analytics</h3>
+        </div>
+        <div className="lux-glass p-1 inline-flex gap-1" data-testid="analytics-range">
+          {rangeOpts.map((r) => (
+            <button
+              key={r.v}
+              onClick={() => onRange(r.v)}
+              className="px-3 py-1.5 rounded text-[10px] tracking-[0.22em] uppercase"
+              style={{
+                background: data.range === r.v ? 'linear-gradient(135deg,#D4AF37,#B8941F)' : 'transparent',
+                color: data.range === r.v ? '#16110C' : 'rgba(255,248,220,0.7)',
+              }}
+              data-testid={`range-${r.v}`}
+            >
+              {r.l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Summary tiles */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="lux-glass p-5" data-testid="metric-revenue">
+          <div className="flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase" style={{ color: 'rgba(255,248,220,0.55)' }}>
+            <IndianRupee className="w-3.5 h-3.5 text-gold" /> Revenue
+          </div>
+          <div className="font-display text-4xl mt-2 text-gold">{fmtINR(summary.revenue_inr)}</div>
+          <div className="text-xs mt-1" style={{ color: 'rgba(255,248,220,0.5)' }}>last {summary.days || data.range} days</div>
+        </div>
+        <div className="lux-glass p-5" data-testid="metric-credits-sold">
+          <div className="flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase" style={{ color: 'rgba(255,248,220,0.55)' }}>
+            <Coins className="w-3.5 h-3.5 text-gold" /> Credits sold
+          </div>
+          <div className="font-display text-4xl mt-2" style={{ color: '#FFF8DC' }}>{fmtNum(summary.credits_sold)}</div>
+          <div className="text-xs mt-1" style={{ color: 'rgba(255,248,220,0.5)' }}>last {summary.days || data.range} days</div>
+        </div>
+        <div className="lux-glass p-5" data-testid="metric-purchases">
+          <div className="flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase" style={{ color: 'rgba(255,248,220,0.55)' }}>
+            <TrendingUp className="w-3.5 h-3.5 text-gold" /> Transactions
+          </div>
+          <div className="font-display text-4xl mt-2" style={{ color: '#FFF8DC' }}>{fmtNum(summary.purchases)}</div>
+          <div className="text-xs mt-1" style={{ color: 'rgba(255,248,220,0.5)' }}>last {summary.days || data.range} days</div>
+        </div>
+      </div>
+
+      {/* Revenue chart */}
+      <div className="lux-glass p-5 mb-6" data-testid="revenue-chart">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="font-display text-lg" style={{ color: '#FFF8DC' }}>Daily Revenue (₹)</h4>
+          {busy && <span className="text-[10px] tracking-[0.22em] uppercase text-gold animate-pulse">Loading…</span>}
+        </div>
+        {data.series.length === 0 ? (
+          <div className="h-64 grid place-items-center text-sm" style={{ color: 'rgba(255,248,220,0.5)' }}>
+            No revenue data yet — purchases will populate this chart.
+          </div>
+        ) : (
+          <div style={{ width: '100%', height: 280 }}>
+            <ResponsiveContainer>
+              <AreaChart data={data.series} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="rev-grad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#D4AF37" stopOpacity={0.55} />
+                    <stop offset="100%" stopColor="#D4AF37" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,248,220,0.08)" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: 'rgba(255,248,220,0.5)' }}
+                  tickFormatter={(d) => { try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }); } catch { return d; } }}
+                  axisLine={{ stroke: 'rgba(255,248,220,0.12)' }}
+                  tickLine={false}
+                  minTickGap={20}
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: 'rgba(255,248,220,0.5)' }}
+                  axisLine={{ stroke: 'rgba(255,248,220,0.12)' }}
+                  tickLine={false}
+                  tickFormatter={(n) => n >= 1000 ? `₹${(n / 1000).toFixed(1)}k` : `₹${n}`}
+                />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  labelFormatter={(d) => { try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return d; } }}
+                  formatter={(v, n) => [n === 'revenue_inr' ? fmtINR(v) : fmtNum(v), n === 'revenue_inr' ? 'Revenue' : n]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="revenue_inr"
+                  stroke="#D4AF37"
+                  strokeWidth={2}
+                  fill="url(#rev-grad)"
+                  isAnimationActive
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {/* Credits sold chart */}
+      <div className="lux-glass p-5 mb-6" data-testid="credits-chart">
+        <h4 className="font-display text-lg mb-4" style={{ color: '#FFF8DC' }}>Daily Credits Sold</h4>
+        {data.series.length === 0 ? (
+          <div className="h-48 grid place-items-center text-sm" style={{ color: 'rgba(255,248,220,0.5)' }}>
+            No data
+          </div>
+        ) : (
+          <div style={{ width: '100%', height: 220 }}>
+            <ResponsiveContainer>
+              <LineChart data={data.series} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,248,220,0.08)" />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'rgba(255,248,220,0.5)' }}
+                  tickFormatter={(d) => { try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }); } catch { return d; } }}
+                  axisLine={{ stroke: 'rgba(255,248,220,0.12)' }} tickLine={false} minTickGap={20} />
+                <YAxis tick={{ fontSize: 10, fill: 'rgba(255,248,220,0.5)' }}
+                  axisLine={{ stroke: 'rgba(255,248,220,0.12)' }} tickLine={false} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Line type="monotone" dataKey="credits" stroke="#FFF8DC" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {/* Leaderboard */}
+      <div className="lux-glass p-5" data-testid="leaderboard">
+        <div className="flex items-center gap-2 mb-4">
+          <Trophy className="w-5 h-5 text-gold" />
+          <h4 className="font-display text-lg" style={{ color: '#FFF8DC' }}>Top Photographers (by revenue)</h4>
+        </div>
+        {data.leaderboard.length === 0 ? (
+          <div className="py-8 text-center text-sm" style={{ color: 'rgba(255,248,220,0.5)' }}>
+            No photographers ranked yet.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {data.leaderboard.slice(0, 10).map((row, idx) => (
+              <div
+                key={row.admin_id}
+                className="flex items-center justify-between px-4 py-3 rounded-md"
+                style={{ background: 'rgba(255,248,220,0.04)', border: '1px solid var(--lux-border)' }}
+                data-testid={`leaderboard-row-${row.admin_id}`}
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div
+                    className="w-7 h-7 rounded-full grid place-items-center font-display text-sm"
+                    style={{
+                      background: idx === 0 ? 'linear-gradient(135deg,#D4AF37,#B8941F)' : 'rgba(255,248,220,0.08)',
+                      color: idx === 0 ? '#16110C' : '#FFF8DC',
+                    }}
+                  >
+                    {idx + 1}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-heading text-sm truncate" style={{ color: '#FFF8DC' }}>{row.name || '—'}</div>
+                    <div className="text-[11px] truncate" style={{ color: 'rgba(255,248,220,0.5)' }}>{row.email || ''}</div>
+                  </div>
+                </div>
+                <div className="font-display text-lg text-gold whitespace-nowrap">
+                  {fmtINR(row.metric)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+
+// ════════════════════════════════════════════════════════════════════
+// NORMAL-USER MANAGEMENT — supporting components (July 2025)
+// ════════════════════════════════════════════════════════════════════
+const MiniStat = ({ label, value, tone = 'gold', testid }) => {
+  const TONES = {
+    gold: { c: '#D4AF37', bg: 'rgba(212,175,55,0.10)' },
+    ok:   { c: '#7FD18E', bg: 'rgba(127,209,142,0.10)' },
+    warn: { c: '#E8B86B', bg: 'rgba(232,184,107,0.10)' },
+    bad:  { c: '#FFB0A0', bg: 'rgba(255,176,160,0.10)' },
+  };
+  const t = TONES[tone] || TONES.gold;
+  return (
+    <div className="lux-glass p-4 flex flex-col gap-1" data-testid={testid}
+      style={{ background: t.bg }}>
+      <div className="text-[10px] tracking-[0.25em] uppercase" style={{ color: 'rgba(255,248,220,0.6)' }}>{label}</div>
+      <div className="font-display text-2xl" style={{ color: t.c }}>{value}</div>
+    </div>
+  );
+};
+
+const UserStatusPill = ({ status }) => {
+  const map = {
+    active:    { c: '#7FD18E', bg: 'rgba(127,209,142,0.15)', label: 'Active' },
+    suspended: { c: '#E8B86B', bg: 'rgba(232,184,107,0.15)', label: 'Suspended' },
+    blocked:   { c: '#FFB0A0', bg: 'rgba(255,176,160,0.15)', label: 'Blocked' },
+  };
+  const s = map[status] || map.active;
+  return (
+    <span
+      className="px-2.5 py-0.5 rounded-full text-[10px] tracking-[0.25em] uppercase shrink-0"
+      style={{ color: s.c, background: s.bg, border: `1px solid ${s.c}40` }}
+      data-testid={`user-status-pill-${status}`}
+    >
+      {s.label}
+    </span>
+  );
+};
+
+const UserCreditModal = ({ user, onClose, onDone }) => {
+  const [amount, setAmount] = useState(10);
+  const [reason, setReason] = useState('Free credits gifted by MAJA');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr(''); setBusy(true);
+    try {
+      await axios.post(`${API_URL}/api/super-admin/users/${user.user_id}/credits`, {
+        amount: parseInt(amount, 10) || 0,
+        reason,
+      });
+      onDone();
+    } catch (e2) {
+      setErr(e2.response?.data?.detail || 'Failed to grant credits');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ModalShell title="Grant Free Credits" eyebrow={user.name || user.email} onClose={onClose} testid="user-credit-modal">
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Amount">
+          <input type="number" min={1} max={10000} required
+            value={amount} onChange={(e) => setAmount(e.target.value)}
+            style={inputStyle} data-testid="user-grant-amount" />
+        </Field>
+        <Field label="Reason (shown in user's wallet)">
+          <input type="text" value={reason} onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. Welcome gift, festival bonus, complaint resolution"
+            style={inputStyle} data-testid="user-grant-reason" />
+        </Field>
+        {err && (
+          <div className="text-sm px-3 py-2 rounded-md flex items-start gap-2"
+            style={{ background: 'rgba(139,0,0,0.18)', color: '#FFD7C9', border: '1px solid rgba(139,0,0,0.4)' }}>
+            <X className="w-4 h-4 shrink-0 mt-0.5" /> {err}
+          </div>
+        )}
+        <button type="submit" disabled={busy} className="lux-btn w-full justify-center" data-testid="submit-user-grant">
+          {busy ? 'Granting…' : `Gift ${amount} credits`} <Gift className="w-4 h-4" />
+        </button>
+      </form>
+    </ModalShell>
+  );
+};
+
+const UserDetailModal = ({ userRow, onClose, onChange, onGrantCredits, toggleStatus }) => {
+  const [detail, setDetail] = useState(null);
+  const [busy, setBusy] = useState(true);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setBusy(true); setErr('');
+      try {
+        const res = await axios.get(`${API_URL}/api/super-admin/users/${userRow.user_id}`);
+        if (alive) setDetail(res.data);
+      } catch (e) {
+        if (alive) setErr(e.response?.data?.detail || 'Failed to load user');
+      } finally {
+        if (alive) setBusy(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [userRow.user_id]);
+
+  const user = detail?.user || userRow;
+  const profiles = detail?.profiles || [];
+  const ledger   = detail?.credit_ledger || [];
+
+  const handleStatus = async (next) => {
+    await toggleStatus(user, next);
+    // Refresh local view
+    try {
+      const res = await axios.get(`${API_URL}/api/super-admin/users/${userRow.user_id}`);
+      setDetail(res.data);
+    } catch (e) {/* ignore */}
+    onChange?.();
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 luxe luxe-grain"
+      style={{ background: 'rgba(8,5,3,0.7)', backdropFilter: 'blur(8px)' }}
+      onClick={onClose}
+      data-testid="user-detail-modal"
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 30, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+        onClick={(e) => e.stopPropagation()}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="lux-glass relative w-full max-w-3xl max-h-[92vh] overflow-y-auto p-8"
+        style={{ background: 'rgba(14,10,6,0.96)' }}
+      >
+        <button onClick={onClose} className="absolute top-4 right-4 w-9 h-9 rounded-full grid place-items-center"
+          style={{ color: 'rgba(255,248,220,0.6)', border: '1px solid var(--lux-border)' }}>
+          <X className="w-4 h-4" />
+        </button>
+
+        <span className="lux-eyebrow block mb-3">◆ User Profile</span>
+        <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+          <div className="min-w-0">
+            <h2 className="font-display text-3xl truncate" style={{ color: '#FFF8DC' }}>
+              {user.name || user.email}
+            </h2>
+            <p className="text-sm mt-1" style={{ color: 'rgba(255,248,220,0.6)' }}>{user.email}</p>
+            {user.phone && <p className="text-xs mt-0.5" style={{ color: 'rgba(255,248,220,0.45)' }}>📱 {user.phone}</p>}
+          </div>
+          <UserStatusPill status={user.status || 'active'} />
+        </div>
+
+        {busy && <p className="text-sm mt-4" style={{ color: 'rgba(255,248,220,0.55)' }}>Loading…</p>}
+        {err && <p className="text-sm mt-4" style={{ color: '#FFB0A0' }}>{err}</p>}
+
+        {!busy && !err && (
+          <>
+            <div className="lux-hairline my-5" />
+            {/* Top stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+              <Mini label="Credits"    value={user.credits || 0} highlight />
+              <Mini label="Invitations" value={profiles.length} />
+              <Mini label="Auth"       value={user.auth_provider || 'email'} small />
+              <Mini label="Joined"     value={user.created_at ? new Date(user.created_at).toLocaleDateString() : '—'} small />
+            </div>
+
+            {/* Action row */}
+            <div className="flex flex-wrap gap-2 mb-6">
+              <button
+                onClick={() => onGrantCredits(user)}
+                className="lux-btn lux-btn-sm"
+                data-testid="ud-grant-credits"
+              >
+                <Gift className="w-4 h-4" /> Grant Credits
+              </button>
+              {(user.status || 'active') === 'active' && (
+                <>
+                  <button onClick={() => handleStatus('suspended')}
+                    className="px-4 py-2 rounded-full text-xs tracking-[0.18em] uppercase"
+                    style={{ color: '#E8B86B', border: '1px solid rgba(232,184,107,0.4)' }}
+                    data-testid="ud-suspend"
+                  >
+                    <ShieldOff className="w-3.5 h-3.5 inline -mt-0.5 mr-1.5" /> Suspend
+                  </button>
+                  <button onClick={() => handleStatus('blocked')}
+                    className="px-4 py-2 rounded-full text-xs tracking-[0.18em] uppercase"
+                    style={{ color: '#FFB0A0', border: '1px solid rgba(255,176,160,0.4)' }}
+                    data-testid="ud-block"
+                  >
+                    <Ban className="w-3.5 h-3.5 inline -mt-0.5 mr-1.5" /> Block
+                  </button>
+                </>
+              )}
+              {(user.status === 'suspended' || user.status === 'blocked') && (
+                <button onClick={() => handleStatus('active')}
+                  className="px-4 py-2 rounded-full text-xs tracking-[0.18em] uppercase"
+                  style={{ color: '#7FD18E', border: '1px solid rgba(127,209,142,0.4)' }}
+                  data-testid="ud-reactivate"
+                >
+                  <UserCheck className="w-3.5 h-3.5 inline -mt-0.5 mr-1.5" /> Re-activate
+                </button>
+              )}
+            </div>
+
+            {/* Invitations */}
+            <h3 className="font-display text-xl mb-3" style={{ color: '#FFF8DC' }}>
+              Invitations ({profiles.length})
+            </h3>
+            {profiles.length === 0 ? (
+              <p className="text-sm" style={{ color: 'rgba(255,248,220,0.55)' }}>
+                This user hasn&apos;t created any invitations yet.
+              </p>
+            ) : (
+              <div className="space-y-2 mb-6" data-testid="ud-profile-list">
+                {profiles.slice(0, 20).map((p) => (
+                  <div key={p.id || p.profile_id || p.slug} className="px-4 py-3 rounded-lg flex items-center justify-between gap-3"
+                    style={{ background: 'rgba(255,248,220,0.03)', border: '1px solid var(--lux-border)' }}>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-heading text-sm truncate" style={{ color: '#FFF8DC' }}>
+                        {(p.bride_name || p.bride || '—')} &amp; {(p.groom_name || p.groom || '—')}
+                      </div>
+                      <div className="text-xs truncate" style={{ color: 'rgba(255,248,220,0.5)' }}>
+                        {p.event_type || 'wedding'} · {p.venue || p.city || ''} · {p.event_date ? new Date(p.event_date).toLocaleDateString() : '—'}
+                      </div>
+                    </div>
+                    {p.slug && (
+                      <a href={`/invite/${p.slug}`} target="_blank" rel="noreferrer"
+                        className="text-[10px] tracking-[0.22em] uppercase text-gold whitespace-nowrap">
+                        Open ↗
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Credit ledger */}
+            <h3 className="font-display text-xl mb-3" style={{ color: '#FFF8DC' }}>
+              Recent Credit Activity
+            </h3>
+            {ledger.length === 0 ? (
+              <p className="text-sm" style={{ color: 'rgba(255,248,220,0.55)' }}>No credit activity yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1" data-testid="ud-ledger">
+                {ledger.slice(0, 30).map((entry) => {
+                  const positive = (entry.amount || 0) >= 0;
+                  return (
+                    <div key={entry.id} className="px-4 py-2.5 rounded-lg flex items-center justify-between gap-4"
+                      style={{ background: 'rgba(255,248,220,0.03)', border: '1px solid var(--lux-border)' }}>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-heading text-sm truncate" style={{ color: '#FFF8DC' }}>
+                          {entry.type || 'transaction'}
+                        </div>
+                        <div className="text-xs truncate" style={{ color: 'rgba(255,248,220,0.5)' }}>{entry.reason || ''}</div>
+                      </div>
+                      <div className="font-display text-base whitespace-nowrap"
+                        style={{ color: positive ? '#D4AF37' : '#FFB0A0' }}>
+                        {positive ? '+' : ''}{entry.amount}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+};
+
+
+export default LuxurySuperAdminDashboard;
+===== frontend/src/pages/SuperAdminPricingHub.jsx =====
+/**
+ * /super-admin/pricing — Unified Pricing Hub
+ *
+ * Single page replacing 17 legacy pricing pages. Structure:
+ *
+ *   ┌──────────── PHOTOGRAPHER ────────────┐  ┌──────── NORMAL USER ────────┐
+ *   │ 1. Credit Packs                       │  │ 1. Credit Packs            │
+ *   │ 2. Monthly Subscription               │  │ 2. Theme Prices            │
+ *   │ 3. Post-Subscription Credit Pricing   │  │ 3. Design Prices           │
+ *   │ 4. Theme Prices                       │  │ 4. Invitation Option Prices│
+ *   │ 5. Design Prices                      │  └────────────────────────────┘
+ *   │ 6. Invitation Option Prices           │
+ *   └───────────────────────────────────────┘
+ *
+ * Every price row supports:
+ *   - base_price
+ *   - "Enable discount" toggle  → enter discount_price (old shown struck-through)
+ *   - "Free" toggle (option_prices only)
+ */
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import {
+  Crown, Users, IndianRupee, Coins, Repeat, Layers,
+  Palette, ListTree, ChevronLeft, Save, Plus, Trash2, Tag,
+  ToggleLeft, ToggleRight, AlertCircle, CheckCircle2,
+} from 'lucide-react';
+
+const API = process.env.REACT_APP_BACKEND_URL;
+const PRICE = `${API}/api/super-admin/pricing`;
+
+const AUDIENCES = [
+  { key: 'photographer', label: 'Photographer', icon: Crown, blurb: 'Large credits • Bulk customer rates' },
+  { key: 'normal_user',  label: 'Normal User',  icon: Users, blurb: 'Small credits • Retail rates' },
+];
+
+const PHOTOG_SUBTABS = [
+  { key: 'credit_packs',  label: 'Credit Packs',         icon: Coins },
+  { key: 'subscription',  label: 'Monthly Subscription', icon: Repeat },
+  { key: 'post_sub',      label: 'Post-Sub Credits',     icon: IndianRupee },
+  { key: 'tiers',         label: 'Loyalty Tiers',        icon: Crown },
+  { key: 'feature_packs', label: 'Feature Packs',        icon: Layers },
+  { key: 'themes',        label: 'Theme Prices',         icon: Layers },
+  { key: 'designs',       label: 'Design Prices',        icon: Palette },
+  { key: 'options',       label: 'Invitation Options',   icon: ListTree },
+];
+const NORMAL_SUBTABS = [
+  { key: 'credit_packs',  label: 'Credit Packs',       icon: Coins },
+  { key: 'feature_packs', label: 'Feature Packs',      icon: Layers },
+  { key: 'themes',        label: 'Theme Prices',       icon: Layers },
+  { key: 'designs',       label: 'Design Prices',      icon: Palette },
+  { key: 'options',       label: 'Invitation Options', icon: ListTree },
+];
+
+// -------------- Generic UI building blocks --------------
+const Toast = ({ msg, kind }) => msg ? (
+  <div
+    data-testid="pricing-toast"
+    className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 ${
+      kind === 'err' ? 'bg-red-700 text-white' : 'bg-emerald-700 text-white'
+    }`}
+  >
+    {kind === 'err' ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+    <span className="text-sm">{msg}</span>
+  </div>
+) : null;
+
+const ToggleSwitch = ({ on, onChange, testid }) => (
+  <button
+    type="button" onClick={() => onChange(!on)} data-testid={testid}
+    className={`inline-flex items-center transition ${on ? 'text-emerald-400' : 'text-white/40'}`}
+  >
+    {on ? <ToggleRight className="w-7 h-7" /> : <ToggleLeft className="w-7 h-7" />}
+  </button>
+);
+
+const PriceCell = ({ value, oldValue, suffix }) => (
+  <div className="flex items-baseline gap-2">
+    {oldValue != null && (
+      <span className="text-white/40 text-sm line-through" data-testid="price-old">
+        {oldValue}{suffix}
+      </span>
+    )}
+    <span className="text-yellow-200 font-medium text-lg" data-testid="price-new">
+      {value}{suffix}
+    </span>
+  </div>
+);
+
+const NumberInput = ({ value, onChange, testid, placeholder, min = 0 }) => (
+  <input
+    type="number" min={min}
+    value={value ?? ''}
+    onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+    placeholder={placeholder}
+    data-testid={testid}
+    className="bg-black/40 border border-yellow-200/20 rounded px-3 py-2 text-yellow-50 w-28 focus:outline-none focus:border-yellow-300"
+  />
+);
+
+const TextInput = ({ value, onChange, testid, placeholder, width = 'w-40' }) => (
+  <input
+    type="text" value={value ?? ''} onChange={(e) => onChange(e.target.value)}
+    placeholder={placeholder} data-testid={testid}
+    className={`bg-black/40 border border-yellow-200/20 rounded px-3 py-2 text-yellow-50 ${width} focus:outline-none focus:border-yellow-300`}
+  />
+);
+
+// -------------- Reusable price row controls --------------
+const DiscountControls = ({ row, onPatch, suffix, testid }) => (
+  <div className="flex items-center gap-3">
+    <span className="text-xs uppercase tracking-wider text-white/60">Discount</span>
+    <ToggleSwitch
+      on={!!row.discount_enabled}
+      onChange={(v) => onPatch({ discount_enabled: v, ...(v ? {} : { discount_price: null }) })}
+      testid={`${testid}-discount-toggle`}
+    />
+    {row.discount_enabled && (
+      <NumberInput
+        value={row.discount_price} onChange={(v) => onPatch({ discount_price: v })}
+        testid={`${testid}-discount-input`} placeholder={`new ${suffix}`}
+      />
+    )}
+  </div>
+);
+
+// -------------- Hook: auth header --------------
+const useAuthAxios = () => {
+  return useMemo(() => {
+    const token = localStorage.getItem('admin_token');
+    const instance = axios.create({ baseURL: API });
+    if (token) instance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    return instance;
+  }, []);
+};
+
+// =============================================================
+// SECTION COMPONENTS (one per sub-tab)
+// =============================================================
+
+// ---- Credit Packs ----
+function CreditPacksSection({ audience, http, toast }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [newRow, setNewRow] = useState({ credits: '', base_price: '', label: '' });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await http.get(`/api/super-admin/pricing/credit-packs?audience=${audience}`);
+      setRows(r.data);
+    } catch (e) { toast(e.message || 'Failed to load packs', 'err'); }
+    setLoading(false);
+  }, [audience, http, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async (row) => {
+    try {
+      await http.post('/api/super-admin/pricing/credit-packs', { ...row, audience });
+      toast('Pack saved');
+      load();
+    } catch (e) { toast(e.response?.data?.detail || 'Save failed', 'err'); }
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm('Delete this pack?')) return;
+    try {
+      await http.delete(`/api/super-admin/pricing/credit-packs/${id}`);
+      toast('Pack deleted');
+      load();
+    } catch (e) { toast(e.response?.data?.detail || 'Delete failed', 'err'); }
+  };
+
+  const addNew = async () => {
+    if (!newRow.credits || !newRow.base_price) return toast('Enter credits + price', 'err');
+    await save({ ...newRow, credits: Number(newRow.credits), base_price: Number(newRow.base_price), is_active: true });
+    setNewRow({ credits: '', base_price: '', label: '' });
+  };
+
+  return (
+    <div data-testid="credit-packs-section">
+      <SectionHeader title="Credit Packs" blurb="Buy-credit bundles. Set credits → price. Discount toggles a struck-through old price." />
+      {loading ? <Skeleton /> : (
+        <div className="space-y-3">
+          {rows.map((row) => (
+            <PackRow key={row.id} row={row} onSave={save} onRemove={remove} testid={`pack-${row.credits}`} />
+          ))}
+          {!rows.length && <Empty label="No packs yet" />}
+        </div>
+      )}
+      <div className="mt-6 p-4 rounded-lg border border-yellow-200/15 bg-black/30">
+        <div className="text-xs uppercase tracking-wider text-yellow-200/70 mb-3 flex items-center gap-2"><Plus className="w-4 h-4" /> New Pack</div>
+        <div className="flex flex-wrap items-end gap-3">
+          <NumberInput value={newRow.credits} onChange={(v) => setNewRow({ ...newRow, credits: v })} placeholder="100" testid="new-pack-credits" />
+          <span className="text-white/40 text-sm">credits =</span>
+          <NumberInput value={newRow.base_price} onChange={(v) => setNewRow({ ...newRow, base_price: v })} placeholder="600" testid="new-pack-price" />
+          <span className="text-white/40 text-sm">rupees</span>
+          <TextInput value={newRow.label} onChange={(v) => setNewRow({ ...newRow, label: v })} placeholder="Label (optional)" testid="new-pack-label" />
+          <button onClick={addNew} className="px-4 py-2 bg-yellow-300 text-black rounded font-medium hover:bg-yellow-200" data-testid="new-pack-save">Add Pack</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PackRow({ row, onSave, onRemove, testid }) {
+  const [local, setLocal] = useState(row);
+  useEffect(() => { setLocal(row); }, [row]);
+  const dirty = JSON.stringify(local) !== JSON.stringify(row);
+
+  return (
+    <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg border border-yellow-200/15 bg-black/40" data-testid={testid}>
+      <div className="flex items-center gap-2 min-w-[180px]">
+        <Coins className="w-4 h-4 text-yellow-300" />
+        <span className="text-yellow-50 font-medium">{row.credits} credits</span>
+        {row.label && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-300/15 text-yellow-200/90">{row.label}</span>}
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-white/50 text-sm">₹</span>
+        <NumberInput value={local.base_price} onChange={(v) => setLocal({ ...local, base_price: v })} testid={`${testid}-base`} />
+      </div>
+      <DiscountControls row={local} onPatch={(p) => setLocal({ ...local, ...p })} suffix="₹" testid={testid} />
+      <div className="ml-auto flex items-center gap-2">
+        <PriceCell
+          value={local.discount_enabled && local.discount_price != null ? local.discount_price : local.base_price}
+          oldValue={local.discount_enabled && local.discount_price != null ? local.base_price : null}
+          suffix="₹"
+        />
+        {dirty && (
+          <button onClick={() => onSave(local)} className="px-3 py-2 bg-emerald-600 text-white rounded text-sm flex items-center gap-1" data-testid={`${testid}-save`}>
+            <Save className="w-4 h-4" /> Save
+          </button>
+        )}
+        <button onClick={() => onRemove(row.id)} className="p-2 text-red-400 hover:text-red-300" data-testid={`${testid}-delete`}><Trash2 className="w-4 h-4" /></button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Subscription (photographer only) ----
+function SubscriptionSection({ http, toast }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setRows((await http.get('/api/super-admin/pricing/subscriptions')).data); }
+    catch (e) { toast(e.message, 'err'); }
+    setLoading(false);
+  }, [http, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async (row) => {
+    try {
+      await http.post('/api/super-admin/pricing/subscriptions', row);
+      toast('Plan saved'); load();
+    } catch (e) { toast(e.response?.data?.detail || 'Save failed', 'err'); }
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm('Delete this plan?')) return;
+    try { await http.delete(`/api/super-admin/pricing/subscriptions/${id}`); toast('Plan deleted'); load(); }
+    catch (e) { toast(e.response?.data?.detail || 'Delete failed', 'err'); }
+  };
+
+  const addNew = () => save({ name: 'New Plan', credits_per_month: 400, duration_days: 30, base_price: 600, is_active: true });
+
+  return (
+    <div data-testid="subscription-section">
+      <SectionHeader
+        title="Monthly Subscription"
+        blurb="Photographer's recurring plan. Photographer pays a fixed monthly fee and receives a credit balance refreshed each cycle."
+      />
+      {loading ? <Skeleton /> : (
+        <div className="space-y-3">
+          {rows.map((row) => <SubRow key={row.id} row={row} onSave={save} onRemove={remove} />)}
+          {!rows.length && <Empty label="No subscription plans yet" />}
+        </div>
+      )}
+      <div className="mt-4">
+        <button onClick={addNew} className="px-4 py-2 border border-yellow-300/40 text-yellow-200 rounded hover:bg-yellow-300/10" data-testid="add-subscription">
+          <Plus className="inline w-4 h-4 mr-1" /> Add Plan
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SubRow({ row, onSave, onRemove }) {
+  const [local, setLocal] = useState(row);
+  useEffect(() => { setLocal(row); }, [row]);
+  const dirty = JSON.stringify(local) !== JSON.stringify(row);
+  const testid = `sub-${row.id}`;
+  return (
+    <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg border border-yellow-200/15 bg-black/40" data-testid={testid}>
+      <TextInput value={local.name} onChange={(v) => setLocal({ ...local, name: v })} testid={`${testid}-name`} />
+      <span className="text-white/50 text-sm">credits/mo</span>
+      <NumberInput value={local.credits_per_month} onChange={(v) => setLocal({ ...local, credits_per_month: v })} testid={`${testid}-credits`} />
+      <span className="text-white/50 text-sm">days</span>
+      <NumberInput value={local.duration_days} onChange={(v) => setLocal({ ...local, duration_days: v })} testid={`${testid}-days`} />
+      <span className="text-white/50 text-sm">₹</span>
+      <NumberInput value={local.base_price} onChange={(v) => setLocal({ ...local, base_price: v })} testid={`${testid}-price`} />
+      <DiscountControls row={local} onPatch={(p) => setLocal({ ...local, ...p })} suffix="₹" testid={testid} />
+      <ToggleSwitch on={!!local.is_active} onChange={(v) => setLocal({ ...local, is_active: v })} testid={`${testid}-active`} />
+      <span className="text-white/50 text-xs">{local.is_active ? 'Active' : 'Inactive'}</span>
+      <div className="ml-auto flex items-center gap-2">
+        <PriceCell
+          value={local.discount_enabled && local.discount_price != null ? local.discount_price : local.base_price}
+          oldValue={local.discount_enabled && local.discount_price != null ? local.base_price : null}
+          suffix="₹"
+        />
+        {dirty && <button onClick={() => onSave(local)} className="px-3 py-2 bg-emerald-600 text-white rounded text-sm" data-testid={`${testid}-save`}><Save className="inline w-4 h-4 mr-1" /> Save</button>}
+        <button onClick={() => onRemove(row.id)} className="p-2 text-red-400" data-testid={`${testid}-delete`}><Trash2 className="w-4 h-4" /></button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Post-Subscription Config ----
+function PostSubSection({ http, toast }) {
+  const [config, setConfig] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setConfig((await http.get('/api/super-admin/pricing/post-sub')).data); }
+    catch (e) { toast(e.message, 'err'); }
+    setLoading(false);
+  }, [http, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    try { await http.put('/api/super-admin/pricing/post-sub', config); toast('Post-sub config saved'); }
+    catch (e) { toast(e.response?.data?.detail || 'Save failed', 'err'); }
+  };
+
+  if (loading || !config) return <Skeleton />;
+
+  return (
+    <div data-testid="post-sub-section">
+      <SectionHeader
+        title="Post-Subscription Credit Pricing"
+        blurb="When the photographer's monthly credits run out, this rate applies. Toggle between a flat per-credit rate or a list of top-up packs."
+      />
+      <div className="p-4 rounded-lg border border-yellow-200/15 bg-black/40 space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="text-white/70 text-sm">Mode:</span>
+          <button
+            onClick={() => setConfig({ ...config, mode: 'per_credit' })}
+            className={`px-3 py-1.5 rounded text-sm ${config.mode === 'per_credit' ? 'bg-yellow-300 text-black' : 'bg-black/40 text-yellow-200 border border-yellow-200/20'}`}
+            data-testid="post-sub-mode-rate"
+          >
+            Per-Credit Rate
+          </button>
+          <button
+            onClick={() => setConfig({ ...config, mode: 'packs' })}
+            className={`px-3 py-1.5 rounded text-sm ${config.mode === 'packs' ? 'bg-yellow-300 text-black' : 'bg-black/40 text-yellow-200 border border-yellow-200/20'}`}
+            data-testid="post-sub-mode-packs"
+          >
+            Top-Up Packs
+          </button>
+        </div>
+
+        {config.mode === 'per_credit' ? (
+          <div className="flex items-center gap-3">
+            <span className="text-white/70 text-sm">₹</span>
+            <NumberInput value={config.per_credit_rate} onChange={(v) => setConfig({ ...config, per_credit_rate: v })} testid="post-sub-rate" />
+            <span className="text-white/70 text-sm">per credit (after monthly run out)</span>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {(config.packs || []).map((p, idx) => (
+              <div key={idx} className="flex items-center gap-3" data-testid={`post-sub-pack-${idx}`}>
+                <NumberInput value={p.credits} onChange={(v) => {
+                  const np = [...config.packs]; np[idx] = { ...p, credits: v }; setConfig({ ...config, packs: np });
+                }} testid={`post-sub-pack-${idx}-credits`} />
+                <span className="text-white/40 text-sm">credits =</span>
+                <NumberInput value={p.base_price} onChange={(v) => {
+                  const np = [...config.packs]; np[idx] = { ...p, base_price: v }; setConfig({ ...config, packs: np });
+                }} testid={`post-sub-pack-${idx}-price`} />
+                <span className="text-white/40 text-sm">₹</span>
+                <button onClick={() => {
+                  const np = config.packs.filter((_, i) => i !== idx); setConfig({ ...config, packs: np });
+                }} className="text-red-400" data-testid={`post-sub-pack-${idx}-delete`}><Trash2 className="w-4 h-4" /></button>
+              </div>
+            ))}
+            <button
+              onClick={() => setConfig({
+                ...config, packs: [...(config.packs || []), {
+                  id: `ps_${Date.now()}`, audience: 'photographer',
+                  credits: 100, base_price: 400, label: '', is_active: true,
+                  discount_enabled: false, discount_price: null,
+                }],
+              })}
+              className="px-3 py-2 border border-yellow-300/40 text-yellow-200 rounded text-sm"
+              data-testid="post-sub-add-pack"
+            ><Plus className="inline w-4 h-4 mr-1" /> Add Pack</button>
+          </div>
+        )}
+
+        <button onClick={save} className="mt-4 px-5 py-2.5 bg-yellow-300 text-black rounded font-medium" data-testid="post-sub-save">
+          <Save className="inline w-4 h-4 mr-1" /> Save Configuration
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Photographer Loyalty Tiers ----
+function PhotographerTiersSection({ http, toast }) {
+  const [config, setConfig] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setConfig((await http.get('/api/super-admin/pricing/photographer-tiers')).data); }
+    catch (e) { toast(e.message || 'Failed to load tiers', 'err'); }
+    setLoading(false);
+  }, [http, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    try {
+      await http.put('/api/super-admin/pricing/photographer-tiers', config);
+      toast('Loyalty tiers saved');
+      load();
+    } catch (e) { toast(e.response?.data?.detail || 'Save failed', 'err'); }
+  };
+
+  const patchTier = (idx, patch) => {
+    const tiers = [...config.tiers];
+    tiers[idx] = { ...tiers[idx], ...patch };
+    setConfig({ ...config, tiers });
+  };
+
+  if (loading || !config) return <Skeleton />;
+
+  return (
+    <div data-testid="loyalty-tiers-section">
+      <SectionHeader
+        title="Photographer Loyalty Tiers"
+        blurb="As photographers publish more paid links they climb the loyalty ladder — Starter → Pro → Elite → Partner. Each tier unlocks a discount on credit packs AND on per-link publishing, plus bonus credits on every pack purchase. Tiers auto-upgrade server-side as `paid_links_count` crosses each threshold."
+      />
+
+      <div className="p-4 rounded-lg border border-yellow-200/15 bg-black/40 mb-5 flex items-center gap-4">
+        <ToggleSwitch
+          on={config.enabled}
+          onChange={(v) => setConfig({ ...config, enabled: v })}
+          testid="tiers-enabled-toggle"
+        />
+        <div>
+          <div className="text-yellow-200 text-sm font-medium">
+            Loyalty system {config.enabled ? 'enabled' : 'disabled'}
+          </div>
+          <div className="text-white/55 text-xs">
+            {config.enabled
+              ? 'Photographers see their tier badge and progress toward the next tier.'
+              : 'All photographers are treated as Starter — no discounts applied anywhere.'}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {config.tiers.map((t, idx) => (
+          <div
+            key={t.key}
+            className="p-4 rounded-lg border border-yellow-200/15 bg-black/30 flex flex-wrap items-end gap-4"
+            data-testid={`tier-row-${t.key}`}
+          >
+            <div className="min-w-[110px]">
+              <div className="text-[10px] uppercase tracking-wider text-white/55 mb-1">Tier</div>
+              <div className="text-yellow-200 font-medium flex items-center gap-2">
+                <Tag className="w-3.5 h-3.5" /> {t.label}
+              </div>
+              <div className="text-white/40 text-xs mt-0.5">key: {t.key}</div>
+            </div>
+
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-white/55 mb-1">Label</div>
+              <TextInput
+                value={t.label}
+                onChange={(v) => patchTier(idx, { label: v })}
+                width="w-32"
+                testid={`tier-${t.key}-label`}
+              />
+            </div>
+
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-white/55 mb-1">Min paid links</div>
+              <NumberInput
+                value={t.min_paid_links}
+                onChange={(v) => patchTier(idx, { min_paid_links: Number(v ?? 0) })}
+                testid={`tier-${t.key}-min-links`}
+              />
+            </div>
+
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-white/55 mb-1">Discount %</div>
+              <NumberInput
+                value={t.discount_pct}
+                onChange={(v) => patchTier(idx, { discount_pct: Math.min(100, Math.max(0, Number(v ?? 0))) })}
+                testid={`tier-${t.key}-discount-pct`}
+              />
+            </div>
+
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-white/55 mb-1">Bonus credits %</div>
+              <NumberInput
+                value={t.bonus_pct}
+                onChange={(v) => patchTier(idx, { bonus_pct: Math.min(100, Math.max(0, Number(v ?? 0))) })}
+                testid={`tier-${t.key}-bonus-pct`}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={save}
+        className="mt-6 px-5 py-2.5 bg-yellow-300 text-black rounded font-medium"
+        data-testid="tiers-save"
+      >
+        <Save className="inline w-4 h-4 mr-1" /> Save loyalty tiers
+      </button>
+    </div>
+  );
+}
+
+// ---- Theme Prices ----
+function ThemePricesSection({ audience, http, toast }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setRows((await http.get(`/api/super-admin/pricing/themes?audience=${audience}`)).data); }
+    catch (e) { toast(e.message, 'err'); }
+    setLoading(false);
+  }, [audience, http, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async (row) => {
+    try { await http.post('/api/super-admin/pricing/themes', row); toast(`${row.theme_name || row.theme_id} saved`); load(); }
+    catch (e) { toast(e.response?.data?.detail || 'Save failed', 'err'); }
+  };
+
+  return (
+    <div data-testid="themes-section">
+      <SectionHeader title="Theme Prices (Whole Theme)" blurb={`Per-theme credit cost when a ${audience === 'photographer' ? 'photographer' : 'user'} buys the entire theme bundle.`} />
+      {loading ? <Skeleton /> : (
+        <div className="space-y-3">
+          {rows.map((row) => <ThemeRow key={row.theme_id} row={row} onSave={save} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThemeRow({ row, onSave }) {
+  const [local, setLocal] = useState(row);
+  useEffect(() => { setLocal(row); }, [row]);
+  const dirty = JSON.stringify(local) !== JSON.stringify(row);
+  const testid = `theme-${row.theme_id}`;
+  return (
+    <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg border border-yellow-200/15 bg-black/40" data-testid={testid}>
+      <div className="min-w-[200px] text-yellow-50 font-medium">{row.theme_name}</div>
+      <NumberInput value={local.base_price} onChange={(v) => setLocal({ ...local, base_price: v })} testid={`${testid}-base`} />
+      <span className="text-white/50 text-sm">credits</span>
+      <DiscountControls row={local} onPatch={(p) => setLocal({ ...local, ...p })} suffix=" cr" testid={testid} />
+      <div className="ml-auto flex items-center gap-2">
+        <PriceCell
+          value={local.discount_enabled && local.discount_price != null ? local.discount_price : local.base_price}
+          oldValue={local.discount_enabled && local.discount_price != null ? local.base_price : null}
+          suffix=" cr"
+        />
+        {dirty && <button onClick={() => onSave(local)} className="px-3 py-2 bg-emerald-600 text-white rounded text-sm" data-testid={`${testid}-save`}><Save className="inline w-4 h-4 mr-1" /> Save</button>}
+      </div>
+    </div>
+  );
+}
+
+// ---- Design Prices ----
+function DesignPricesSection({ audience, http, toast }) {
+  const [themes, setThemes] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const cat = (await http.get('/api/super-admin/pricing/catalog')).data;
+        setThemes(cat.themes);
+        if (cat.themes?.length) setSelected(cat.themes[0].id);
+      } catch (e) { toast(e.message, 'err'); }
+    })();
+  }, [http, toast]);
+
+  useEffect(() => {
+    if (!selected) return;
+    setLoading(true);
+    http.get(`/api/super-admin/pricing/designs?audience=${audience}&theme_id=${selected}`)
+      .then((r) => setRows(r.data))
+      .catch((e) => toast(e.message, 'err'))
+      .finally(() => setLoading(false));
+  }, [selected, audience, http, toast]);
+
+  const save = async (row) => {
+    try { await http.post('/api/super-admin/pricing/designs', row); toast(`${row.design_key} saved`); }
+    catch (e) { toast(e.response?.data?.detail || 'Save failed', 'err'); }
+  };
+
+  return (
+    <div data-testid="designs-section">
+      <SectionHeader title="Design Prices (Per Design)" blurb="If the customer buys ONE design within a theme (not the whole theme bundle), this is the per-design credit cost." />
+      <div className="flex flex-wrap gap-2 mb-4">
+        {themes.map((t) => (
+          <button
+            key={t.id} onClick={() => setSelected(t.id)} data-testid={`design-theme-${t.id}`}
+            className={`px-3 py-1.5 rounded text-sm ${selected === t.id ? 'bg-yellow-300 text-black' : 'bg-black/40 text-yellow-200 border border-yellow-200/20'}`}
+          >{t.name}</button>
+        ))}
+      </div>
+      {loading ? <Skeleton /> : (
+        <div className="space-y-3">
+          {rows.map((row) => <DesignRow key={row.design_key} row={row} onSave={save} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DesignRow({ row, onSave }) {
+  const [local, setLocal] = useState(row);
+  useEffect(() => { setLocal(row); }, [row]);
+  const dirty = JSON.stringify(local) !== JSON.stringify(row);
+  const testid = `design-${row.theme_id}-${row.design_key}`;
+  return (
+    <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg border border-yellow-200/15 bg-black/40" data-testid={testid}>
+      <div className="min-w-[160px] text-yellow-50 font-medium capitalize">{row.design_key.replace('_', ' ')}</div>
+      <NumberInput value={local.base_price} onChange={(v) => setLocal({ ...local, base_price: v })} testid={`${testid}-base`} />
+      <span className="text-white/50 text-sm">credits</span>
+      <DiscountControls row={local} onPatch={(p) => setLocal({ ...local, ...p })} suffix=" cr" testid={testid} />
+      <div className="ml-auto flex items-center gap-2">
+        <PriceCell
+          value={local.discount_enabled && local.discount_price != null ? local.discount_price : local.base_price}
+          oldValue={local.discount_enabled && local.discount_price != null ? local.base_price : null}
+          suffix=" cr"
+        />
+        {dirty && <button onClick={() => onSave(local)} className="px-3 py-2 bg-emerald-600 text-white rounded text-sm" data-testid={`${testid}-save`}><Save className="inline w-4 h-4 mr-1" /> Save</button>}
+      </div>
+    </div>
+  );
+}
+
+// ---- Invitation Options ----
+function OptionsSection({ audience, http, toast }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setRows((await http.get(`/api/super-admin/pricing/options?audience=${audience}`)).data); }
+    catch (e) { toast(e.message, 'err'); }
+    setLoading(false);
+  }, [audience, http, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async (row) => {
+    try { await http.post('/api/super-admin/pricing/options', row); toast(`${row.label || row.option_key} saved`); load(); }
+    catch (e) { toast(e.response?.data?.detail || 'Save failed', 'err'); }
+  };
+
+  return (
+    <div data-testid="options-section">
+      <SectionHeader title="Invitation Option Prices" blurb="Per-option credit cost. Toggle 'Free' to make the option free for this audience (cost = 0 regardless of base/discount)." />
+      {loading ? <Skeleton /> : (
+        <div className="space-y-3">
+          {rows.map((row) => <OptionRow key={row.option_key} row={row} onSave={save} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ────────────────────────────────────────────────────────────────────
+   FeaturePacksSection — admin CRUD for "All-Features Pack" / bundles
+   ──────────────────────────────────────────────────────────────────── */
+const KNOWN_FEATURE_KEYS = [
+  { key: 'qr_code',            label: 'QR Code' },
+  { key: 'rsvp_form',          label: 'RSVP Form' },
+  { key: 'live_photo_wall',    label: 'Live Photo Wall' },
+  { key: 'find_my_photos',     label: 'AI Selfie Search' },
+  { key: 'music_player',       label: 'Background Music' },
+  { key: 'countdown',          label: 'Countdown' },
+  { key: 'maps_directions',    label: 'Maps / Directions' },
+  { key: 'gift_registry',      label: 'Gift Registry' },
+  { key: 'whatsapp_share',     label: 'WhatsApp Share' },
+  { key: 'photo_gallery',      label: 'Post-event Gallery' },
+  { key: 'calendar_add',       label: 'Calendar (.ics)' },
+  { key: 'prewedding_story',   label: 'Pre-Wedding Story' },
+  { key: 'ai_photo_curation',  label: 'AI Photo Curation' },
+  { key: 'guest_photo_upload', label: 'Guest Pre-event Upload' },
+];
+
+function FeaturePacksSection({ audience, http, toast }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState(null);    // current pack being edited (or null)
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await http.get(`/api/super-admin/pricing/feature-packs?audience=${audience}`);
+      setItems(res.data.items || []);
+    } catch (e) { toast(e.message || 'Failed to load packs', 'err'); }
+    setLoading(false);
+  }, [audience, http, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openNew = () => setEditing({
+    audience,
+    name: '',
+    label: 'All-Features Pack',
+    feature_keys: [],
+    base_price: 0,
+    discount_enabled: false,
+    discount_price: null,
+    is_active: true,
+  });
+
+  const save = async () => {
+    try {
+      if (editing.id) {
+        await http.put(`/api/super-admin/pricing/feature-packs/${editing.id}`, editing);
+      } else {
+        await http.post('/api/super-admin/pricing/feature-packs', editing);
+      }
+      toast('Feature pack saved');
+      setEditing(null);
+      load();
+    } catch (e) { toast(e.response?.data?.detail || 'Save failed', 'err'); }
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm('Delete this feature pack?')) return;
+    try {
+      await http.delete(`/api/super-admin/pricing/feature-packs/${id}`);
+      toast('Pack deleted');
+      load();
+    } catch (e) { toast(e.response?.data?.detail || 'Delete failed', 'err'); }
+  };
+
+  if (loading) return <Skeleton />;
+
+  return (
+    <div data-testid="feature-packs-section">
+      <SectionHeader
+        title={`Feature Packs · ${audience === 'photographer' ? 'Photographers' : 'Couples'}`}
+        blurb="Bundle multiple invitation features at a single discounted price. Example: 'All-Features Pack' = QR + RSVP + Gallery + Music + AI Curation for 25 credits (vs 40 credits when bought individually). Shown as an upsell on the Publish step."
+      />
+
+      {/* Pack list */}
+      <div className="space-y-3 mb-4">
+        {items.length === 0 ? (
+          <Empty label="No feature packs yet for this audience. Click 'Add pack' to create one." />
+        ) : items.map((p) => (
+          <div
+            key={p.id}
+            className="p-4 rounded-lg border border-yellow-200/15 bg-black/30 flex flex-wrap items-center gap-4"
+            data-testid={`feature-pack-row-${p.id}`}
+          >
+            <div className="flex-1 min-w-[200px]">
+              <div className="text-yellow-200 font-medium">{p.label}</div>
+              <div className="text-white/55 text-xs mt-0.5">{p.name} · {p.feature_keys.length} features</div>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {p.feature_keys.slice(0, 6).map((k) => (
+                  <span key={k} className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-200/10 text-yellow-200">{k}</span>
+                ))}
+                {p.feature_keys.length > 6 && <span className="text-[10px] text-white/40">+{p.feature_keys.length - 6}</span>}
+              </div>
+            </div>
+            <div className="text-right">
+              {p.discount_enabled && p.discount_price !== null && (
+                <div className="text-white/40 line-through text-sm">{p.base_price}c</div>
+              )}
+              <div className="text-yellow-300 text-xl font-display">
+                {p.discount_enabled && p.discount_price !== null ? p.discount_price : p.base_price}c
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setEditing(p)} className="text-xs px-3 py-1.5 rounded border border-yellow-200/30 text-yellow-200 hover:bg-yellow-200/10"
+                data-testid={`feature-pack-edit-${p.id}`}>
+                Edit
+              </button>
+              <button onClick={() => remove(p.id)} className="text-xs px-3 py-1.5 rounded border border-red-400/30 text-red-300 hover:bg-red-400/10"
+                data-testid={`feature-pack-delete-${p.id}`}>
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={openNew} className="px-4 py-2 bg-yellow-300 text-black rounded font-medium"
+        data-testid="feature-pack-add">
+        + Add pack
+      </button>
+
+      {/* Edit modal — inline because we already use a side-drawer-less style */}
+      {editing && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center p-4"
+          style={{ background: 'rgba(0,0,0,0.7)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setEditing(null); }}
+        >
+          <div className="bg-stone-900 border border-yellow-200/20 rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto" data-testid="feature-pack-editor">
+            <h3 className="text-yellow-200 text-lg mb-4">{editing.id ? 'Edit Feature Pack' : 'New Feature Pack'}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-white/55 mb-1">Internal name</div>
+                <TextInput value={editing.name} onChange={(v) => setEditing({ ...editing, name: v })} width="w-full" testid="feature-pack-name" />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-white/55 mb-1">Display label</div>
+                <TextInput value={editing.label} onChange={(v) => setEditing({ ...editing, label: v })} width="w-full" testid="feature-pack-label" />
+              </div>
+            </div>
+
+            <div className="text-[10px] uppercase tracking-wider text-white/55 mb-2">Features included</div>
+            <div className="grid grid-cols-2 gap-2 mb-4 max-h-[300px] overflow-y-auto pr-2">
+              {KNOWN_FEATURE_KEYS.map((f) => {
+                const checked = editing.feature_keys.includes(f.key);
+                return (
+                  <label key={f.key} className="flex items-center gap-2 text-sm text-white/80 cursor-pointer" data-testid={`feature-pack-checkbox-${f.key}`}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...editing.feature_keys, f.key]
+                          : editing.feature_keys.filter((k) => k !== f.key);
+                        setEditing({ ...editing, feature_keys: next });
+                      }}
+                    />
+                    {f.label}
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-white/55 mb-1">Base price (credits)</div>
+                <NumberInput value={editing.base_price} onChange={(v) => setEditing({ ...editing, base_price: Number(v ?? 0) })} testid="feature-pack-base-price" />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-white/55 mb-1">Discount enabled</div>
+                <ToggleSwitch on={editing.discount_enabled} onChange={(v) => setEditing({ ...editing, discount_enabled: v })} testid="feature-pack-discount-on" />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-white/55 mb-1">Discount price</div>
+                <NumberInput value={editing.discount_price ?? 0} onChange={(v) => setEditing({ ...editing, discount_price: Number(v ?? 0) })} testid="feature-pack-discount-price" disabled={!editing.discount_enabled} />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 mb-5">
+              <ToggleSwitch on={editing.is_active} onChange={(v) => setEditing({ ...editing, is_active: v })} testid="feature-pack-active" />
+              <span className="text-yellow-200 text-sm">{editing.is_active ? 'Active' : 'Hidden'}</span>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setEditing(null)} className="px-4 py-2 text-white/70 hover:text-white">Cancel</button>
+              <button onClick={save} className="px-5 py-2 bg-yellow-300 text-black rounded font-medium" data-testid="feature-pack-save">
+                <Save className="inline w-4 h-4 mr-1" /> Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OptionRow({ row, onSave }) {
+  const [local, setLocal] = useState(row);
+  useEffect(() => { setLocal(row); }, [row]);
+  const dirty = JSON.stringify(local) !== JSON.stringify(row);
+  const testid = `option-${row.option_key}`;
+  const effective = local.is_free ? 0 : (local.discount_enabled && local.discount_price != null ? local.discount_price : local.base_price);
+  const showOld = !local.is_free && local.discount_enabled && local.discount_price != null;
+  return (
+    <div className={`flex flex-wrap items-center gap-4 p-4 rounded-lg border ${local.is_free ? 'border-emerald-400/30 bg-emerald-900/10' : 'border-yellow-200/15 bg-black/40'}`} data-testid={testid}>
+      <div className="min-w-[260px] text-yellow-50 font-medium">{row.label}</div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs uppercase tracking-wider text-white/60">Free</span>
+        <ToggleSwitch on={!!local.is_free} onChange={(v) => setLocal({ ...local, is_free: v })} testid={`${testid}-free-toggle`} />
+      </div>
+      {!local.is_free && (
+        <>
+          <NumberInput value={local.base_price} onChange={(v) => setLocal({ ...local, base_price: v })} testid={`${testid}-base`} />
+          <span className="text-white/50 text-sm">credits</span>
+          <DiscountControls row={local} onPatch={(p) => setLocal({ ...local, ...p })} suffix=" cr" testid={testid} />
+        </>
+      )}
+      <div className="ml-auto flex items-center gap-2">
+        {local.is_free ? <span className="text-emerald-300 font-medium" data-testid={`${testid}-free-label`}>FREE</span>
+          : <PriceCell value={effective} oldValue={showOld ? local.base_price : null} suffix=" cr" />
+        }
+        {dirty && <button onClick={() => onSave(local)} className="px-3 py-2 bg-emerald-600 text-white rounded text-sm" data-testid={`${testid}-save`}><Save className="inline w-4 h-4 mr-1" /> Save</button>}
+      </div>
+    </div>
+  );
+}
+
+// -------------- Section header + helpers --------------
+const SectionHeader = ({ title, blurb }) => (
+  <div className="mb-5">
+    <h2 className="text-xl font-serif text-yellow-200 mb-1 flex items-center gap-2"><Tag className="w-5 h-5" /> {title}</h2>
+    <p className="text-sm text-white/60">{blurb}</p>
+  </div>
+);
+const Skeleton = () => (
+  <div className="space-y-3">
+    {[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-lg bg-white/5 animate-pulse" />)}
+  </div>
+);
+const Empty = ({ label }) => (
+  <div className="p-8 rounded-lg border border-dashed border-yellow-200/15 text-center text-white/40">{label}</div>
+);
+
+// =============================================================
+// MAIN PAGE
+// =============================================================
+export default function SuperAdminPricingHub() {
+  const navigate = useNavigate();
+  const http = useAuthAxios();
+  const [audience, setAudience] = useState('photographer');
+  const [subTab, setSubTab] = useState('credit_packs');
+  const [toastMsg, setToastMsg] = useState('');
+  const [toastKind, setToastKind] = useState('ok');
+
+  const toast = useCallback((msg, kind = 'ok') => {
+    setToastMsg(msg); setToastKind(kind);
+    setTimeout(() => setToastMsg(''), 2600);
+  }, []);
+
+  useEffect(() => {
+    // Verify token; redirect to login otherwise
+    if (!localStorage.getItem('admin_token')) navigate('/super-admin/login');
+  }, [navigate]);
+
+  // Reset sub-tab when audience changes if current sub-tab not available
+  useEffect(() => {
+    const allowed = audience === 'photographer' ? PHOTOG_SUBTABS : NORMAL_SUBTABS;
+    if (!allowed.find((t) => t.key === subTab)) setSubTab(allowed[0].key);
+  }, [audience, subTab]);
+
+  const subTabs = audience === 'photographer' ? PHOTOG_SUBTABS : NORMAL_SUBTABS;
+
+  const renderSection = () => {
+    const props = { audience, http, toast };
+    switch (subTab) {
+      case 'credit_packs': return <CreditPacksSection {...props} />;
+      case 'subscription': return <SubscriptionSection http={http} toast={toast} />;
+      case 'post_sub':     return <PostSubSection http={http} toast={toast} />;
+      case 'tiers':        return <PhotographerTiersSection http={http} toast={toast} />;
+      case 'feature_packs':return <FeaturePacksSection {...props} />;
+      case 'themes':       return <ThemePricesSection {...props} />;
+      case 'designs':      return <DesignPricesSection {...props} />;
+      case 'options':      return <OptionsSection {...props} />;
+      default: return null;
+    }
+  };
+
+  return (
+    <div className="min-h-screen text-yellow-50" style={{ background: 'radial-gradient(circle at top, #1a0f0a 0%, #0a0606 60%, #000 100%)' }} data-testid="super-admin-pricing-hub">
+      {/* Header */}
+      <header className="sticky top-0 z-30 backdrop-blur border-b border-yellow-200/15" style={{ background: 'rgba(10,6,6,0.85)' }}>
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
+          <button onClick={() => navigate('/super-admin/dashboard')} className="text-yellow-200/70 hover:text-yellow-200 flex items-center gap-1 text-sm" data-testid="back-to-dashboard">
+            <ChevronLeft className="w-4 h-4" /> Dashboard
+          </button>
+          <h1 className="text-xl md:text-2xl font-serif text-yellow-200">Pricing Hub</h1>
+          <span className="text-xs uppercase tracking-wider text-white/40 ml-2">Audience-aware</span>
+        </div>
+
+        {/* Audience tabs */}
+        <div className="max-w-7xl mx-auto px-6 pb-4 flex gap-2 flex-wrap">
+          {AUDIENCES.map((a) => {
+            const Icon = a.icon;
+            const active = audience === a.key;
+            return (
+              <button
+                key={a.key} onClick={() => setAudience(a.key)} data-testid={`audience-tab-${a.key}`}
+                className={`px-4 py-2.5 rounded-lg border flex items-center gap-2 transition ${active
+                  ? 'bg-yellow-300 text-black border-yellow-300 font-medium'
+                  : 'bg-black/40 text-yellow-200 border-yellow-200/20 hover:border-yellow-200/40'}`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{a.label}</span>
+                <span className={`text-xs ${active ? 'text-black/60' : 'text-white/40'}`}>· {a.blurb}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Sub tabs */}
+        <div className="max-w-7xl mx-auto px-6 pb-3 flex gap-2 flex-wrap border-t border-yellow-200/10 pt-3">
+          {subTabs.map((t) => {
+            const Icon = t.icon;
+            const active = subTab === t.key;
+            return (
+              <button
+                key={t.key} onClick={() => setSubTab(t.key)} data-testid={`subtab-${t.key}`}
+                className={`px-3 py-1.5 rounded-md text-sm flex items-center gap-1.5 ${active
+                  ? 'bg-yellow-200/15 text-yellow-200 border border-yellow-200/30'
+                  : 'text-yellow-200/60 hover:text-yellow-200'}`}
+              >
+                <Icon className="w-3.5 h-3.5" /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {renderSection()}
+      </main>
+
+      <Toast msg={toastMsg} kind={toastKind} />
+    </div>
+  );
+}
+===== frontend/src/pages/SuperAdminExpiryTiers.jsx =====
+/**
+ * /super-admin/expiry-tiers — Manage publish-link expiry tiers.
+ *
+ * Lets the platform owner customise the tier list shown in the
+ * photographer's Publish step (1 month / 3 months / 6 months / 1 year
+ * by default — but the owner can change the days and credit cost to
+ * anything, e.g. 45 days for 2 credits).
+ *
+ * Backed by:
+ *   GET  /api/admin/expiry-tiers
+ *   PUT  /api/admin/expiry-tiers   (super-admin only)
+ */
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import { Save, Plus, Trash2, ChevronLeft, Clock, Coins, AlertCircle, CheckCircle2 } from 'lucide-react';
+
+const API = process.env.REACT_APP_BACKEND_URL;
+
+const slugify = (s) =>
+  String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `tier_${Math.random().toString(36).slice(2, 6)}`;
+
+const SuperAdminExpiryTiers = () => {
+  const nav = useNavigate();
+  const [tiers, setTiers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg, kind = 'ok') => {
+    setToast({ msg, kind });
+    setTimeout(() => setToast(null), 2500);
+  };
+
+  const token = () => localStorage.getItem('admin_token') || localStorage.getItem('super_admin_token') || '';
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await axios.get(`${API}/api/admin/expiry-tiers`, {
+          headers: { Authorization: `Bearer ${token()}` },
+        });
+        if (cancelled) return;
+        setTiers(res.data?.tiers || []);
+      } catch (e) {
+        showToast('Failed to load tiers — log in as super-admin', 'err');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const updateRow = (idx, key, value) => {
+    setTiers((rows) => rows.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
+  };
+  const deleteRow = (idx) => setTiers((rows) => rows.filter((_, i) => i !== idx));
+  const addRow = () =>
+    setTiers((rows) => [
+      ...rows,
+      {
+        id: `tier_${rows.length + 1}`,
+        label: `${rows.length + 1} New Tier`,
+        days: 30,
+        credits: 1,
+        order: rows.length + 1,
+      },
+    ]);
+
+  const save = async () => {
+    // Normalise & validate
+    const cleaned = tiers
+      .map((t, i) => ({
+        id: slugify(t.id || t.label),
+        label: String(t.label || '').trim() || 'Untitled',
+        days: Math.max(1, parseInt(t.days, 10) || 30),
+        credits: Math.max(0, parseInt(t.credits, 10) || 0),
+        order: parseInt(t.order, 10) || i + 1,
+      }))
+      .sort((a, b) => a.order - b.order);
+    // Ensure unique ids
+    const seen = new Set();
+    for (const t of cleaned) {
+      if (seen.has(t.id)) {
+        showToast(`Duplicate tier id "${t.id}" — rename one of them.`, 'err');
+        return;
+      }
+      seen.add(t.id);
+    }
+
+    setSaving(true);
+    try {
+      await axios.put(`${API}/api/admin/expiry-tiers`, cleaned, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      setTiers(cleaned);
+      showToast('Saved!');
+    } catch (e) {
+      showToast(e.response?.data?.detail || 'Save failed', 'err');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen p-6" style={{ background: '#0B0805', color: '#FFF8DC' }}
+         data-testid="expiry-tiers-page">
+      <div className="max-w-4xl mx-auto">
+        <button onClick={() => nav('/super-admin/dashboard')}
+          className="text-xs tracking-[0.3em] uppercase mb-6 inline-flex items-center gap-2 opacity-70 hover:opacity-100"
+          data-testid="expiry-tiers-back">
+          <ChevronLeft className="w-3.5 h-3.5" /> Super Admin
+        </button>
+
+        <header className="mb-8">
+          <div className="text-[10px] tracking-[0.4em] uppercase mb-2" style={{ color: '#D4AF37' }}>
+            ◆ Pricing Hub
+          </div>
+          <h1 className="font-display text-4xl mb-2">Link Expiry Tiers</h1>
+          <p className="text-sm" style={{ color: 'rgba(255,248,220,0.55)' }}>
+            These tiers appear in the photographer's <strong>Publish</strong> step. You can fully
+            customise the days and credits per tier — e.g. <em>45 days = 2 credits</em>.
+          </p>
+        </header>
+
+        {loading ? (
+          <div className="lux-glass p-8 text-center" style={{ color: 'rgba(255,248,220,0.6)' }}>
+            Loading…
+          </div>
+        ) : (
+          <>
+            <div className="lux-glass overflow-hidden" data-testid="expiry-tiers-table">
+              <div className="grid grid-cols-12 gap-3 px-4 py-3 text-[10px] tracking-[0.3em] uppercase border-b"
+                   style={{ borderColor: 'rgba(212,175,55,0.18)', color: 'rgba(255,248,220,0.55)' }}>
+                <div className="col-span-1">Order</div>
+                <div className="col-span-3">ID (slug)</div>
+                <div className="col-span-3">Label</div>
+                <div className="col-span-2">Days</div>
+                <div className="col-span-2">Credits</div>
+                <div className="col-span-1"></div>
+              </div>
+              {tiers.length === 0 && (
+                <div className="px-4 py-6 text-sm" style={{ color: 'rgba(255,248,220,0.55)' }}>
+                  No tiers configured. Add one below.
+                </div>
+              )}
+              {tiers.map((t, i) => (
+                <div key={i} className="grid grid-cols-12 gap-3 px-4 py-3 items-center border-b"
+                     style={{ borderColor: 'rgba(255,248,220,0.06)' }}
+                     data-testid={`tier-row-${i}`}>
+                  <input type="number" className="col-span-1 lux-input" value={t.order}
+                    onChange={(e) => updateRow(i, 'order', e.target.value)}
+                    data-testid={`tier-order-${i}`} />
+                  <input className="col-span-3 lux-input" value={t.id}
+                    onChange={(e) => updateRow(i, 'id', e.target.value)}
+                    placeholder="e.g. 45_days"
+                    data-testid={`tier-id-${i}`} />
+                  <input className="col-span-3 lux-input" value={t.label}
+                    onChange={(e) => updateRow(i, 'label', e.target.value)}
+                    placeholder="e.g. 45 Days"
+                    data-testid={`tier-label-${i}`} />
+                  <div className="col-span-2 flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 opacity-60" />
+                    <input type="number" className="lux-input flex-1" value={t.days}
+                      onChange={(e) => updateRow(i, 'days', e.target.value)}
+                      data-testid={`tier-days-${i}`} />
+                  </div>
+                  <div className="col-span-2 flex items-center gap-2">
+                    <Coins className="w-3.5 h-3.5 opacity-60" style={{ color: '#D4AF37' }} />
+                    <input type="number" className="lux-input flex-1" value={t.credits}
+                      onChange={(e) => updateRow(i, 'credits', e.target.value)}
+                      data-testid={`tier-credits-${i}`} />
+                  </div>
+                  <button type="button" onClick={() => deleteRow(i)}
+                    className="col-span-1 grid place-items-center rounded-md p-2 hover:bg-red-700/30 transition-colors"
+                    data-testid={`tier-delete-${i}`}>
+                    <Trash2 className="w-4 h-4 text-red-400" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between mt-5 gap-3 flex-wrap">
+              <button type="button" onClick={addRow}
+                className="lux-btn lux-btn-ghost inline-flex items-center gap-2 text-xs"
+                data-testid="expiry-tiers-add">
+                <Plus className="w-3.5 h-3.5" /> Add Tier
+              </button>
+              <button type="button" onClick={save} disabled={saving}
+                className="lux-btn inline-flex items-center gap-2"
+                data-testid="expiry-tiers-save">
+                {saving ? 'Saving…' : 'Save Changes'}
+                <Save className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[11px] mt-6" style={{ color: 'rgba(255,248,220,0.45)' }}>
+              Tip: Lower the credit cost on the 1-month tier to convert hesitant photographers, and
+              charge a small premium on the 1-year tier — the revenue maths almost always favours
+              long-lifetime links.
+            </p>
+          </>
+        )}
+
+        {toast && (
+          <div
+            data-testid="expiry-tiers-toast"
+            className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 ${
+              toast.kind === 'err' ? 'bg-red-700 text-white' : 'bg-emerald-700 text-white'
+            }`}
+          >
+            {toast.kind === 'err' ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+            <span className="text-sm">{toast.msg}</span>
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        .lux-input {
+          background: rgba(255,248,220,0.04);
+          border: 1px solid rgba(255,248,220,0.12);
+          border-radius: 8px;
+          padding: 8px 10px;
+          color: #FFF8DC;
+          font-size: 13px;
+          width: 100%;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        .lux-input:focus { border-color: #D4AF37; }
+        .lux-glass {
+          background: rgba(255,248,220,0.03);
+          border: 1px solid rgba(212,175,55,0.18);
+          border-radius: 12px;
+        }
+        .lux-btn {
+          background: #D4AF37;
+          color: #16110C;
+          padding: 10px 18px;
+          border-radius: 999px;
+          font-size: 12px;
+          letter-spacing: 0.2em;
+          text-transform: uppercase;
+          transition: opacity 0.2s;
+        }
+        .lux-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .lux-btn-ghost {
+          background: transparent;
+          color: #FFF8DC;
+          border: 1px solid rgba(212,175,55,0.4);
+        }
+      `}</style>
+    </div>
+  );
+};
+
+export default SuperAdminExpiryTiers;
+===== frontend/src/pages/SuperAdminGiftCodes.jsx =====
+/**
+ * SuperAdminGiftCodes — manage gift-code campaigns.
+ *
+ * Backed by:
+ *   POST   /api/super-admin/gift-codes              (create)
+ *   GET    /api/super-admin/gift-codes              (list)
+ *   PATCH  /api/super-admin/gift-codes/{code}       (update / activate)
+ *   DELETE /api/super-admin/gift-codes/{code}       (deactivate)
+ *   GET    /api/super-admin/gift-codes/{code}/redemptions
+ */
+import React, { useCallback, useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Plus, Gift, Copy, CheckCircle, X, Power } from 'lucide-react';
+import BackButton from '@/components/BackButton';
+
+const API = process.env.REACT_APP_BACKEND_URL || '';
+
+export default function SuperAdminGiftCodes() {
+  const [codes, setCodes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [copied, setCopied] = useState('');
+  const [error, setError] = useState('');
+
+  const token = (typeof window !== 'undefined' && window.localStorage)
+    ? localStorage.getItem('admin_token') : null;
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/api/super-admin/gift-codes`, { headers });
+      const data = await r.json();
+      setCodes(Array.isArray(data?.items) ? data.items : []);
+    } catch (_) { /* swallow */ }
+    setLoading(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const onCopy = (code) => {
+    navigator.clipboard?.writeText(code);
+    setCopied(code);
+    setTimeout(() => setCopied(''), 1200);
+  };
+
+  const onToggleActive = async (c) => {
+    setError('');
+    try {
+      if (c.is_active) {
+        await fetch(`${API}/api/super-admin/gift-codes/${c.code}`, { method: 'DELETE', headers });
+      } else {
+        await fetch(`${API}/api/super-admin/gift-codes/${c.code}`, {
+          method: 'PATCH', headers, body: JSON.stringify({ is_active: true }),
+        });
+      }
+      refresh();
+    } catch (_) {
+      setError('Could not update code');
+    }
+  };
+
+  const onCreate = async (form) => {
+    setError('');
+    setCreating(true);
+    try {
+      const body = {
+        credits: Number(form.credits),
+        description: form.description || '',
+        per_account_limit: Number(form.per_account_limit || 1),
+      };
+      if (form.code) body.code = form.code.trim().toUpperCase();
+      if (form.max_redemptions) body.max_redemptions = Number(form.max_redemptions);
+      if (form.expires_at) body.expires_at = new Date(form.expires_at).toISOString();
+      const r = await fetch(`${API}/api/super-admin/gift-codes`, {
+        method: 'POST', headers, body: JSON.stringify(body),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setError(data?.detail || 'Could not create code');
+      } else {
+        setShowCreate(false);
+        refresh();
+      }
+    } catch (_) {
+      setError('Network error');
+    }
+    setCreating(false);
+  };
+
+  return (
+    <div className="min-h-screen px-5 sm:px-10 py-10" style={{ background: '#0a0a0a', color: '#F5ECD7' }} data-testid="super-admin-gift-codes-page">
+      <div className="max-w-5xl mx-auto">
+        <BackButton to="/super-admin/credits" label="Back to credits hub" />
+
+        <div className="flex items-baseline justify-between gap-4 flex-wrap mb-8 mt-4">
+          <div>
+            <div className="text-[10px] tracking-[0.3em] uppercase mb-1" style={{ color: 'rgba(245,236,215,0.55)' }}>Super admin</div>
+            <h1 className="font-display text-3xl sm:text-4xl" style={{ color: '#FFF8DC' }}>Gift codes</h1>
+            <p className="text-sm mt-1" style={{ color: 'rgba(245,236,215,0.55)' }}>
+              Generate redeemable codes that grant credits when claimed by any photographer or user.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCreate(true)}
+            data-testid="create-gift-code-btn"
+            className="px-5 py-2.5 rounded-lg text-[11px] tracking-[0.3em] uppercase font-medium flex items-center gap-2"
+            style={{ background: '#D4AF37', color: '#1A0F08' }}
+          >
+            <Plus className="w-4 h-4" /> New code
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-5 px-4 py-3 rounded-lg text-sm" style={{ background: 'rgba(220,38,38,0.12)', border: '1px solid rgba(220,38,38,0.35)', color: '#FCA5A5' }}>
+            {error}
+          </div>
+        )}
+
+        <div className="rounded-2xl overflow-hidden"
+             style={{ background: 'rgba(245,236,215,0.04)', border: '1px solid rgba(245,236,215,0.12)' }}>
+          {loading && (
+            <div className="px-5 py-10 text-center text-sm" style={{ color: 'rgba(245,236,215,0.55)' }}>
+              Loading…
+            </div>
+          )}
+          {!loading && codes.length === 0 && (
+            <div className="px-5 py-10 text-center text-sm" style={{ color: 'rgba(245,236,215,0.55)' }} data-testid="no-codes-yet">
+              No gift codes yet. Create your first one to power an early-access campaign.
+            </div>
+          )}
+          {codes.map((c) => {
+            const cap = c.max_redemptions ? `${c.redeemed_count || 0}/${c.max_redemptions}` : `${c.redeemed_count || 0}/∞`;
+            return (
+              <motion.div
+                key={c.code}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}
+                className="flex items-center gap-4 px-5 py-4 border-b last:border-b-0 flex-wrap"
+                style={{ borderColor: 'rgba(245,236,215,0.08)' }}
+                data-testid={`gift-code-row-${c.code}`}
+              >
+                <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                  <Gift className="w-4 h-4" style={{ color: '#D4AF37' }} />
+                  <span className="font-mono text-lg tracking-[0.2em]" style={{ color: '#FFF8DC' }}>{c.code}</span>
+                  <button
+                    onClick={() => onCopy(c.code)}
+                    data-testid={`copy-code-${c.code}`}
+                    className="text-[10px] tracking-[0.2em] uppercase px-2 py-1 rounded"
+                    style={{ background: 'rgba(212,175,55,0.15)', color: '#D4AF37' }}
+                    title="Copy"
+                  >
+                    {copied === c.code ? <CheckCircle className="w-3 h-3 inline" /> : <Copy className="w-3 h-3 inline" />}
+                  </button>
+                </div>
+                <div className="text-sm" style={{ color: '#FFF8DC' }}>{c.credits} credits</div>
+                <div className="text-[11px] tracking-[0.15em] uppercase" style={{ color: 'rgba(245,236,215,0.55)' }}>
+                  Used {cap} · 1 per account
+                </div>
+                <div className="text-[11px] truncate max-w-[260px]" style={{ color: 'rgba(245,236,215,0.65)' }} title={c.description}>
+                  {c.description || '—'}
+                </div>
+                <button
+                  onClick={() => onToggleActive(c)}
+                  data-testid={`toggle-code-${c.code}`}
+                  className="text-[10px] tracking-[0.2em] uppercase px-3 py-1.5 rounded flex items-center gap-1"
+                  style={c.is_active
+                    ? { background: 'rgba(16,185,129,0.15)', color: '#34D399', border: '1px solid rgba(16,185,129,0.35)' }
+                    : { background: 'rgba(245,236,215,0.05)', color: 'rgba(245,236,215,0.45)', border: '1px solid rgba(245,236,215,0.15)' }}
+                >
+                  <Power className="w-3 h-3" /> {c.is_active ? 'Active' : 'Off'}
+                </button>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {showCreate && (
+          <CreateModal
+            onClose={() => setShowCreate(false)}
+            onCreate={onCreate}
+            busy={creating}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CreateModal({ onClose, onCreate, busy }) {
+  const [form, setForm] = useState({
+    code: '',
+    credits: 100,
+    description: '',
+    max_redemptions: '',
+    per_account_limit: 1,
+    expires_at: '',
+  });
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" data-testid="create-gift-code-modal">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-lg rounded-2xl p-6"
+        style={{ background: '#0e0e0e', border: '1px solid rgba(212,175,55,0.35)' }}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-display text-2xl" style={{ color: '#FFF8DC' }}>New gift code</h3>
+          <button onClick={onClose} data-testid="close-create-modal"><X className="w-5 h-5" style={{ color: '#F5ECD7' }} /></button>
+        </div>
+
+        <div className="space-y-3">
+          <Field label="Code (optional — leave blank to auto-generate)">
+            <input value={form.code} onChange={set('code')} maxLength={16}
+                   placeholder="LOVE26"
+                   data-testid="form-code"
+                   className="w-full px-3 py-2.5 rounded-md outline-none tracking-[0.25em] uppercase font-mono"
+                   style={inputStyle} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Credits">
+              <input type="number" min={1} value={form.credits} onChange={set('credits')}
+                     data-testid="form-credits"
+                     className="w-full px-3 py-2.5 rounded-md outline-none" style={inputStyle} />
+            </Field>
+            <Field label="Max redemptions (blank = unlimited)">
+              <input type="number" min={1} value={form.max_redemptions} onChange={set('max_redemptions')}
+                     placeholder="50"
+                     data-testid="form-max-redemptions"
+                     className="w-full px-3 py-2.5 rounded-md outline-none" style={inputStyle} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Per-account limit">
+              <input type="number" min={1} max={10} value={form.per_account_limit} onChange={set('per_account_limit')}
+                     data-testid="form-per-account-limit"
+                     className="w-full px-3 py-2.5 rounded-md outline-none" style={inputStyle} />
+            </Field>
+            <Field label="Expires at (optional)">
+              <input type="datetime-local" value={form.expires_at} onChange={set('expires_at')}
+                     data-testid="form-expires-at"
+                     className="w-full px-3 py-2.5 rounded-md outline-none" style={inputStyle} />
+            </Field>
+          </div>
+          <Field label="Description">
+            <input value={form.description} onChange={set('description')}
+                   placeholder="Conference 2026 giveaway"
+                   data-testid="form-description"
+                   className="w-full px-3 py-2.5 rounded-md outline-none" style={inputStyle} />
+          </Field>
+        </div>
+
+        <div className="flex justify-end gap-2 mt-6">
+          <button onClick={onClose} className="px-4 py-2 rounded text-[11px] tracking-[0.3em] uppercase"
+                  style={{ color: '#F5ECD7' }}>
+            Cancel
+          </button>
+          <button onClick={() => onCreate(form)} disabled={busy || !form.credits}
+                  data-testid="form-submit"
+                  className="px-5 py-2 rounded text-[11px] tracking-[0.3em] uppercase font-medium disabled:opacity-50"
+                  style={{ background: '#D4AF37', color: '#1A0F08' }}>
+            {busy ? 'Creating…' : 'Create code'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+const inputStyle = {
+  background: 'rgba(245,236,215,0.06)',
+  color: '#FFF8DC',
+  border: '1px solid rgba(212,175,55,0.35)',
+};
+
+const Field = ({ label, children }) => (
+  <label className="block">
+    <span className="text-[10px] tracking-[0.3em] uppercase block mb-1.5" style={{ color: 'rgba(245,236,215,0.65)' }}>{label}</span>
+    {children}
+  </label>
+);
+===== frontend/src/pages/AuditLogsPage.jsx =====
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft, Clock, User, FileText, Copy, Trash2, Save } from 'lucide-react';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+const AuditLogsPage = () => {
+  const navigate = useNavigate();
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchAuditLogs();
+  }, []);
+
+  const fetchAuditLogs = async () => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await axios.get(`${API_URL}/api/admin/audit-logs`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      setLogs(response.data);
+    } catch (err) {
+      console.error('Failed to fetch audit logs:', err);
+      const status = err.response?.status;
+      if (status === 401 || status === 403) {
+        setError('You are not authorized. Please log in again.');
+      } else {
+        setError('Failed to load audit logs');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getActionIcon = (action) => {
+    switch (action) {
+      case 'profile_create':
+        return <FileText className="h-4 w-4 text-green-600" />;
+      case 'profile_update':
+        return <FileText className="h-4 w-4 text-blue-600" />;
+      case 'profile_delete':
+        return <Trash2 className="h-4 w-4 text-red-600" />;
+      case 'profile_duplicate':
+        return <Copy className="h-4 w-4 text-purple-600" />;
+      case 'template_save':
+        return <Save className="h-4 w-4 text-amber-600" />;
+      default:
+        return <FileText className="h-4 w-4 text-gray-600" />;
+    }
+  };
+
+  const getActionLabel = (action) => {
+    switch (action) {
+      case 'profile_create':
+        return 'Created Profile';
+      case 'profile_update':
+        return 'Updated Profile';
+      case 'profile_delete':
+        return 'Deleted Profile';
+      case 'profile_duplicate':
+        return 'Duplicated Profile';
+      case 'template_save':
+        return 'Saved as Template';
+      default:
+        return action;
+    }
+  };
+
+  const getActionColor = (action) => {
+    switch (action) {
+      case 'profile_create':
+        return 'bg-green-50 border-green-200';
+      case 'profile_update':
+        return 'bg-blue-50 border-blue-200';
+      case 'profile_delete':
+        return 'bg-red-50 border-red-200';
+      case 'profile_duplicate':
+        return 'bg-purple-50 border-purple-200';
+      case 'template_save':
+        return 'bg-amber-50 border-amber-200';
+      default:
+        return 'bg-gray-50 border-gray-200';
+    }
+  };
+
+  const formatTimestamp = (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  const getProfileNames = (details) => {
+    if (details?.groom_name && details?.bride_name) {
+      return `${details.groom_name} & ${details.bride_name}`;
+    }
+    return 'N/A';
+  };
+
+  if (loading) {
+    return (
+      <div className="luxe min-h-screen flex items-center justify-center">
+        <p className="text-gray-600">Loading audit logs...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="luxe min-h-screen py-8 px-4">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={() => navigate('/admin/dashboard')}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <h1 className="text-3xl font-bold text-gray-900">Audit Logs</h1>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-600">{error}</p>
+          </div>
+        )}
+
+        {/* Audit Logs List */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Admin Activity History
+            </CardTitle>
+            <p className="text-sm text-gray-600 mt-2">
+              Last 1000 admin actions (newest first)
+            </p>
+          </CardHeader>
+          <CardContent>
+            {logs.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No audit logs found</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {logs.map((log) => (
+                  <div
+                    key={log.id}
+                    className={`p-4 border rounded-lg ${getActionColor(log.action)}`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3 flex-1">
+                        {/* Action Icon */}
+                        <div className="mt-1">
+                          {getActionIcon(log.action)}
+                        </div>
+
+                        {/* Action Details */}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-900 mb-1">
+                            {getActionLabel(log.action)}
+                          </div>
+                          
+                          <div className="text-sm text-gray-600 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <User className="h-3 w-3" />
+                              <span>Admin ID: {log.admin_id.slice(0, 8)}...</span>
+                            </div>
+                            
+                            {log.profile_slug && (
+                              <div className="flex items-center gap-2">
+                                <FileText className="h-3 w-3" />
+                                <span>Slug: {log.profile_slug}</span>
+                              </div>
+                            )}
+                            
+                            {log.details && (
+                              <div className="mt-2 text-gray-700">
+                                <span className="font-medium">
+                                  {getProfileNames(log.details)}
+                                </span>
+                                {log.details.event_type && (
+                                  <span className="text-gray-600">
+                                    {' '}• {log.details.event_type}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {log.action === 'profile_duplicate' && log.details?.original_slug && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                Duplicated from: {log.details.original_slug}
+                              </div>
+                            )}
+
+                            {log.action === 'profile_update' && log.details?.updated_fields && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                Updated fields: {log.details.updated_fields.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Timestamp */}
+                      <div className="text-xs text-gray-500 whitespace-nowrap flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {formatTimestamp(log.timestamp)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Stats Footer */}
+        {logs.length > 0 && (
+          <div className="mt-4 text-center text-sm text-gray-600">
+            Showing {logs.length} audit log{logs.length !== 1 ? 's' : ''}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default AuditLogsPage;
+===== frontend/src/pages/Phase30AnalyticsPage.jsx =====
+/**
+ * PHASE 30: Analytics, Insights & Guest Intelligence Dashboard
+ * 
+ * Admin-only analytics dashboard showing:
+ * - View analytics (total, unique, repeat, device, location)
+ * - Engagement analytics (gallery, video, music, map, scroll depth)
+ * - RSVP conversion analytics
+ * - Charts: Line (views trend), Donut (RSVP status), Bar (top events)
+ * - Filters: Date range, Event
+ * - Export: CSV download
+ */
+
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import {
+  ArrowLeft,
+  RefreshCw,
+  Download,
+  Eye,
+  Users,
+  UserCheck,
+  UserX,
+  Clock,
+  Smartphone,
+  Monitor,
+  Tablet,
+  MapPin,
+  Image,
+  Play,
+  Volume2,
+  Map,
+  CheckCircle,
+  TrendingUp,
+  Lock,
+} from 'lucide-react';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
+// PHASE 33: Feature Gating
+import LockedFeatureIndicator from '@/components/LockedFeatureIndicator';
+import UpgradeModal from '@/components/UpgradeModal';
+import AnalyticsExtrasSection from '@/components/luxury/AnalyticsExtrasSection';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+const COLORS = {
+  primary: '#D4AF37',
+  success: '#6FCF97',
+  warning: '#E8C766',
+  danger: '#F08585',
+  purple: '#C3A3E3',
+  pink: '#E8C4B8',
+};
+
+const Phase30AnalyticsPage = () => {
+  const { profileId } = useParams();
+  const navigate = useNavigate();
+
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+
+  // Filters
+  const [selectedEvent, setSelectedEvent] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [events, setEvents] = useState([]);
+
+  // PHASE 33: Feature Gating
+  const [featureFlags, setFeatureFlags] = useState(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+  useEffect(() => {
+    fetchFeatureFlags();
+    fetchAnalytics();
+    fetchEvents();
+  }, [profileId]);
+
+  // PHASE 33: Check feature access
+  const fetchFeatureFlags = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/profiles/${profileId}/features`);
+      setFeatureFlags(response.data);
+      
+      // If analytics not available, show locked state
+      if (!response.data.analytics_basic && !response.data.analytics_advanced) {
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Failed to fetch feature flags:', error);
+      setFeatureFlags({ analytics_basic: false, analytics_advanced: false, plan_type: 'FREE' });
+    }
+  };
+
+  const hasFeature = (feature) => {
+    if (!featureFlags) return false;
+    return featureFlags[feature] === true;
+  };
+
+  const getCurrentPlan = () => {
+    return featureFlags?.plan_type || 'FREE';
+  };
+
+  const fetchEvents = async () => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await axios.get(`${API_URL}/api/admin/profiles/${profileId}/events`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setEvents(response.data.events || []);
+    } catch (error) {
+      console.error('Failed to fetch events:', error);
+    }
+  };
+
+  const fetchAnalytics = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      const token = localStorage.getItem('admin_token');
+      if (!token) {
+        navigate('/admin/login');
+        return;
+      }
+
+      // Build query params
+      const params = new URLSearchParams({ profile_id: profileId });
+      if (selectedEvent) params.append('event_id', selectedEvent);
+      if (startDate) params.append('start_date', new Date(startDate).toISOString());
+      if (endDate) params.append('end_date', new Date(endDate).toISOString());
+
+      const response = await axios.get(`${API_URL}/api/analytics/summary?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      setAnalytics(response.data);
+    } catch (error) {
+      console.error('Failed to fetch analytics:', error);
+      setError(error.response?.data?.detail || 'Failed to load analytics');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchAnalytics();
+    setRefreshing(false);
+  };
+
+  const handleExport = async () => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      const params = new URLSearchParams({ profile_id: profileId });
+      if (selectedEvent) params.append('event_id', selectedEvent);
+      if (startDate) params.append('start_date', new Date(startDate).toISOString());
+      if (endDate) params.append('end_date', new Date(endDate).toISOString());
+
+      const response = await axios.get(`${API_URL}/api/analytics/export?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob',
+      });
+
+      // Download file
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `analytics_${profileId}_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error('Failed to export analytics:', error);
+      alert('Failed to export analytics data');
+    }
+  };
+
+  if (loading && !analytics) {
+    return (
+      <div className="luxe min-h-screen flex items-center justify-center" data-testid="analytics-loading">
+        <div className="text-center">
+          <div className="lux-mandala mx-auto" />
+          <p className="mt-6 text-sm" style={{ color: 'rgba(255,248,220,0.6)' }}>Reading the cosmos…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !analytics) {
+    return (
+      <div className="luxe min-h-screen relative" data-testid="analytics-page-degraded">
+        <div className="px-4 md:px-12 py-10 max-w-7xl mx-auto">
+          <button onClick={() => navigate('/admin/dashboard')} className="lux-btn lux-btn-ghost mb-6 inline-flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </button>
+          <span className="lux-eyebrow block mb-3">◆ Guest Intelligence</span>
+          <h1 className="font-display text-[2.2rem] md:text-[3.6rem] leading-[1.05] mb-3" style={{ color: '#FFF8DC' }}>
+            Analytics &amp; <span className="font-script italic text-gold">Insights</span>
+          </h1>
+          {/* PROMPT 16 — render new analytics even when legacy endpoint errors */}
+          <AnalyticsExtrasSection profileId={profileId} />
+        </div>
+      </div>
+    );
+  }
+
+  // Prepare chart data
+  const viewsTrendData = analytics?.views?.views_by_date || [];
+  const rsvpStatusData = [
+    { name: 'Accepted', value: analytics?.rsvp?.accepted_count || 0, color: COLORS.success },
+    { name: 'Declined', value: analytics?.rsvp?.declined_count || 0, color: COLORS.danger },
+    { name: 'Pending', value: analytics?.rsvp?.pending_count || 0, color: COLORS.warning },
+  ];
+  const topEventsData = analytics?.rsvp?.rsvp_by_event || [];
+
+  return (
+    <div className="luxe min-h-screen relative" data-testid="analytics-page">
+      <div className="lux-orbit" style={{ width: 800, height: 800, top: -240, right: -240 }} />
+
+      {/* Header */}
+      <div className="relative z-10 sticky top-0 backdrop-blur-md" style={{ background: 'rgba(10,10,15,0.85)', borderBottom: '1px solid var(--lux-border)' }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => navigate('/admin/dashboard')}
+                className="lux-btn lux-btn-ghost text-xs"
+                data-testid="analytics-back"
+              >
+                <ArrowLeft className="w-4 h-4" /> Back
+              </button>
+              <div>
+                <span className="lux-eyebrow block mb-1">◆ Phase 30 · Guest Intelligence</span>
+                <h1 className="font-display text-2xl md:text-3xl" style={{ color: '#FFF8DC' }}>
+                  Analytics &amp; <span className="font-script italic text-gold">Insights</span>
+                </h1>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={handleRefresh} disabled={refreshing} className="lux-btn lux-btn-ghost text-xs">
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /> Refresh
+              </button>
+              <button onClick={handleExport} className="lux-btn text-xs">
+                <Download className="w-4 h-4" /> Export CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* PROMPT 16 — AI Insights, heatmap, funnel, geography, PDF export */}
+        <AnalyticsExtrasSection profileId={profileId} profileName={analytics?.profile_name} />
+
+        {/* Filters */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Filters</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Event</label>
+              <select
+                value={selectedEvent}
+                onChange={(e) => setSelectedEvent(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Events</option>
+                {events.map((event) => (
+                  <option key={event.id} value={event.id}>
+                    {event.event_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="mt-4">
+            <button
+              onClick={fetchAnalytics}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Apply Filters
+            </button>
+          </div>
+        </div>
+
+        {/* Key Metrics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          <MetricCard
+            icon={<Eye className="w-6 h-6 text-blue-600" />}
+            title="Total Views"
+            value={analytics?.views?.total_views || 0}
+            color="blue"
+          />
+          <MetricCard
+            icon={<Users className="w-6 h-6 text-purple-600" />}
+            title="Unique Visitors"
+            value={analytics?.views?.unique_visitors || 0}
+            color="purple"
+          />
+          <MetricCard
+            icon={<UserCheck className="w-6 h-6 text-green-600" />}
+            title="RSVPs"
+            value={analytics?.rsvp?.total_rsvps || 0}
+            subtitle={`${analytics?.rsvp?.conversion_rate || 0}% conversion`}
+            color="green"
+          />
+          <MetricCard
+            icon={<TrendingUp className="w-6 h-6 text-orange-600" />}
+            title="Accepted"
+            value={analytics?.rsvp?.accepted_count || 0}
+            color="orange"
+          />
+        </div>
+
+        {/* Device & Location Stats */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Device Breakdown */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h3 className="text-lg font-semibold mb-4">Device Breakdown</h3>
+            <div className="space-y-3">
+              <DeviceRow
+                icon={<Smartphone className="w-5 h-5 text-blue-600" />}
+                label="Mobile"
+                count={analytics?.views?.mobile_views || 0}
+                total={analytics?.views?.total_views || 1}
+              />
+              <DeviceRow
+                icon={<Monitor className="w-5 h-5 text-purple-600" />}
+                label="Desktop"
+                count={analytics?.views?.desktop_views || 0}
+                total={analytics?.views?.total_views || 1}
+              />
+              <DeviceRow
+                icon={<Tablet className="w-5 h-5 text-green-600" />}
+                label="Tablet"
+                count={analytics?.views?.tablet_views || 0}
+                total={analytics?.views?.total_views || 1}
+              />
+            </div>
+          </div>
+
+          {/* Top Locations */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h3 className="text-lg font-semibold mb-4 flex items-center">
+              <MapPin className="w-5 h-5 mr-2" />
+              Top Locations
+            </h3>
+            <div className="space-y-2">
+              {analytics?.views?.top_countries?.slice(0, 5).map((item, index) => (
+                <div key={index} className="flex justify-between items-center">
+                  <span className="text-gray-700">{item.country}</span>
+                  <span className="font-semibold text-gray-900">{item.count}</span>
+                </div>
+              ))}
+              {(!analytics?.views?.top_countries || analytics.views.top_countries.length === 0) && (
+                <p className="text-gray-500 text-sm">No location data yet</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Engagement Metrics */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <h3 className="text-lg font-semibold mb-4">Guest Engagement</h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <EngagementStat
+              icon={<Image className="w-5 h-5" />}
+              label="Gallery Opens"
+              value={analytics?.engagement?.gallery_opens || 0}
+              color="blue"
+            />
+            <EngagementStat
+              icon={<Play className="w-5 h-5" />}
+              label="Video Plays"
+              value={analytics?.engagement?.video_plays || 0}
+              color="purple"
+            />
+            <EngagementStat
+              icon={<Volume2 className="w-5 h-5" />}
+              label="Music Unmutes"
+              value={analytics?.engagement?.music_unmutes || 0}
+              color="pink"
+            />
+            <EngagementStat
+              icon={<Map className="w-5 h-5" />}
+              label="Map Opens"
+              value={analytics?.engagement?.map_opens || 0}
+              color="green"
+            />
+            <EngagementStat
+              icon={<Clock className="w-5 h-5" />}
+              label="Avg. Time (sec)"
+              value={Math.round(analytics?.engagement?.avg_time_spent_seconds || 0)}
+              color="orange"
+            />
+          </div>
+
+          {/* Scroll Depth */}
+          <div className="mt-6">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Scroll Depth</h4>
+            <div className="flex space-x-4">
+              <ScrollDepthBar
+                percentage={25}
+                count={analytics?.engagement?.scroll_25_percent || 0}
+              />
+              <ScrollDepthBar
+                percentage={50}
+                count={analytics?.engagement?.scroll_50_percent || 0}
+              />
+              <ScrollDepthBar
+                percentage={75}
+                count={analytics?.engagement?.scroll_75_percent || 0}
+              />
+              <ScrollDepthBar
+                percentage={100}
+                count={analytics?.engagement?.scroll_100_percent || 0}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Views Trend */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h3 className="text-lg font-semibold mb-4">Views Over Time</h3>
+            {viewsTrendData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={viewsTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="count" stroke={COLORS.primary} name="Views" />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-gray-500">
+                No view data available
+              </div>
+            )}
+          </div>
+
+          {/* RSVP Status */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h3 className="text-lg font-semibold mb-4">RSVP Status</h3>
+            {rsvpStatusData.some((d) => d.value > 0) ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={rsvpStatusData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, value }) => `${name}: ${value}`}
+                    outerRadius={100}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {rsvpStatusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-gray-500">
+                No RSVP data available
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Top Events */}
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <h3 className="text-lg font-semibold mb-4">RSVP by Event</h3>
+          {topEventsData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={topEventsData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="event_name" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="accepted" fill={COLORS.success} name="Accepted" />
+                <Bar dataKey="declined" fill={COLORS.danger} name="Declined" />
+                <Bar dataKey="pending" fill={COLORS.warning} name="Pending" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-gray-500">
+              No event RSVP data available
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Helper Components
+const MetricCard = ({ icon, title, value, subtitle, color }) => (
+  <div className="bg-white rounded-lg shadow-sm p-6">
+    <div className="flex items-center justify-between mb-2">
+      {icon}
+      <span className={`text-2xl font-bold text-${color}-600`}>{value}</span>
+    </div>
+    <h3 className="text-sm font-medium text-gray-700">{title}</h3>
+    {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+  </div>
+);
+
+const DeviceRow = ({ icon, label, count, total }) => {
+  const percentage = Math.round((count / total) * 100);
+  return (
+    <div className="flex items-center">
+      {icon}
+      <div className="ml-3 flex-1">
+        <div className="flex justify-between text-sm mb-1">
+          <span className="font-medium text-gray-700">{label}</span>
+          <span className="text-gray-900">{count} ({percentage}%)</span>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-2">
+          <div
+            className="bg-blue-600 h-2 rounded-full"
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const EngagementStat = ({ icon, label, value, color }) => (
+  <div className="text-center">
+    <div className={`inline-flex items-center justify-center w-10 h-10 bg-${color}-100 rounded-lg mb-2`}>
+      {icon}
+    </div>
+    <div className="text-2xl font-bold text-gray-900">{value}</div>
+    <div className="text-xs text-gray-600">{label}</div>
+  </div>
+);
+
+const ScrollDepthBar = ({ percentage, count }) => (
+  <div className="flex-1">
+    <div className="text-center mb-1">
+      <span className="text-sm font-medium text-gray-700">{percentage}%</span>
+    </div>
+    <div className="h-24 bg-gray-200 rounded-t-lg flex items-end">
+      <div
+        className="w-full bg-blue-600 rounded-t-lg"
+        style={{ height: count > 0 ? `${Math.min((count / 100) * 100, 100)}%` : '0%' }}
+      />
+    </div>
+    <div className="text-center mt-1">
+      <span className="text-xs text-gray-600">{count}</span>
+    </div>
+  </div>
+);
+
+export default Phase30AnalyticsPage;
+===== frontend/src/pages/TrashBinPage.jsx =====
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { motion } from 'framer-motion';
+import { ArrowLeft, Trash2, ArchiveRestore, Calendar, AlertTriangle } from 'lucide-react';
+import BulkActionBar from '@/components/dashboard/BulkActionBar';
+import '@/styles/luxury.css';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+/**
+ * TrashBinPage — lists soft-deleted weddings within 30-day retention window.
+ * Supports per-row restore / purge and bulk action via shared BulkActionBar.
+ */
+const TrashBinPage = () => {
+  const navigate = useNavigate();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(new Set());
+
+  useEffect(() => {
+    document.body.classList.add('luxe', 'luxe-grain', 'luxe-vignette');
+    return () => document.body.classList.remove('luxe', 'luxe-grain', 'luxe-vignette');
+  }, []);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await axios.get(`${API_URL}/api/admin/profiles/trash`);
+      setItems(r.data?.items || []);
+    } catch (_) { setItems([]); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const toggleSel = (id) => {
+    const s = new Set(selected);
+    s.has(id) ? s.delete(id) : s.add(id);
+    setSelected(s);
+  };
+  const clearSel = () => setSelected(new Set());
+
+  const restoreOne = async (id) => {
+    await axios.post(`${API_URL}/api/admin/profiles/${id}/restore-trash`);
+    load();
+  };
+  const purgeOne = async (id) => {
+    if (!window.confirm('Permanently delete this wedding? This cannot be undone.')) return;
+    await axios.delete(`${API_URL}/api/admin/profiles/${id}/purge`);
+    load();
+  };
+
+  const bulkRestore = async () => {
+    const ids = Array.from(selected);
+    await axios.post(`${API_URL}/api/admin/profiles/bulk-action`, { ids, action: 'restore' });
+    clearSel(); load();
+  };
+  const bulkPurge = async () => {
+    if (!window.confirm(`Permanently delete ${selected.size} weddings? This cannot be undone.`)) return;
+    const ids = Array.from(selected);
+    await axios.post(`${API_URL}/api/admin/profiles/bulk-action`, { ids, action: 'purge' });
+    clearSel(); load();
+  };
+
+  return (
+    <div className="luxe min-h-screen" data-testid="trash-bin-page">
+      <div className="px-6 md:px-12 py-10 max-w-[1300px] mx-auto">
+        <button onClick={() => navigate('/admin/dashboard')}
+          className="lux-btn lux-btn-ghost mb-6" data-testid="trash-back">
+          <ArrowLeft className="w-4 h-4" /> Studio
+        </button>
+
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+          <span className="lux-eyebrow block mb-2">◆ Trash</span>
+          <h1 className="font-display text-[2.4rem] md:text-[3.4rem]" style={{ color: '#FFF8DC' }}>
+            Trash <span className="font-script italic text-gold">bin</span>
+          </h1>
+          <p className="mt-3 text-sm max-w-2xl" style={{ color: 'rgba(255,248,220,0.62)' }}>
+            Deleted weddings stay here for <span className="text-gold">30 days</span>, then are permanently removed.
+            Restore them anytime before that window closes.
+          </p>
+        </motion.div>
+
+        <div className="mt-8" data-testid="trash-list">
+          {loading ? (
+            <div className="grid place-items-center py-20"><div className="lux-mandala" /></div>
+          ) : items.length === 0 ? (
+            <div className="lux-glass p-12 text-center" data-testid="trash-empty">
+              <Trash2 className="w-7 h-7 mx-auto mb-3" style={{ color: '#D4AF37' }} />
+              <h3 className="font-display text-2xl mb-1" style={{ color: '#FFF8DC' }}>Trash is empty</h3>
+              <p className="text-sm" style={{ color: 'rgba(255,248,220,0.6)' }}>
+                Deleted weddings will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {items.map((p) => {
+                const deletedAt = p.deleted_at ? new Date(p.deleted_at) : null;
+                const daysLeft = deletedAt
+                  ? Math.max(0, 30 - Math.floor((Date.now() - deletedAt.getTime()) / 86400000))
+                  : null;
+                const sel = selected.has(p.id);
+                return (
+                  <motion.div key={p.id} layout
+                    className="lux-glass p-6 relative"
+                    style={sel ? { boxShadow: '0 0 0 2px var(--lux-gold)' } : {}}
+                    data-testid={`trash-card-${p.id}`}>
+                    <label className="absolute top-3 left-3">
+                      <input type="checkbox" checked={sel} onChange={() => toggleSel(p.id)}
+                        data-testid={`trash-select-${p.id}`} />
+                    </label>
+                    <h3 className="font-display text-xl pl-6" style={{ color: '#FFF8DC' }}>
+                      {p.bride_name} <span className="text-gold italic font-script">&</span> {p.groom_name}
+                    </h3>
+                    {p.event_date && (
+                      <div className="flex items-center gap-2 text-xs mt-2 pl-6"
+                        style={{ color: 'rgba(255,248,220,0.55)' }}>
+                        <Calendar className="w-3.5 h-3.5" />
+                        {new Date(p.event_date).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </div>
+                    )}
+                    <div className="lux-hairline my-3" />
+                    <div className="text-xs flex items-center gap-2 mb-4"
+                      style={{ color: daysLeft <= 5 ? '#EF6E6E' : 'rgba(255,248,220,0.7)' }}>
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      {daysLeft != null ? `${daysLeft} days left before permanent deletion` : 'Pending purge'}
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => restoreOne(p.id)} className="lux-btn lux-btn-ghost text-xs"
+                        data-testid={`trash-restore-${p.id}`}>
+                        <ArchiveRestore className="w-3.5 h-3.5" /> Restore
+                      </button>
+                      <button onClick={() => purgeOne(p.id)} className="lux-btn text-xs"
+                        style={{ background: 'linear-gradient(135deg,#7A1F1F,#A82E2E)', color: '#fff' }}
+                        data-testid={`trash-purge-${p.id}`}>
+                        <Trash2 className="w-3.5 h-3.5" /> Delete forever
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <BulkActionBar
+        selectedCount={selected.size}
+        onClear={clearSel}
+        onUnarchive={bulkRestore}
+        onDelete={bulkPurge}
+        context="trash"
+      />
+    </div>
+  );
+};
+
+export default TrashBinPage;

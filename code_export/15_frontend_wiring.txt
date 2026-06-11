@@ -1,0 +1,5885 @@
+===== frontend/src/App.js =====
+import React, { Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HelmetProvider } from 'react-helmet-async';
+import { AuthProvider } from './context/AuthContext';
+import { UserAuthProvider } from './context/UserAuthContext';
+import ErrorBoundary from './components/ErrorBoundary';
+import LoadingFallback from './components/LoadingFallback';
+
+// PHASE 2: CODE SPLITTING - Lazy load all heavy pages for better initial load
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+
+// Public pages - Lazy loaded
+const AuthCallback = lazy(() => import('./pages/AuthCallback'));
+const LuxuryPreview = lazy(() => import('./pages/LuxuryPreview'));
+const LuxuryPublicInvitation = lazy(() => import('./pages/LuxuryPublicInvitation'));
+const SaveTheDatePage = lazy(() => import('./pages/SaveTheDatePage'));
+const ThemeInvitationPreview = lazy(() => import('./pages/ThemeInvitationPreview'));
+const CoupleAccess = lazy(() => import('./pages/CoupleAccess'));
+const ThemeShowroom = lazy(() => import('./pages/ThemeShowroom'));
+const KeralaDesignGallery = lazy(() => import('./pages/KeralaDesignGallery'));
+const ThemeDesignGallery = lazy(() => import('./pages/ThemeDesignGallery'));
+const ThemeEventPicker = lazy(() => import('./pages/ThemeEventPicker'));
+const EventDesignPicker = lazy(() => import('./pages/EventDesignPicker'));
+const DesignFullPreview = lazy(() => import('./pages/DesignFullPreview'));
+
+// Photographer admin - Lazy loaded
+const AdminLogin = lazy(() => import('./pages/AdminLogin'));
+const AdminSignup = lazy(() => import('./pages/AdminSignup'));
+const LuxuryDashboard = lazy(() => import('./pages/LuxuryDashboard'));
+const TrashBinPage = lazy(() => import('./pages/TrashBinPage'));
+const LuxuryProfileForm = lazy(() => import('./pages/LuxuryProfileForm'));
+const EventInvitationWizard = lazy(() => import('./pages/EventInvitationWizard'));
+const EventCategorySelector = lazy(() => import('./pages/EventCategorySelector'));
+const CelebrationProfileForm = lazy(() => import('./pages/CelebrationProfileForm'));
+const CelebrationPurchaseWizard = lazy(() => import('./pages/CelebrationPurchaseWizard'));
+// 2026-09 — Live sample invitation preview for non-wedding categories.
+// Lets a homepage visitor experience the full invitation (cinematic opening
+// + features playing live) before they buy.
+const CelebrationInvitationPreview = lazy(() => import('./pages/CelebrationInvitationPreview'));
+
+// Super admin - Lazy loaded
+const SuperAdminLogin = lazy(() => import('./pages/SuperAdminLogin'));
+const LuxurySuperAdminDashboard = lazy(() => import('./pages/LuxurySuperAdminDashboard'));
+const SuperAdminPricingHub = lazy(() => import('./pages/SuperAdminPricingHub'));
+const SuperAdminGiftCodes = lazy(() => import('./pages/SuperAdminGiftCodes'));
+const SuperAdminExpiryTiers = lazy(() => import('./pages/SuperAdminExpiryTiers'));
+const PurchaseFlowPage = lazy(() => import('./pages/PurchaseFlowPage'));
+const AccountCreditsPage = lazy(() => import('./pages/AccountCreditsPage'));
+
+// Sub-pages - Lazy loaded
+const RSVPManagement = lazy(() => import('./pages/RSVPManagement'));
+const GuestListManager = lazy(() => import('./pages/GuestListManager'));
+const Phase30AnalyticsPage = lazy(() => import('./pages/Phase30AnalyticsPage'));
+const GreetingsManagement = lazy(() => import('./pages/GreetingsManagement'));
+const WishesManagement = lazy(() => import('./pages/WishesManagement'));
+const PostWeddingManagement = lazy(() => import('./pages/PostWeddingManagement'));
+const QRCodeManagement = lazy(() => import('./pages/QRCodeManagement'));
+const AuditLogsPage = lazy(() => import('./pages/AuditLogsPage'));
+const ReferralsCreditsPage = lazy(() => import('./pages/ReferralsCreditsPage'));
+const ThemeSettingsPage = lazy(() => import('./pages/ThemeSettingsPage'));
+
+// Premium features - Lazy loaded
+const LivePhotoWall = lazy(() => import('./pages/LivePhotoWall'));
+const LiveGalleryManagement = lazy(() => import('./pages/LiveGalleryManagement'));
+const UserLiveGalleryManagement = lazy(() => import('./pages/UserLiveGalleryManagement'));
+const AIStudio = lazy(() => import('./pages/AIStudio'));
+const WhatsAppManager = lazy(() => import('./pages/WhatsAppManager'));
+const DigitalShagunSettings = lazy(() => import('./pages/DigitalShagunSettings'));
+const GiftRegistryEditor = lazy(() => import('./pages/GiftRegistryEditor'));
+const GalleryManager = lazy(() => import('./pages/GalleryManager'));
+const PhotographerLiveMode = lazy(() => import('./pages/PhotographerLiveMode'));
+
+// Monetization - Lazy loaded
+const PhotographerDetail = lazy(() => import('./pages/PhotographerDetail'));
+
+// User flows - Lazy loaded
+const UserDashboard = lazy(() => import('./pages/UserDashboard'));
+const UserProfile = lazy(() => import('./pages/UserProfile'));
+const UserDesignPicker = lazy(() => import('./pages/UserDesignPicker'));
+const UserInvitationForm = lazy(() => import('./pages/UserInvitationForm'));
+const PurchaseOptionsWizard = lazy(() => import('./pages/PurchaseOptionsWizard'));
+const PublicPricingPage = lazy(() => import('./pages/PublicPricingPage'));
+
+import './App.css';
+import { AnimationProvider } from './components/animations';
+import ScrollToTop from './components/ScrollToTop';
+import RouteCleanup from './components/perf/RouteCleanup';
+
+function App() {
+  React.useEffect(() => {
+    // Apply luxury cinematic theme globally to all pages
+    document.body.classList.add('luxe', 'luxe-grain', 'luxe-vignette');
+    
+    // CRITICAL: Ensure body can scroll - only on mobile
+    if (window.innerWidth <= 1024) {
+      document.body.style.webkitOverflowScrolling = 'touch';
+    }
+    
+    return () => {
+      document.body.classList.remove('luxe', 'luxe-grain', 'luxe-vignette');
+      document.body.style.webkitOverflowScrolling = '';
+    };
+  }, []);
+
+  return (
+    <ErrorBoundary>
+      <HelmetProvider>
+        <AuthProvider>
+          <UserAuthProvider>
+          <AnimationProvider>
+            <div className="App">
+              <BrowserRouter>
+              <ScrollToTop />
+              <RouteCleanup />
+              <Suspense fallback={<LoadingFallback variant="page" />}>
+              <Routes>
+                {/* Public */}
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/pricing" element={<PublicPricingPage />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/themes" element={<ThemeShowroom />} />
+                <Route path="/themes/kerala_backwaters/gallery" element={<KeralaDesignGallery />} />
+                <Route path="/themes/:themeId/gallery" element={<ThemeDesignGallery />} />
+                {/* NEW: step-by-step picker — Theme → 6 events → 3 designs → fullscreen preview */}
+                <Route path="/themes/:themeId/events" element={<ThemeEventPicker />} />
+                <Route path="/themes/:themeId/events/:event" element={<EventDesignPicker />} />
+                <Route path="/themes/:themeId/events/:event/design/:designIndex" element={<DesignFullPreview />} />
+                <Route path="/themes/:themeId" element={<ThemeShowroom />} />
+                <Route path="/preview/luxe" element={<LuxuryPreview />} />
+                <Route path="/preview/theme/:themeId" element={<ThemeInvitationPreview />} />
+                {/* 2026-09 — Sample invitation preview for non-wedding
+                    categories (baby_birthday / half_saree / puberty / dhoti).
+                    Optional designId pre-fills the cover photo with that
+                    design's artwork. */}
+                <Route path="/preview/celebration/:category" element={<CelebrationInvitationPreview />} />
+                <Route path="/preview/celebration/:category/:designId" element={<CelebrationInvitationPreview />} />
+                <Route path="/invite/:slug" element={<LuxuryPublicInvitation />} />
+                <Route path="/invite/:slug/:eventType" element={<LuxuryPublicInvitation />} />
+                {/* Phase 2A — Save the Date teaser page */}
+                <Route path="/save-the-date/:slug" element={<SaveTheDatePage />} />
+
+                {/* Couple portal */}
+                <Route path="/couple/access" element={<CoupleAccess />} />
+                <Route path="/couple/access/:slug" element={<CoupleAccess />} />
+
+                {/* Super Admin */}
+                <Route path="/super-admin/login" element={<SuperAdminLogin />} />
+                <Route path="/super-admin/dashboard" element={<LuxurySuperAdminDashboard />} />
+                <Route path="/super-admin/pricing" element={<SuperAdminPricingHub />} />
+                {/* Backward-compat redirects: every legacy pricing URL → unified hub */}
+                <Route path="/super-admin/credit-packs" element={<SuperAdminPricingHub />} />
+                <Route path="/super-admin/credit-packs-new" element={<SuperAdminPricingHub />} />
+                <Route path="/super-admin/design-pricing" element={<SuperAdminPricingHub />} />
+                <Route path="/super-admin/design-pricing-new" element={<SuperAdminPricingHub />} />
+                <Route path="/super-admin/plans-pricing" element={<SuperAdminPricingHub />} />
+                <Route path="/super-admin/pricing-discounts" element={<SuperAdminPricingHub />} />
+                <Route path="/super-admin/pricing-editor" element={<SuperAdminPricingHub />} />
+                <Route path="/super-admin/credits" element={<SuperAdminPricingHub />} />
+                <Route path="/super-admin/expiry-tiers" element={<SuperAdminExpiryTiers />} />
+
+                {/* Photographer Admin */}
+                <Route path="/admin/login" element={<AdminLogin />} />
+                <Route path="/admin/signup" element={<AdminSignup />} />
+                <Route path="/admin/dashboard" element={<LuxuryDashboard />} />
+                <Route path="/admin/category-selector" element={<EventCategorySelector />} />
+                <Route path="/admin/celebration/new" element={<CelebrationProfileForm />} />
+                <Route path="/admin/celebration/:profileId/edit" element={<CelebrationProfileForm />} />
+                <Route path="/user/celebration/new" element={<CelebrationProfileForm />} />
+                <Route path="/user/celebration/:profileId/edit" element={<CelebrationProfileForm />} />
+                <Route path="/admin/dashboard/trash" element={<TrashBinPage />} />
+
+                {/* Wedding Editor (luxury wizard) */}
+                <Route path="/admin/profile/new" element={<LuxuryProfileForm />} />
+                <Route path="/admin/profile/:profileId/edit" element={<LuxuryProfileForm />} />
+                <Route path="/admin/wedding/:weddingId/edit" element={<LuxuryProfileForm />} />
+
+                {/* Per-event Invitation Link Wizard */}
+                <Route path="/admin/profile/:profileId/invitations" element={<EventInvitationWizard />} />
+
+                {/* Functional sub-pages (unchanged) */}
+                <Route path="/admin/profile/:profileId/rsvps" element={<RSVPManagement />} />
+                <Route path="/admin/profile/:profileId/guests" element={<GuestListManager />} />
+                <Route path="/admin/profile/:profileId/analytics" element={<Phase30AnalyticsPage />} />
+                <Route path="/admin/profile/:profileId/greetings" element={<GreetingsManagement />} />
+                <Route path="/admin/profile/:profileId/wishes" element={<WishesManagement />} />
+                <Route path="/admin/profile/:profileId/post-wedding" element={<PostWeddingManagement />} />
+                <Route path="/admin/profile/:profileId/qr-codes" element={<QRCodeManagement />} />
+                <Route path="/admin/profile/:profileId/referrals" element={<ReferralsCreditsPage />} />
+                <Route path="/admin/profile/:profileId/theme-settings" element={<ThemeSettingsPage />} />
+                <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
+
+                {/* Phase 38 — premium features */}
+                <Route path="/admin/profile/:profileId/ai-studio" element={<AIStudio />} />
+                <Route path="/admin/profile/:profileId/live-gallery" element={<LiveGalleryManagement />} />
+                <Route path="/admin/profile/:profileId/whatsapp" element={<WhatsAppManager />} />
+                <Route path="/admin/profile/:profileId/shagun" element={<DigitalShagunSettings />} />
+                <Route path="/admin/profile/:profileId/gifts" element={<GiftRegistryEditor />} />
+                <Route path="/admin/profile/:profileId/gallery" element={<GalleryManager />} />
+                <Route path="/live/:profileId" element={<PhotographerLiveMode />} />
+                <Route path="/invite/:slug/live-gallery" element={<LivePhotoWall />} />
+
+                {/* Monetization (legacy duplicates removed — now point to unified /super-admin/pricing) */}
+                <Route path="/super-admin/gift-codes" element={<SuperAdminGiftCodes />} />
+                <Route path="/super-admin/photographers/:adminId" element={<PhotographerDetail />} />
+                <Route path="/admin/credits/top-up" element={<AccountCreditsPage />} />
+                <Route path="/account/credits" element={<AccountCreditsPage />} />
+                <Route path="/credits" element={<AccountCreditsPage />} />
+                <Route path="/purchase" element={<PurchaseFlowPage />} />
+
+                {/* Normal-user (wedding-couple) flows */}
+                <Route path="/user/dashboard" element={<UserDashboard />} />
+                <Route path="/user/profile" element={<UserProfile />} />
+                <Route path="/user/buy-credits" element={<AccountCreditsPage />} />
+                <Route path="/user/create-invitation" element={<UserDesignPicker />} />
+                <Route path="/user/create-invitation/:themeId/:event/:designId" element={<UserInvitationForm />} />
+                <Route path="/user/buy-theme/:themeId" element={<PurchaseOptionsWizard />} />
+                <Route path="/user/buy-design/:themeId/:event/:designId" element={<PurchaseOptionsWizard />} />
+                <Route path="/user/buy-celebration/:category/:designId" element={<CelebrationPurchaseWizard />} />
+                <Route path="/user/profile/:profileId/live-gallery" element={<UserLiveGalleryManagement />} />
+              </Routes>
+              </Suspense>
+              </BrowserRouter>
+            </div>
+          </AnimationProvider>
+          </UserAuthProvider>
+        </AuthProvider>
+      </HelmetProvider>
+    </ErrorBoundary>
+  );
+}
+
+export default App;
+===== frontend/src/index.js =====
+import React from "react";
+import ReactDOM from "react-dom/client";
+import "@/index.css";
+import "@/styles/luxury.css";
+import "@/styles/luxury-overrides.css";
+import "@/styles/mobile-fixes.css";
+import App from "@/App";
+
+// Mobile scroll perf: ensure all scroll/touch listeners default to passive.
+// This prevents 3rd-party libs (or framer-motion subscribers) from
+// blocking the main thread on touch/scroll on Android Chrome.
+if (typeof window !== 'undefined' && 'EventTarget' in window) {
+  const PASSIVE_EVENTS = new Set(['scroll', 'touchmove', 'touchstart', 'wheel', 'mousewheel']);
+  const originalAddEventListener = window.EventTarget.prototype.addEventListener;
+  window.EventTarget.prototype.addEventListener = function (type, fn, options) {
+    if (PASSIVE_EVENTS.has(type)) {
+      if (typeof options === 'object' && options !== null) {
+        if (options.passive === undefined) options.passive = true;
+      } else if (options === undefined || typeof options === 'boolean') {
+        options = { capture: !!options, passive: true };
+      }
+    }
+    return originalAddEventListener.call(this, type, fn, options);
+  };
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
+===== frontend/src/context/AuthContext.js =====
+import React, { createContext, useState, useContext, useEffect } from 'react';
+import axios from 'axios';
+
+const AuthContext = createContext();
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+export const AuthProvider = ({ children }) => {
+  const [admin, setAdmin] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [token, setToken] = useState(localStorage.getItem('admin_token'));
+
+  useEffect(() => {
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      fetchAdminInfo();
+    } else {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const fetchAdminInfo = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/auth/me`);
+      setAdmin(response.data);
+    } catch (error) {
+      console.error('Failed to fetch admin info:', error);
+      logout();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const login = async (emailOrUsername, password) => {
+    try {
+      const response = await axios.post(`${API_URL}/api/auth/login`, {
+        username_or_email: emailOrUsername,
+        password
+      });
+      
+      const { access_token, admin } = response.data;
+      localStorage.setItem('admin_token', access_token);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+      setToken(access_token);
+      setAdmin(admin);
+      
+      return { success: true, admin };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Login failed'
+      };
+    }
+  };
+
+  const setSessionFromSignup = ({ access_token, admin: newAdmin }) => {
+    localStorage.setItem('admin_token', access_token);
+    axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+    setToken(access_token);
+    setAdmin(newAdmin);
+  };
+
+  const logout = () => {
+    localStorage.removeItem('admin_token');
+    delete axios.defaults.headers.common['Authorization'];
+    setToken(null);
+    setAdmin(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{ admin, login, logout, loading, setSessionFromSignup, refresh: fetchAdminInfo }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+  return context;
+};
+===== frontend/src/context/InvitePrefetchContext.js =====
+import React, { createContext, useContext } from 'react';
+
+/**
+ * InvitePrefetchContext — holds pre-fetched side-data from /api/invite/:slug/full
+ * so that sub-components (WishesWallSection, GiftRegistrySection,
+ * DigitalShagunSection, LivePhotoWallTeaser, MajaReferralCTA …) can skip
+ * their own GET requests on first render.
+ *
+ * Each side-component still falls back to its own fetch if no prefetch is
+ * available (e.g. when this context is missing or the slug differs).
+ *
+ * Shape:
+ *   {
+ *     slug,
+ *     wishes: [...],
+ *     gifts:  {...},
+ *     blessings: { total_count, recent },
+ *     gallery_info: {...},
+ *     shagun_enabled: bool,
+ *     referral_code: string|null,
+ *   }
+ */
+export const InvitePrefetchContext = createContext(null);
+
+export const useInvitePrefetch = (expectedSlug) => {
+  const ctx = useContext(InvitePrefetchContext);
+  if (!ctx) return null;
+  if (expectedSlug && ctx.slug !== expectedSlug) return null;
+  return ctx;
+};
+
+export default InvitePrefetchContext;
+===== frontend/src/context/TranslationContext.jsx =====
+import React, { createContext, useContext, useState, useCallback } from 'react';
+import axios from 'axios';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+
+/**
+ * PHASE 26: Translation Context
+ * Manages language state and translation caching throughout the app
+ */
+const TranslationContext = createContext();
+
+export const useTranslation = () => {
+  const context = useContext(TranslationContext);
+  if (!context) {
+    throw new Error('useTranslation must be used within TranslationProvider');
+  }
+  return context;
+};
+
+export const TranslationProvider = ({ children, defaultLanguage = 'en' }) => {
+  const [currentLanguage, setCurrentLanguage] = useState(defaultLanguage);
+  const [translationCache, setTranslationCache] = useState({});
+  const [isTranslating, setIsTranslating] = useState(false);
+
+  /**
+   * Translate content to target language
+   * Uses cache if available
+   */
+  const translateContent = useCallback(async (content, targetLanguage, context = 'wedding invitation') => {
+    // Return original if translating to English or content is empty
+    if (!content || targetLanguage === 'en') {
+      return content;
+    }
+
+    // Check cache first
+    const cacheKey = `${content}_${targetLanguage}`;
+    if (translationCache[cacheKey]) {
+      return translationCache[cacheKey];
+    }
+
+    setIsTranslating(true);
+
+    try {
+      const response = await axios.post(`${BACKEND_URL}/api/translate`, {
+        content,
+        target_language: targetLanguage,
+        context
+      });
+
+      const translatedText = response.data.translated_content;
+
+      // Cache the translation
+      setTranslationCache(prev => ({
+        ...prev,
+        [cacheKey]: translatedText
+      }));
+
+      return translatedText;
+    } catch (error) {
+      console.error('Translation error:', error);
+      // Return original content on error
+      return content;
+    } finally {
+      setIsTranslating(false);
+    }
+  }, [translationCache]);
+
+  /**
+   * Translate multiple fields at once
+   * Returns object with translated fields
+   */
+  const translateFields = useCallback(async (fields, targetLanguage) => {
+    if (targetLanguage === 'en') {
+      return fields;
+    }
+
+    const translatedFields = {};
+
+    for (const [key, value] of Object.entries(fields)) {
+      if (typeof value === 'string' && value.trim().length > 0) {
+        translatedFields[key] = await translateContent(value, targetLanguage);
+      } else {
+        translatedFields[key] = value;
+      }
+    }
+
+    return translatedFields;
+  }, [translateContent]);
+
+  /**
+   * Change language and trigger re-translation
+   */
+  const changeLanguage = useCallback((languageCode) => {
+    setCurrentLanguage(languageCode);
+    // Language change will trigger component re-renders
+    // Components using useTranslatedContent will automatically re-translate
+  }, []);
+
+  /**
+   * Get translated text with fallback
+   */
+  const t = useCallback((text, fallback = text) => {
+    if (!text) return fallback;
+    if (currentLanguage === 'en') return text;
+
+    const cacheKey = `${text}_${currentLanguage}`;
+    return translationCache[cacheKey] || fallback;
+  }, [currentLanguage, translationCache]);
+
+  const value = {
+    currentLanguage,
+    changeLanguage,
+    translateContent,
+    translateFields,
+    translationCache,
+    isTranslating,
+    t
+  };
+
+  return (
+    <TranslationContext.Provider value={value}>
+      {children}
+    </TranslationContext.Provider>
+  );
+};
+
+/**
+ * Hook to get translated content
+ * Automatically translates when language changes
+ */
+export const useTranslatedContent = (content, context = 'wedding invitation') => {
+  const { currentLanguage, translateContent, t } = useTranslation();
+  const [translatedText, setTranslatedText] = useState(content);
+  const [isLoading, setIsLoading] = useState(false);
+
+  React.useEffect(() => {
+    const translate = async () => {
+      if (!content || currentLanguage === 'en') {
+        setTranslatedText(content);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const translated = await translateContent(content, currentLanguage, context);
+        setTranslatedText(translated);
+      } catch (error) {
+        console.error('Translation error:', error);
+        setTranslatedText(content); // Fallback to original
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    translate();
+  }, [content, currentLanguage, context, translateContent]);
+
+  return { translatedText, isLoading };
+};
+
+export default TranslationContext;
+===== frontend/src/context/UserAuthContext.js =====
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+// PHASE 10 (perf): localStorage flag we toggle on login/register/oauth-callback
+// success and clear on logout. The cookie itself is httpOnly so JS can't see it;
+// this flag lets us SKIP the startup `/api/users/me` probe for anonymous visitors,
+// shaving a round-trip off first paint.
+const USER_SESSION_FLAG = 'maja_user_session_active';
+
+export const markUserSessionActive = () => {
+  try { localStorage.setItem(USER_SESSION_FLAG, '1'); } catch (_e) {}
+};
+export const clearUserSessionActive = () => {
+  try { localStorage.removeItem(USER_SESSION_FLAG); } catch (_e) {}
+};
+const hasUserSessionFlag = () => {
+  try { return localStorage.getItem(USER_SESSION_FLAG) === '1'; } catch (_e) { return false; }
+};
+
+const UserAuthContext = createContext(null);
+
+export const UserAuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const checkAuth = useCallback(async () => {
+    try {
+      const { data } = await axios.get(`${API_URL}/api/users/me`, { withCredentials: true });
+      setUser(data);
+      markUserSessionActive();
+    } catch (_e) {
+      setUser(null);
+      clearUserSessionActive();
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // CRITICAL: if returning from Google OAuth, skip the /me probe.
+    // AuthCallback will exchange the session_id first.
+    if (typeof window !== 'undefined' && window.location.hash?.includes('session_id=')) {
+      setLoading(false);
+      return;
+    }
+    // PHASE 10 (perf): only probe /me if we have evidence of an existing session.
+    // For anonymous visitors this saves a network round-trip on startup.
+    if (!hasUserSessionFlag()) {
+      setLoading(false);
+      return;
+    }
+    checkAuth();
+  }, [checkAuth]);
+
+  const register = async ({ email, name, password, phone }) => {
+    const { data } = await axios.post(`${API_URL}/api/users/register`, { email, name, password, phone }, { withCredentials: true });
+    setUser(data);
+    markUserSessionActive();
+    return data;
+  };
+
+  const login = async ({ email, password }) => {
+    const { data } = await axios.post(`${API_URL}/api/users/login`, { email, password }, { withCredentials: true });
+    setUser(data);
+    markUserSessionActive();
+    return data;
+  };
+
+  const loginWithGoogle = () => {
+    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+    const redirectUrl = window.location.origin + '/auth/callback';
+    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+  };
+
+  const logout = async () => {
+    try { await axios.post(`${API_URL}/api/users/logout`, {}, { withCredentials: true }); } catch (_e) {}
+    setUser(null);
+    clearUserSessionActive();
+  };
+
+  return (
+    <UserAuthContext.Provider value={{ user, loading, register, login, loginWithGoogle, logout, refresh: checkAuth }}>
+      {children}
+    </UserAuthContext.Provider>
+  );
+};
+
+export const useUserAuth = () => {
+  const ctx = useContext(UserAuthContext);
+  if (!ctx) throw new Error('useUserAuth must be used within UserAuthProvider');
+  return ctx;
+};
+===== frontend/src/hooks/use-toast.js =====
+"use client";
+// Inspired by react-hot-toast library
+import * as React from "react"
+
+const TOAST_LIMIT = 1
+const TOAST_REMOVE_DELAY = 1000000
+
+const actionTypes = {
+  ADD_TOAST: "ADD_TOAST",
+  UPDATE_TOAST: "UPDATE_TOAST",
+  DISMISS_TOAST: "DISMISS_TOAST",
+  REMOVE_TOAST: "REMOVE_TOAST"
+}
+
+let count = 0
+
+function genId() {
+  count = (count + 1) % Number.MAX_SAFE_INTEGER
+  return count.toString();
+}
+
+const toastTimeouts = new Map()
+
+const addToRemoveQueue = (toastId) => {
+  if (toastTimeouts.has(toastId)) {
+    return
+  }
+
+  const timeout = setTimeout(() => {
+    toastTimeouts.delete(toastId)
+    dispatch({
+      type: "REMOVE_TOAST",
+      toastId: toastId,
+    })
+  }, TOAST_REMOVE_DELAY)
+
+  toastTimeouts.set(toastId, timeout)
+}
+
+export const reducer = (state, action) => {
+  switch (action.type) {
+    case "ADD_TOAST":
+      return {
+        ...state,
+        toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT),
+      };
+
+    case "UPDATE_TOAST":
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === action.toast.id ? { ...t, ...action.toast } : t),
+      };
+
+    case "DISMISS_TOAST": {
+      const { toastId } = action
+
+      // ! Side effects ! - This could be extracted into a dismissToast() action,
+      // but I'll keep it here for simplicity
+      if (toastId) {
+        addToRemoveQueue(toastId)
+      } else {
+        state.toasts.forEach((toast) => {
+          addToRemoveQueue(toast.id)
+        })
+      }
+
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === toastId || toastId === undefined
+            ? {
+                ...t,
+                open: false,
+              }
+            : t),
+      };
+    }
+    case "REMOVE_TOAST":
+      if (action.toastId === undefined) {
+        return {
+          ...state,
+          toasts: [],
+        }
+      }
+      return {
+        ...state,
+        toasts: state.toasts.filter((t) => t.id !== action.toastId),
+      };
+  }
+}
+
+const listeners = []
+
+let memoryState = { toasts: [] }
+
+function dispatch(action) {
+  memoryState = reducer(memoryState, action)
+  listeners.forEach((listener) => {
+    listener(memoryState)
+  })
+}
+
+function toast({
+  ...props
+}) {
+  const id = genId()
+
+  const update = (props) =>
+    dispatch({
+      type: "UPDATE_TOAST",
+      toast: { ...props, id },
+    })
+  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
+
+  dispatch({
+    type: "ADD_TOAST",
+    toast: {
+      ...props,
+      id,
+      open: true,
+      onOpenChange: (open) => {
+        if (!open) dismiss()
+      },
+    },
+  })
+
+  return {
+    id: id,
+    dismiss,
+    update,
+  }
+}
+
+function useToast() {
+  const [state, setState] = React.useState(memoryState)
+
+  React.useEffect(() => {
+    listeners.push(setState)
+    return () => {
+      const index = listeners.indexOf(setState)
+      if (index > -1) {
+        listeners.splice(index, 1)
+      }
+    };
+  }, [state])
+
+  return {
+    ...state,
+    toast,
+    dismiss: (toastId) => dispatch({ type: "DISMISS_TOAST", toastId }),
+  };
+}
+
+export { useToast, toast }
+===== frontend/src/hooks/useAbortController.js =====
+import { useEffect, useRef } from 'react';
+
+/**
+ * useAbortController — auto-aborts in-flight requests on unmount / route change.
+ *
+ * Usage:
+ *   const getSignal = useAbortController();
+ *   useEffect(() => {
+ *     axios.get('/api/...', { signal: getSignal() });
+ *   }, []);
+ *
+ * Or with fetch:
+ *   fetch(url, { signal: getSignal() })
+ */
+export default function useAbortController() {
+  const ref = useRef(null);
+
+  const get = () => {
+    if (!ref.current) {
+      ref.current = new AbortController();
+    }
+    return ref.current.signal;
+  };
+
+  useEffect(() => {
+    return () => {
+      try {
+        if (ref.current) ref.current.abort();
+      } catch (_) {}
+      ref.current = null;
+    };
+  }, []);
+
+  return get;
+}
+===== frontend/src/hooks/useAutoSave.js =====
+import { useEffect, useRef, useCallback, useState } from 'react';
+
+/**
+ * PHASE 29E: Auto-save hook for admin forms
+ * 
+ * Automatically saves form data to localStorage every 30 seconds
+ * Restores saved data on component mount
+ * 
+ * @param {string} storageKey - Unique key for localStorage
+ * @param {Object} formData - Current form data to save
+ * @param {Function} onRestore - Callback to restore saved data
+ * @param {boolean} enabled - Enable/disable auto-save (default: true)
+ * @param {number} interval - Save interval in milliseconds (default: 30000)
+ */
+export function useAutoSave(
+  storageKey,
+  formData,
+  onRestore,
+  enabled = true,
+  interval = 30000
+) {
+  const [lastSaved, setLastSaved] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const hasRestoredRef = useRef(false);
+  const saveTimeoutRef = useRef(null);
+
+  // Restore saved data on mount
+  useEffect(() => {
+    if (!hasRestoredRef.current && enabled && storageKey) {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const { data, timestamp } = JSON.parse(saved);
+          // Only restore if saved within last 24 hours
+          const age = Date.now() - timestamp;
+          if (age < 24 * 60 * 60 * 1000) {
+            onRestore(data);
+            setLastSaved(new Date(timestamp));
+            console.log(`[Auto-save] Restored draft from ${new Date(timestamp).toLocaleString()}`);
+          } else {
+            // Clear old draft
+            localStorage.removeItem(storageKey);
+          }
+        }
+      } catch (error) {
+        console.error('[Auto-save] Failed to restore draft:', error);
+      }
+      hasRestoredRef.current = true;
+    }
+  }, [storageKey, enabled, onRestore]);
+
+  // Auto-save effect
+  useEffect(() => {
+    if (!enabled || !storageKey) return;
+
+    const saveToLocalStorage = () => {
+      setIsSaving(true);
+      
+      // Use timeout to show saving indicator briefly
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      
+      saveTimeoutRef.current = setTimeout(() => {
+        try {
+          const dataToSave = {
+            data: formData,
+            timestamp: Date.now(),
+          };
+          localStorage.setItem(storageKey, JSON.stringify(dataToSave));
+          const now = new Date();
+          setLastSaved(now);
+          setIsSaving(false);
+          console.log('[Auto-save] Draft saved at', now.toLocaleTimeString());
+        } catch (error) {
+          console.error('[Auto-save] Failed to save draft:', error);
+          setIsSaving(false);
+        }
+      }, 500); // Brief delay to show saving indicator
+    };
+
+    const timer = setInterval(saveToLocalStorage, interval);
+
+    return () => {
+      clearInterval(timer);
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [storageKey, formData, enabled, interval]);
+
+  // Clear saved draft
+  const clearAutoSave = useCallback(() => {
+    if (storageKey) {
+      localStorage.removeItem(storageKey);
+      setLastSaved(null);
+      console.log('[Auto-save] Draft cleared');
+    }
+  }, [storageKey]);
+
+  return {
+    clearAutoSave,
+    lastSaved,
+    isSaving,
+  };
+}
+
+export default useAutoSave;
+===== frontend/src/hooks/useCanvasVisibility.js =====
+/**
+ * useCanvasVisibility — IntersectionObserver + document visibility hook.
+ *
+ * Returns { ref, visible } — pass `ref` to the canvas/container element and
+ * gate your requestAnimationFrame loop on `visible`. This pauses heavy
+ * animations when off-screen or when the tab is hidden, dramatically reducing
+ * CPU & battery use on mobile.
+ *
+ * Usage:
+ *   const { ref, visible } = useCanvasVisibility();
+ *   useEffect(() => {
+ *     if (!visible) return;        // animation paused — don't even start RAF
+ *     const id = requestAnimationFrame(tick);
+ *     return () => cancelAnimationFrame(id);
+ *   }, [visible]);
+ *   return <canvas ref={ref} />;
+ */
+import { useEffect, useRef, useState } from 'react';
+
+export default function useCanvasVisibility({ rootMargin = '50px' } = {}) {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    let intersecting = true;
+    let tabVisible = typeof document !== 'undefined' ? !document.hidden : true;
+
+    const apply = () => setVisible(intersecting && tabVisible);
+
+    let io;
+    if (typeof IntersectionObserver !== 'undefined') {
+      io = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            intersecting = e.isIntersecting;
+          }
+          apply();
+        },
+        { rootMargin, threshold: 0 }
+      );
+      io.observe(el);
+    } else {
+      intersecting = true;
+      apply();
+    }
+
+    const onVis = () => {
+      tabVisible = !document.hidden;
+      apply();
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    return () => {
+      if (io) io.disconnect();
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [rootMargin]);
+
+  return { ref, visible };
+}
+===== frontend/src/hooks/useFocusTrap.js =====
+import { useEffect, useRef } from 'react';
+
+/**
+ * PHASE 29D: Focus Trap Hook
+ * 
+ * Traps keyboard focus within a modal or dialog when open.
+ * Automatically restores focus to the triggering element when closed.
+ * 
+ * WCAG 2.4.3 - Focus Order (Level A)
+ * WCAG 2.1.2 - No Keyboard Trap (Level A)
+ * 
+ * @param {boolean} isOpen - Whether the modal is open
+ * @param {function} onClose - Function to call when ESC is pressed
+ * @returns {object} - Ref to attach to the modal container
+ */
+const useFocusTrap = (isOpen, onClose) => {
+  const containerRef = useRef(null);
+  const previousActiveElement = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Store the element that opened the modal
+    previousActiveElement.current = document.activeElement;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Get all focusable elements within the container
+    const getFocusableElements = () => {
+      return container.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+    };
+
+    // Focus first element
+    const focusableElements = getFocusableElements();
+    if (focusableElements.length > 0) {
+      focusableElements[0].focus();
+    }
+
+    // Handle Tab key navigation
+    const handleTab = (e) => {
+      const focusableElements = getFocusableElements();
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (e.key === 'Tab') {
+        if (e.shiftKey) {
+          // Shift + Tab
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement.focus();
+          }
+        } else {
+          // Tab
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement.focus();
+          }
+        }
+      }
+    };
+
+    // Handle ESC key
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    container.addEventListener('keydown', handleTab);
+    document.addEventListener('keydown', handleEscape);
+
+    // Cleanup
+    return () => {
+      container.removeEventListener('keydown', handleTab);
+      document.removeEventListener('keydown', handleEscape);
+
+      // Restore focus to the element that opened the modal
+      if (previousActiveElement.current) {
+        previousActiveElement.current.focus();
+      }
+    };
+  }, [isOpen, onClose]);
+
+  return containerRef;
+};
+
+export default useFocusTrap;
+===== frontend/src/hooks/useGalleryAccess.js =====
+import { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+const lsKey = (slug) => `gallery_device_token_${slug}`;
+const lsExpKey = (slug) => `gallery_device_exp_${slug}`;
+
+/**
+ * useGalleryAccess(slug)
+ * Centralised hook that:
+ *   • fetches the public privacy info for the gallery,
+ *   • restores any saved trusted-device token from localStorage,
+ *   • exposes `unlock(code, remember)` which calls the unlock endpoint
+ *     and persists the returned JWT for `remember_days`.
+ *
+ * Returns:
+ *   { loading, privacy, deviceToken, isProtected, isUnlocked, unlock(code, remember), logout(), error }
+ */
+export function useGalleryAccess(slug) {
+  const [loading, setLoading] = useState(true);
+  const [privacy, setPrivacy] = useState(null);
+  const [deviceToken, setDeviceToken] = useState(null);
+  const [error, setError] = useState('');
+
+  const loadStored = useCallback(() => {
+    try {
+      const tok = localStorage.getItem(lsKey(slug));
+      const exp = localStorage.getItem(lsExpKey(slug));
+      if (tok && exp && Date.parse(exp) > Date.now()) {
+        setDeviceToken(tok);
+        return tok;
+      }
+      // expired — clean up
+      if (tok) {
+        localStorage.removeItem(lsKey(slug));
+        localStorage.removeItem(lsExpKey(slug));
+      }
+    } catch (e) { /* SSR / private mode — ignore */ }
+    return null;
+  }, [slug]);
+
+  const fetchPrivacy = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const r = await axios.get(`${API_URL}/api/public/gallery/${slug}/privacy`);
+      setPrivacy(r.data);
+      loadStored();
+    } catch (e) {
+      // Endpoint failure shouldn't break the page — just treat as unprotected
+      setPrivacy({
+        enabled: false,
+        is_protected: false,
+        ai_face_match_enabled: true,
+        allow_downloads: true,
+        allow_share: true,
+        public_highlights_enabled: true,
+        private_full_gallery_enabled: true,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [slug, loadStored]);
+
+  useEffect(() => {
+    if (slug) fetchPrivacy();
+  }, [slug, fetchPrivacy]);
+
+  const unlock = useCallback(async (code, remember = true) => {
+    setError('');
+    try {
+      const r = await axios.post(
+        `${API_URL}/api/public/gallery/${slug}/unlock`,
+        { code, remember },
+      );
+      const token = r.data?.device_token;
+      const exp = r.data?.expires_at;
+      if (token) {
+        setDeviceToken(token);
+        if (remember && exp) {
+          try {
+            localStorage.setItem(lsKey(slug), token);
+            localStorage.setItem(lsExpKey(slug), exp);
+          } catch (e) { /* ignore quota errors */ }
+        }
+      }
+      return r.data;
+    } catch (e) {
+      const detail = e.response?.data?.detail || 'Unlock failed';
+      setError(typeof detail === 'string' ? detail : 'Unlock failed');
+      const err = new Error(detail);
+      err.status = e.response?.status;
+      throw err;
+    }
+  }, [slug]);
+
+  const logout = useCallback(() => {
+    setDeviceToken(null);
+    try {
+      localStorage.removeItem(lsKey(slug));
+      localStorage.removeItem(lsExpKey(slug));
+    } catch (e) { /* ignore */ }
+  }, [slug]);
+
+  const isProtected = !!(privacy?.is_protected);
+  const isUnlocked = !isProtected || !!deviceToken;
+
+  return { loading, privacy, deviceToken, isProtected, isUnlocked, unlock, logout, error, refresh: fetchPrivacy };
+}
+
+/** Helper to add the device-token header on outbound axios requests. */
+export const authHeader = (deviceToken) =>
+  deviceToken ? { 'X-Gallery-Device-Token': deviceToken } : {};
+===== frontend/src/hooks/useMotionDefaults.js =====
+import { useEffect, useState } from 'react';
+
+/**
+ * useReducedMotion — returns true when the user prefers reduced motion
+ * or when the device is a low-powered phone (heuristic: deviceMemory <= 4
+ * or hardwareConcurrency <= 4). Components should fall back to fades or
+ * skip animations entirely in this case.
+ */
+export function useReducedMotion() {
+  const [reduced, setReduced] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      if (mq.matches) return true;
+      const lowMem = navigator.deviceMemory && navigator.deviceMemory <= 2;
+      const lowCpu = navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2;
+      return Boolean(lowMem && lowCpu);
+    } catch (_) {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let mq;
+    try {
+      mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const handler = (e) => setReduced(e.matches);
+      if (mq.addEventListener) mq.addEventListener('change', handler);
+      else mq.addListener(handler);
+      return () => {
+        if (mq.removeEventListener) mq.removeEventListener('change', handler);
+        else mq.removeListener(handler);
+      };
+    } catch (_) {}
+    return undefined;
+  }, []);
+
+  return reduced;
+}
+
+/**
+ * MOTION_DEFAULTS — Use these defaults across motion components to keep
+ * Framer Motion lightweight:
+ *   - layout={false} unless you really need a layout animation
+ *   - only animate `opacity` and `transform`
+ *   - longer staggers prevent simultaneous animation storms
+ */
+export const MOTION_DEFAULTS = {
+  layout: false,
+  staggerChildren: 0.15,
+};
+===== frontend/src/hooks/usePricing.js =====
+/**
+ * usePricing — Single source of truth for credit costs across the app.
+ *
+ * Fetches `/api/public/pricing/effective?audience=...` which is populated
+ * by the Super-Admin Pricing Hub (`/super-admin/pricing`). Whenever an admin
+ * updates a row in the hub, this hook reflects the change on the next
+ * page-load (no app rebuild, no cache).
+ *
+ *   const pricing = usePricing('normal_user');   // or 'photographer'
+ *   pricing.themes[themeId]                       // theme cost in credits
+ *   pricing.designs[`${themeId}__${designKey}`]   // per-design cost
+ *   pricing.options[optionKey]                    // { credits, is_free }
+ *   pricing.packs                                 // [{ credits, price, label }]
+ *   pricing.plans                                 // photographer-only monthly plans
+ *   pricing.postSub                               // photographer post-sub config
+ *
+ * For surfaces that prefer never to suspend, every map exposes a
+ * `themeCost(themeId, fallback)` / `optionCredits(key, fallback)` helper
+ * that falls back to the legacy hardcoded value if the API is still loading
+ * or the row is missing.
+ */
+import { useEffect, useState, useCallback } from 'react';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+// Module-level cache so multiple components share one network call per audience.
+const _cache = new Map(); // audience -> { data, fetchedAt }
+const TTL_MS = 30_000;    // refetch at most every 30s
+
+async function _fetch(audience) {
+  const res = await axios.get(`${API_URL}/api/public/pricing/effective`, {
+    params: { audience },
+  });
+  return res.data;
+}
+
+const EMPTY = {
+  audience: '',
+  themes: {},
+  designs: {},
+  options: {},
+  packs: [],
+  plans: [],
+  post_sub: null,
+};
+
+export function usePricing(audience = 'normal_user') {
+  const [data, setData] = useState(() => {
+    const c = _cache.get(audience);
+    return c?.data || EMPTY;
+  });
+  const [loading, setLoading] = useState(() => !_cache.get(audience));
+  const [error, setError] = useState(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setError(null);
+      const fresh = await _fetch(audience);
+      _cache.set(audience, { data: fresh, fetchedAt: Date.now() });
+      setData(fresh);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [audience]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const cached = _cache.get(audience);
+    if (cached && Date.now() - cached.fetchedAt < TTL_MS) {
+      if (!cancelled) {
+        setData(cached.data);
+        setLoading(false);
+      }
+      return () => { cancelled = true; };
+    }
+    refresh();
+    return () => { cancelled = true; };
+  }, [audience, refresh]);
+
+  // Convenient lookup helpers with fallbacks.
+  const themeCost = (themeId, fallback = 1) => {
+    const v = data?.themes?.[themeId];
+    return (typeof v === 'number') ? v : fallback;
+  };
+  const designCost = (themeId, designKey, fallback = null) => {
+    const v = data?.designs?.[`${themeId}__${designKey}`];
+    return (typeof v === 'number') ? v : fallback;
+  };
+  const optionCredits = (optionKey, fallback = 0) => {
+    const row = data?.options?.[optionKey];
+    if (!row) return fallback;
+    if (row.is_free) return 0;
+    return (typeof row.credits === 'number') ? row.credits : fallback;
+  };
+  const optionIsFree = (optionKey, fallback = false) => {
+    const row = data?.options?.[optionKey];
+    return row ? !!row.is_free : fallback;
+  };
+
+  return {
+    ...data,
+    postSub: data?.post_sub || null,
+    featurePacks: data?.feature_packs || [],
+    loading,
+    error,
+    refresh,
+    themeCost,
+    designCost,
+    optionCredits,
+    optionIsFree,
+  };
+}
+
+export default usePricing;
+===== frontend/src/hooks/useTheme.js =====
+import { useState, useEffect, useCallback } from 'react';
+import { getThemeById, applyTheme, isValidThemeId, THEME_METADATA } from '../config/themeSystem';
+
+/**
+ * useTheme Hook - Production-Ready Theme Management
+ * 
+ * Provides theme state management and utilities for React components.
+ * Supports dynamic theme switching with automatic CSS variable application.
+ * 
+ * @param {string} initialThemeId - Initial theme ID (default: temple_divine)
+ * @returns {object} Theme utilities and state
+ * 
+ * Usage:
+ * const { theme, themeId, switchTheme, features } = useTheme('royal_classic');
+ */
+export const useTheme = (initialThemeId = THEME_METADATA.defaultTheme) => {
+  // Validate and set initial theme
+  const validInitialTheme = isValidThemeId(initialThemeId) 
+    ? initialThemeId 
+    : THEME_METADATA.defaultTheme;
+  
+  const [themeId, setThemeId] = useState(validInitialTheme);
+  const [theme, setTheme] = useState(() => getThemeById(validInitialTheme));
+  
+  /**
+   * Switch to a new theme
+   * @param {string} newThemeId - The theme ID to switch to
+   * @returns {boolean} True if switch was successful
+   */
+  const switchTheme = useCallback((newThemeId) => {
+    if (!isValidThemeId(newThemeId)) {
+      console.warn(`Invalid theme ID: ${newThemeId}. Using default theme.`);
+      return false;
+    }
+    
+    const newTheme = getThemeById(newThemeId);
+    setThemeId(newThemeId);
+    setTheme(newTheme);
+    
+    // Apply theme CSS variables
+    applyTheme(newThemeId);
+    
+    return true;
+  }, []);
+  
+  /**
+   * Apply current theme on mount and when themeId changes
+   */
+  useEffect(() => {
+    applyTheme(themeId);
+  }, [themeId]);
+  
+  /**
+   * Get theme features (hasLord, hasGantalu, hasFire)
+   */
+  const features = {
+    hasLord: theme.hasLord,
+    hasGantalu: theme.hasGantalu,
+    hasFire: theme.hasFire
+  };
+  
+  /**
+   * Get specific accent color by index
+   */
+  const getAccent = useCallback((index = 0) => {
+    return theme.accentColors[index] || theme.accentColors[0];
+  }, [theme]);
+  
+  /**
+   * Check if current theme supports a feature
+   */
+  const supportsFeature = useCallback((feature) => {
+    return theme[feature] === true;
+  }, [theme]);
+  
+  return {
+    theme,
+    themeId,
+    switchTheme,
+    features,
+    getAccent,
+    supportsFeature,
+    // Direct access to theme properties
+    colors: theme.colors,
+    fonts: theme.fonts,
+    spacing: theme.spacing,
+    card: theme.card,
+    image: theme.image,
+    accentColors: theme.accentColors,
+    backgroundColor: theme.backgroundColor,
+    name: theme.name
+  };
+};
+
+export default useTheme;
+===== frontend/src/hooks/useThemeDetection.js =====
+import { useState, useEffect } from 'react';
+
+/**
+ * useThemeDetection - Detects current theme based on page content
+ * Returns: { theme, setTheme }
+ */
+export const useThemeDetection = () => {
+  const [theme, setTheme] = useState('temple');
+
+  useEffect(() => {
+    // Detect theme from URL, page content, or user selection
+    const detectTheme = () => {
+      const path = window.location.pathname.toLowerCase();
+      const body = document.body.textContent.toLowerCase();
+
+      // Theme keywords detection
+      if (path.includes('beach') || body.includes('beach') || body.includes('ocean')) {
+        return 'beach';
+      } else if (path.includes('mughal') || body.includes('mughal') || body.includes('royal')) {
+        return 'mughal';
+      } else if (path.includes('nature') || body.includes('garden') || body.includes('outdoor')) {
+        return 'nature';
+      } else if (path.includes('minimal') || body.includes('modern') || body.includes('simple')) {
+        return 'minimal';
+      } else {
+        return 'temple'; // Default
+      }
+    };
+
+    setTheme(detectTheme());
+  }, []);
+
+  return { theme, setTheme };
+};
+
+/**
+ * getThemeFromInvitation - Extract theme from invitation data
+ */
+export const getThemeFromInvitation = (invitation) => {
+  if (!invitation) return 'temple';
+
+  const themeMap = {
+    'temple': 'temple',
+    'beach': 'beach',
+    'mughal': 'mughal',
+    'nature': 'nature',
+    'minimal': 'minimal',
+    'traditional': 'temple',
+    'royal': 'mughal',
+    'outdoor': 'nature',
+    'modern': 'minimal'
+  };
+
+  const invitationTheme = invitation.theme?.toLowerCase() || '';
+  return themeMap[invitationTheme] || 'temple';
+};
+===== frontend/src/hooks/useThreeJsRuntime.js =====
+import { useEffect, useRef, useState } from 'react';
+
+const isMobileDevice = () => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(ua) ||
+    (typeof window !== 'undefined' && window.innerWidth <= 768);
+};
+
+/**
+ * useThreeJsRuntime — central runtime hints for Three.js scenes:
+ *   - delay: don't init the renderer until the page's first frame committed
+ *   - mobile: scale renderer down to 0.75x on mobile
+ *   - frameSkip: render every 2nd frame on mobile (~30 FPS cap)
+ *   - supportsOffscreen: hint for moving to OffscreenCanvas if possible
+ *
+ * Usage:
+ *   const { ready, isMobile, scale, shouldRenderFrame } = useThreeJsRuntime();
+ *   if (!ready) return null;
+ *   const animate = () => {
+ *     if (!shouldRenderFrame()) { rafId = requestAnimationFrame(animate); return; }
+ *     renderer.render(scene, camera);
+ *     rafId = requestAnimationFrame(animate);
+ *   };
+ */
+export default function useThreeJsRuntime({ delayMs = 500 } = {}) {
+  const [ready, setReady] = useState(false);
+  const isMobile = useRef(isMobileDevice()).current;
+  const scale = isMobile ? 0.75 : 1;
+  const frameCounter = useRef(0);
+
+  useEffect(() => {
+    let id;
+    if (typeof requestIdleCallback !== 'undefined') {
+      id = requestIdleCallback(() => setReady(true), { timeout: delayMs + 200 });
+    } else {
+      id = setTimeout(() => setReady(true), delayMs);
+    }
+    return () => {
+      if (typeof cancelIdleCallback !== 'undefined' && typeof id === 'number') {
+        try { cancelIdleCallback(id); } catch (_) {}
+      } else {
+        clearTimeout(id);
+      }
+    };
+  }, [delayMs]);
+
+  const shouldRenderFrame = () => {
+    frameCounter.current += 1;
+    if (isMobile && frameCounter.current % 2 === 0) return false;
+    return true;
+  };
+
+  const supportsOffscreen = typeof OffscreenCanvas !== 'undefined';
+
+  return { ready, isMobile, scale, shouldRenderFrame, supportsOffscreen };
+}
+===== frontend/src/hooks/useUnsavedChanges.js =====
+import { useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+
+/**
+ * PHASE 29E: Unsaved changes warning hook
+ * 
+ * Warns user before navigating away from page with unsaved changes
+ * Blocks browser navigation (back/forward/close) and React Router navigation
+ * 
+ * @param {boolean} hasUnsavedChanges - Whether there are unsaved changes
+ * @param {string} message - Warning message to display
+ */
+export function useUnsavedChanges(
+  hasUnsavedChanges,
+  message = 'You have unsaved changes. Are you sure you want to leave?'
+) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Block browser navigation (reload, close, back/forward)
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = message; // Required for Chrome
+        return message;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges, message]);
+
+  // Custom navigation with confirmation
+  const navigateWithConfirmation = useCallback(
+    (to, options = {}) => {
+      if (hasUnsavedChanges) {
+        const confirmed = window.confirm(message);
+        if (!confirmed) {
+          return false;
+        }
+      }
+      navigate(to, options);
+      return true;
+    },
+    [hasUnsavedChanges, message, navigate]
+  );
+
+  return {
+    navigateWithConfirmation,
+    hasUnsavedChanges,
+  };
+}
+
+export default useUnsavedChanges;
+===== frontend/src/utils/analyticsTracker.js =====
+/**
+ * PHASE 30: Analytics Tracker Utility
+ * 
+ * Lightweight tracking for guest behavior analytics
+ * - NO cookies
+ * - NO personal data
+ * - NO admin tracking
+ * - Privacy-first approach
+ */
+
+// Generate unique session ID (stored in sessionStorage, cleared on browser close)
+const getSessionId = () => {
+  let sessionId = sessionStorage.getItem('analytics_session_id');
+  if (!sessionId) {
+    sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    sessionStorage.setItem('analytics_session_id', sessionId);
+  }
+  return sessionId;
+};
+
+// Detect device type
+const getDeviceType = () => {
+  const ua = navigator.userAgent;
+  if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) {
+    return 'tablet';
+  }
+  if (/Mobile|Android|iP(hone|od)|IEMobile|BlackBerry|Kindle|Silk-Accelerated|(hpw|web)OS|Opera M(obi|ini)/.test(ua)) {
+    return 'mobile';
+  }
+  return 'desktop';
+};
+
+// Check if user is an admin (logged in)
+const isAdmin = () => {
+  // Check if admin token exists in localStorage
+  const token = localStorage.getItem('adminToken');
+  return !!token;
+};
+
+// Send tracking event to backend
+const sendTrackingEvent = async (eventData) => {
+  // Don't track if user is admin
+  if (isAdmin()) {
+    return;
+  }
+
+  try {
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+    await fetch(`${backendUrl}/api/analytics/track`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(eventData),
+    });
+  } catch (error) {
+    // Silently fail - don't interrupt user experience
+    console.debug('Analytics tracking skipped:', error.message);
+  }
+};
+
+// Track page view
+export const trackPageView = (profileId, eventId = null) => {
+  sendTrackingEvent({
+    profile_id: profileId,
+    event_id: eventId,
+    session_id: getSessionId(),
+    event_type: 'page_view',
+    device_type: getDeviceType(),
+    user_agent: navigator.userAgent,
+  });
+};
+
+// Track gallery opened
+export const trackGalleryOpened = (profileId, eventId = null) => {
+  sendTrackingEvent({
+    profile_id: profileId,
+    event_id: eventId,
+    session_id: getSessionId(),
+    event_type: 'gallery_opened',
+    device_type: getDeviceType(),
+  });
+};
+
+// Track video played
+export const trackVideoPlayed = (profileId, eventId = null, videoType = 'hero') => {
+  sendTrackingEvent({
+    profile_id: profileId,
+    event_id: eventId,
+    session_id: getSessionId(),
+    event_type: 'video_played',
+    device_type: getDeviceType(),
+    event_metadata: { video_type: videoType },
+  });
+};
+
+// Track music unmuted
+export const trackMusicUnmuted = (profileId, eventId = null) => {
+  sendTrackingEvent({
+    profile_id: profileId,
+    event_id: eventId,
+    session_id: getSessionId(),
+    event_type: 'music_unmuted',
+    device_type: getDeviceType(),
+  });
+};
+
+// Track map opened
+export const trackMapOpened = (profileId, eventId = null) => {
+  sendTrackingEvent({
+    profile_id: profileId,
+    event_id: eventId,
+    session_id: getSessionId(),
+    event_type: 'map_opened',
+    device_type: getDeviceType(),
+  });
+};
+
+// Track RSVP submitted
+export const trackRSVPSubmitted = (profileId, eventId = null) => {
+  sendTrackingEvent({
+    profile_id: profileId,
+    event_id: eventId,
+    session_id: getSessionId(),
+    event_type: 'rsvp_submitted',
+    device_type: getDeviceType(),
+  });
+};
+
+// Track scroll depth
+let scrollDepthTracked = {
+  '25': false,
+  '50': false,
+  '75': false,
+  '100': false,
+};
+
+export const initScrollTracking = (profileId, eventId = null) => {
+  // Reset on new page
+  scrollDepthTracked = {
+    '25': false,
+    '50': false,
+    '75': false,
+    '100': false,
+  };
+
+  const handleScroll = () => {
+    const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const scrolled = window.scrollY;
+    const scrollPercent = (scrolled / scrollHeight) * 100;
+
+    if (scrollPercent >= 25 && !scrollDepthTracked['25']) {
+      scrollDepthTracked['25'] = true;
+      sendTrackingEvent({
+        profile_id: profileId,
+        event_id: eventId,
+        session_id: getSessionId(),
+        event_type: 'scroll_25',
+        device_type: getDeviceType(),
+      });
+    }
+
+    if (scrollPercent >= 50 && !scrollDepthTracked['50']) {
+      scrollDepthTracked['50'] = true;
+      sendTrackingEvent({
+        profile_id: profileId,
+        event_id: eventId,
+        session_id: getSessionId(),
+        event_type: 'scroll_50',
+        device_type: getDeviceType(),
+      });
+    }
+
+    if (scrollPercent >= 75 && !scrollDepthTracked['75']) {
+      scrollDepthTracked['75'] = true;
+      sendTrackingEvent({
+        profile_id: profileId,
+        event_id: eventId,
+        session_id: getSessionId(),
+        event_type: 'scroll_75',
+        device_type: getDeviceType(),
+      });
+    }
+
+    if (scrollPercent >= 100 && !scrollDepthTracked['100']) {
+      scrollDepthTracked['100'] = true;
+      sendTrackingEvent({
+        profile_id: profileId,
+        event_id: eventId,
+        session_id: getSessionId(),
+        event_type: 'scroll_100',
+        device_type: getDeviceType(),
+      });
+    }
+  };
+
+  window.addEventListener('scroll', handleScroll, { passive: true });
+
+  // Return cleanup function
+  return () => {
+    window.removeEventListener('scroll', handleScroll);
+  };
+};
+
+// Track time spent on page
+export const initTimeTracking = (profileId, eventId = null) => {
+  const startTime = Date.now();
+
+  const sendTimeSpent = () => {
+    const timeSpent = Math.floor((Date.now() - startTime) / 1000);
+    if (timeSpent > 0) {
+      sendTrackingEvent({
+        profile_id: profileId,
+        event_id: eventId,
+        session_id: getSessionId(),
+        event_type: 'page_view',
+        device_type: getDeviceType(),
+        time_spent_seconds: timeSpent,
+      });
+    }
+  };
+
+  // Send time spent when user leaves page
+  window.addEventListener('beforeunload', sendTimeSpent);
+
+  // Return cleanup function
+  return () => {
+    window.removeEventListener('beforeunload', sendTimeSpent);
+  };
+};
+===== frontend/src/utils/deviceFingerprint.js =====
+/**
+ * PHASE 32: Device Fingerprinting Utility
+ * 
+ * Generates a simple device fingerprint for tracking submissions
+ * Uses browser characteristics to create a unique-ish identifier
+ * Stored in localStorage for persistence
+ */
+
+/**
+ * Generate a simple hash from a string
+ */
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
+}
+
+/**
+ * Get device fingerprint components
+ */
+function getDeviceInfo() {
+  const nav = navigator;
+  const screen = window.screen;
+  
+  return {
+    userAgent: nav.userAgent || '',
+    language: nav.language || '',
+    platform: nav.platform || '',
+    hardwareConcurrency: nav.hardwareConcurrency || 0,
+    screenResolution: `${screen.width}x${screen.height}`,
+    screenColorDepth: screen.colorDepth || 0,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    cookieEnabled: nav.cookieEnabled,
+  };
+}
+
+/**
+ * Generate device fingerprint
+ * Combines browser characteristics into a unique identifier
+ */
+export function generateDeviceFingerprint() {
+  const info = getDeviceInfo();
+  
+  // Combine all info into a string
+  const fingerprintString = [
+    info.userAgent,
+    info.language,
+    info.platform,
+    info.hardwareConcurrency,
+    info.screenResolution,
+    info.screenColorDepth,
+    info.timezone,
+    info.cookieEnabled ? '1' : '0',
+  ].join('|');
+  
+  // Generate hash
+  const fingerprint = simpleHash(fingerprintString);
+  
+  return `device_${fingerprint}`;
+}
+
+/**
+ * Get or create device ID
+ * Persists in localStorage for consistent tracking across page loads
+ */
+export function getDeviceId() {
+  const storageKey = 'wedding_device_id';
+  
+  try {
+    // Try to get existing device ID
+    let deviceId = localStorage.getItem(storageKey);
+    
+    if (!deviceId) {
+      // Generate new device ID
+      deviceId = generateDeviceFingerprint();
+      
+      // Store in localStorage
+      localStorage.setItem(storageKey, deviceId);
+    }
+    
+    return deviceId;
+  } catch (error) {
+    // localStorage might be blocked (private browsing)
+    // Generate temporary device ID (won't persist)
+    console.warn('Could not access localStorage:', error);
+    return generateDeviceFingerprint();
+  }
+}
+
+/**
+ * Clear device ID (for testing)
+ */
+export function clearDeviceId() {
+  const storageKey = 'wedding_device_id';
+  try {
+    localStorage.removeItem(storageKey);
+  } catch (error) {
+    console.warn('Could not clear device ID:', error);
+  }
+}
+
+export default {
+  generateDeviceFingerprint,
+  getDeviceId,
+  clearDeviceId,
+};
+===== frontend/src/utils/languageLoader.js =====
+/**
+ * Language Loader with Lazy Loading and Caching
+ * 
+ * Loads language JSON files on-demand and caches them in memory.
+ * Provides fallback to English if translation key is missing.
+ */
+
+// In-memory cache for loaded language files
+const languageCache = {};
+
+// Language metadata
+export const LANGUAGES = [
+  { code: 'english', name: 'English', nativeName: 'English', file: 'en.json' },
+  { code: 'telugu', name: 'Telugu', nativeName: 'తెలుగు', file: 'te.json' },
+  { code: 'hindi', name: 'Hindi', nativeName: 'हिन्दी', file: 'hi.json' },
+  { code: 'tamil', name: 'Tamil', nativeName: 'தமிழ்', file: 'ta.json' },
+  { code: 'kannada', name: 'Kannada', nativeName: 'ಕನ್ನಡ', file: 'kn.json' },
+  { code: 'malayalam', name: 'Malayalam', nativeName: 'മലയാളം', file: 'ml.json' }
+];
+
+/**
+ * Get language metadata by code
+ */
+export const getLanguageMetadata = (code) => {
+  return LANGUAGES.find(lang => lang.code === code);
+};
+
+/**
+ * Load language file (lazy loading with caching)
+ */
+export const loadLanguage = async (languageCode) => {
+  // Check cache first
+  if (languageCache[languageCode]) {
+    return languageCache[languageCode];
+  }
+
+  // Find language metadata
+  const langMeta = getLanguageMetadata(languageCode);
+  if (!langMeta) {
+    console.warn(`Language ${languageCode} not found, falling back to English`);
+    return loadLanguage('english');
+  }
+
+  try {
+    // Fetch JSON file
+    const response = await fetch(`/lang/${langMeta.file}`);
+    if (!response.ok) {
+      throw new Error(`Failed to load ${langMeta.file}`);
+    }
+
+    const languageData = await response.json();
+    
+    // Cache the loaded language
+    languageCache[languageCode] = languageData;
+    
+    return languageData;
+  } catch (error) {
+    console.error(`Error loading language ${languageCode}:`, error);
+    
+    // Fallback to English
+    if (languageCode !== 'english') {
+      return loadLanguage('english');
+    }
+    
+    // Return empty object if even English fails
+    return {};
+  }
+};
+
+/**
+ * Get text from language data with fallback
+ * 
+ * @param {string} languageCode - Current language code
+ * @param {string} section - Section name (e.g., 'opening', 'couple')
+ * @param {string} key - Text key (e.g., 'title', 'groomLabel')
+ * @param {object} customText - Optional custom text overrides
+ * @returns {Promise<string>} - Translated text
+ */
+export const getText = async (languageCode, section, key, customText = {}) => {
+  // Check custom text first
+  if (customText[languageCode]?.[`${section}.${key}`]) {
+    return customText[languageCode][`${section}.${key}`];
+  }
+
+  // Load language data
+  const langData = await loadLanguage(languageCode);
+  
+  // Get text from section
+  if (langData[section]?.[key]) {
+    return langData[section][key];
+  }
+
+  // Fallback to English
+  if (languageCode !== 'english') {
+    const englishData = await loadLanguage('english');
+    return englishData[section]?.[key] || key;
+  }
+
+  // Return key as fallback
+  return key;
+};
+
+/**
+ * Get all text for a section
+ * 
+ * @param {string} languageCode - Current language code
+ * @param {string} section - Section name
+ * @param {object} customText - Optional custom text overrides
+ * @returns {Promise<object>} - Section text object
+ */
+export const getSectionText = async (languageCode, section, customText = {}) => {
+  // Load language data
+  const langData = await loadLanguage(languageCode);
+  
+  // Get section data
+  const sectionData = langData[section] || {};
+  
+  // Merge with custom text
+  const result = { ...sectionData };
+  
+  if (customText[languageCode]) {
+    Object.keys(customText[languageCode]).forEach(customKey => {
+      if (customKey.startsWith(`${section}.`)) {
+        const key = customKey.replace(`${section}.`, '');
+        result[key] = customText[languageCode][customKey];
+      }
+    });
+  }
+  
+  return result;
+};
+
+/**
+ * Preload languages (optional optimization)
+ */
+export const preloadLanguages = async (languageCodes) => {
+  const promises = languageCodes.map(code => loadLanguage(code));
+  await Promise.all(promises);
+};
+
+/**
+ * Clear language cache (useful for testing)
+ */
+export const clearLanguageCache = () => {
+  Object.keys(languageCache).forEach(key => delete languageCache[key]);
+};
+===== frontend/src/utils/mediaUrl.js =====
+/**
+ * mediaUrl.js — Frontend URL helper for backend-served media.
+ *
+ * Background:
+ *   The backend exposes static files at BOTH `/uploads/...` and `/api/uploads/...`.
+ *   In production the Kubernetes ingress only routes `/api/*` paths to the FastAPI
+ *   service — everything else falls through to the React dev server (which returns
+ *   index.html for any URL it doesn't recognise). That made every uploaded image
+ *   render as a broken icon, because the browser fetched the URL and got HTML
+ *   back instead of an image.
+ *
+ *   This helper normalises any URL the backend ever wrote into the database
+ *   (legacy `/uploads/...` or new `/api/uploads/...`) into a fully-qualified URL
+ *   that always lands on the backend through the ingress.
+ *
+ * Usage:
+ *   import { resolveMediaUrl } from '@/utils/mediaUrl';
+ *   <img src={resolveMediaUrl(value)} />
+ */
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+export function resolveMediaUrl(value) {
+  if (!value) return '';
+  // Already absolute? leave it alone.
+  if (/^https?:\/\//i.test(value)) {
+    // Catch absolute URLs that still embed the bad `/uploads/` path
+    // (e.g. https://host/uploads/...). Rewrite them too.
+    return value.replace(/(https?:\/\/[^/]+)\/uploads\//i, `$1/api/uploads/`);
+  }
+  // Make sure we always use the /api/uploads/... path so the ingress
+  // routes it to the backend instead of the React SPA fallback.
+  let path = value;
+  if (path.startsWith('/uploads/')) path = '/api' + path;
+  if (!path.startsWith('/')) path = '/' + path;
+  return `${BACKEND_URL}${path}`;
+}
+
+export default resolveMediaUrl;
+===== frontend/src/lib/utils.js =====
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs) {
+  return twMerge(clsx(inputs));
+}
+===== frontend/src/config/designRegistry.js =====
+/**
+ * PHASE 18 - EVENT DESIGN SYSTEM
+ * Central Design Registry for Wedding Events
+ * 
+ * This registry defines 8 wedding-specific designs with:
+ * - Base colors and gradients
+ * - Texture overlays
+ * - Decorations (flowers, gantalu, dheepalu)
+ * - Lord image rules
+ */
+
+// Event Types
+export const EVENT_TYPES = {
+  ENGAGEMENT: 'engagement',
+  HALDI: 'haldi',
+  MEHNDI: 'mehendi',
+  MARRIAGE: 'marriage',
+  RECEPTION: 'reception'
+};
+
+// Lord Rules per Event
+export const LORD_RULES = {
+  [EVENT_TYPES.ENGAGEMENT]: { allowed: true, mandatory: false },
+  [EVENT_TYPES.HALDI]: { allowed: false, mandatory: false },
+  [EVENT_TYPES.MEHNDI]: { allowed: false, mandatory: false },
+  [EVENT_TYPES.MARRIAGE]: { allowed: true, mandatory: true },
+  [EVENT_TYPES.RECEPTION]: { allowed: true, mandatory: false }
+};
+
+// Design 1: Elegant Rings (Engagement)
+const DESIGN_1 = {
+  id: 'design_1',
+  name: 'Elegant Rings',
+  eventTypes: ['engagement'],
+  base_colors: {
+    primary: '#FFB6C1',    // Soft pink
+    secondary: '#FFE4E1',  // Misty rose
+    accent: '#FFD700',     // Gold
+    text: '#8B4513'        // Saddle brown
+  },
+  gradient: {
+    type: 'radial',
+    colors: ['#FFE4E1', '#FFB6C1', '#FFC0CB'],
+    stops: [0, 50, 100]
+  },
+  background: {
+    base: 'linear-gradient(135deg, #FFE4E1 0%, #FFB6C1 50%, #FFC0CB 100%)',
+    overlay: 'radial-gradient(circle at 50% 50%, rgba(255,215,0,0.1) 0%, transparent 70%)'
+  },
+  texture: {
+    type: 'rings',
+    opacity: 0.15,
+    pattern: `<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="30" cy="30" r="20" fill="none" stroke="rgba(255,215,0,0.3)" stroke-width="2"/>
+      <circle cx="50" cy="30" r="20" fill="none" stroke="rgba(255,215,0,0.3)" stroke-width="2"/>
+    </svg>`
+  },
+  decorations: {
+    flowers: {
+      enabled: true,
+      type: 'rose',
+      colors: ['#FFB6C1', '#FFC0CB', '#FF69B4'],
+      positions: ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+    },
+    gantalu: {
+      enabled: true,
+      color: '#FFD700',
+      positions: ['top-left', 'top-right']
+    },
+    dheepalu: {
+      enabled: true,
+      color: '#FFD700',
+      positions: ['bottom-left', 'bottom-right']
+    }
+  },
+  lord_allowed: true,
+  lord_mandatory: false,
+  hero_opening: {
+    duration: 2000,
+    show_lord: true,
+    show_gantalu: true,
+    show_dheepalu: true
+  }
+};
+
+// Design 2: Pastel Dreams (Engagement)
+const DESIGN_2 = {
+  id: 'design_2',
+  name: 'Pastel Dreams',
+  eventTypes: ['engagement'],
+  base_colors: {
+    primary: '#E6E6FA',    // Lavender
+    secondary: '#FFF0F5',  // Lavender blush
+    accent: '#DDA0DD',     // Plum
+    text: '#4B0082'        // Indigo
+  },
+  gradient: {
+    type: 'linear',
+    colors: ['#FFF0F5', '#E6E6FA', '#DDA0DD'],
+    stops: [0, 50, 100]
+  },
+  background: {
+    base: 'linear-gradient(180deg, #FFF0F5 0%, #E6E6FA 50%, #DDA0DD 100%)',
+    overlay: 'radial-gradient(ellipse at 50% 30%, rgba(221,160,221,0.2) 0%, transparent 60%)'
+  },
+  texture: {
+    type: 'hearts',
+    opacity: 0.1,
+    pattern: `<svg width="80" height="80" xmlns="http://www.w3.org/2000/svg">
+      <path d="M40,70 C30,60 10,45 10,30 C10,20 17,13 25,13 C30,13 35,16 40,22 C45,16 50,13 55,13 C63,13 70,20 70,30 C70,45 50,60 40,70z" fill="rgba(221,160,221,0.2)"/>
+    </svg>`
+  },
+  decorations: {
+    flowers: {
+      enabled: true,
+      type: 'mixed',
+      colors: ['#E6E6FA', '#DDA0DD', '#FFB6C1'],
+      positions: ['top-corners', 'bottom-corners']
+    },
+    gantalu: {
+      enabled: true,
+      color: '#DDA0DD',
+      positions: ['top-left', 'top-right']
+    },
+    dheepalu: {
+      enabled: true,
+      color: '#DDA0DD',
+      positions: ['bottom-left', 'bottom-right']
+    }
+  },
+  lord_allowed: true,
+  lord_mandatory: false,
+  hero_opening: {
+    duration: 2000,
+    show_lord: true,
+    show_gantalu: true,
+    show_dheepalu: true
+  }
+};
+
+// Design 3: Turmeric Glow (Haldi)
+const DESIGN_3 = {
+  id: 'design_3',
+  name: 'Turmeric Glow',
+  eventTypes: ['haldi'],
+  base_colors: {
+    primary: '#FFD700',    // Gold
+    secondary: '#FFFF00',  // Yellow
+    accent: '#FFA500',     // Orange
+    text: '#8B4500'        // Dark orange
+  },
+  gradient: {
+    type: 'radial',
+    colors: ['#FFFFE0', '#FFD700', '#FFA500'],
+    stops: [0, 50, 100]
+  },
+  background: {
+    base: 'radial-gradient(circle at 50% 50%, #FFFFE0 0%, #FFD700 50%, #FFA500 100%)',
+    overlay: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,165,0,0.05) 10px, rgba(255,165,0,0.05) 20px)'
+  },
+  texture: {
+    type: 'bindelu',
+    opacity: 0.12,
+    pattern: `<svg width="60" height="60" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="30" cy="30" r="4" fill="rgba(255,165,0,0.3)"/>
+      <circle cx="20" cy="20" r="3" fill="rgba(255,165,0,0.25)"/>
+      <circle cx="40" cy="20" r="3" fill="rgba(255,165,0,0.25)"/>
+      <circle cx="20" cy="40" r="3" fill="rgba(255,165,0,0.25)"/>
+      <circle cx="40" cy="40" r="3" fill="rgba(255,165,0,0.25)"/>
+    </svg>`
+  },
+  decorations: {
+    flowers: {
+      enabled: true,
+      type: 'marigold',
+      colors: ['#FFD700', '#FFA500', '#FFFF00'],
+      positions: ['scattered']
+    },
+    gantalu: {
+      enabled: false,
+      color: null,
+      positions: []
+    },
+    dheepalu: {
+      enabled: false,
+      color: null,
+      positions: []
+    }
+  },
+  lord_allowed: false,
+  lord_mandatory: false,
+  hero_opening: {
+    duration: 2000,
+    show_lord: false,
+    show_gantalu: false,
+    show_dheepalu: false
+  }
+};
+
+// Design 4: Sunshine Celebration (Haldi)
+const DESIGN_4 = {
+  id: 'design_4',
+  name: 'Sunshine Celebration',
+  eventTypes: ['haldi'],
+  base_colors: {
+    primary: '#FFEB3B',    // Bright yellow
+    secondary: '#FFF9C4',  // Light yellow
+    accent: '#FF9800',     // Deep orange
+    text: '#F57C00'        // Orange
+  },
+  gradient: {
+    type: 'linear',
+    colors: ['#FFF9C4', '#FFEB3B', '#FFC107'],
+    stops: [0, 50, 100]
+  },
+  background: {
+    base: 'linear-gradient(135deg, #FFF9C4 0%, #FFEB3B 50%, #FFC107 100%)',
+    overlay: 'radial-gradient(circle at 30% 40%, rgba(255,152,0,0.1) 0%, transparent 50%)'
+  },
+  texture: {
+    type: 'dots',
+    opacity: 0.08,
+    pattern: `<svg width="50" height="50" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="25" cy="25" r="5" fill="rgba(255,152,0,0.2)"/>
+      <circle cx="10" cy="10" r="3" fill="rgba(255,152,0,0.15)"/>
+      <circle cx="40" cy="10" r="3" fill="rgba(255,152,0,0.15)"/>
+    </svg>`
+  },
+  decorations: {
+    flowers: {
+      enabled: true,
+      type: 'sunflower',
+      colors: ['#FFEB3B', '#FFC107', '#FF9800'],
+      positions: ['border']
+    },
+    gantalu: {
+      enabled: false,
+      color: null,
+      positions: []
+    },
+    dheepalu: {
+      enabled: false,
+      color: null,
+      positions: []
+    }
+  },
+  lord_allowed: false,
+  lord_mandatory: false,
+  hero_opening: {
+    duration: 2000,
+    show_lord: false,
+    show_gantalu: false,
+    show_dheepalu: false
+  }
+};
+
+// Design 5: Mehndi Magic (Mehndi)
+const DESIGN_5 = {
+  id: 'design_5',
+  name: 'Mehndi Magic',
+  eventTypes: ['mehendi'],
+  base_colors: {
+    primary: '#2E7D32',    // Green
+    secondary: '#81C784',  // Light green
+    accent: '#4CAF50',     // Medium green
+    text: '#1B5E20'        // Dark green
+  },
+  gradient: {
+    type: 'radial',
+    colors: ['#C8E6C9', '#81C784', '#4CAF50'],
+    stops: [0, 50, 100]
+  },
+  background: {
+    base: 'radial-gradient(ellipse at 50% 50%, #C8E6C9 0%, #81C784 50%, #4CAF50 100%)',
+    overlay: 'linear-gradient(45deg, rgba(46,125,50,0.05) 25%, transparent 25%, transparent 75%, rgba(46,125,50,0.05) 75%)'
+  },
+  texture: {
+    type: 'mehndi',
+    opacity: 0.15,
+    pattern: `<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+      <path d="M50,10 Q60,30 50,50 Q40,30 50,10" fill="none" stroke="rgba(46,125,50,0.3)" stroke-width="2"/>
+      <circle cx="50" cy="50" r="8" fill="none" stroke="rgba(46,125,50,0.3)" stroke-width="1.5"/>
+      <path d="M50,58 L50,80" stroke="rgba(46,125,50,0.3)" stroke-width="2"/>
+    </svg>`
+  },
+  decorations: {
+    flowers: {
+      enabled: true,
+      type: 'vine',
+      colors: ['#2E7D32', '#4CAF50', '#81C784'],
+      positions: ['border-elegant']
+    },
+    gantalu: {
+      enabled: false,
+      color: null,
+      positions: []
+    },
+    dheepalu: {
+      enabled: false,
+      color: null,
+      positions: []
+    }
+  },
+  lord_allowed: false,
+  lord_mandatory: false,
+  hero_opening: {
+    duration: 2000,
+    show_lord: false,
+    show_gantalu: false,
+    show_dheepalu: false
+  }
+};
+
+// Design 6: Emerald Garden (Mehndi)
+const DESIGN_6 = {
+  id: 'design_6',
+  name: 'Emerald Garden',
+  eventTypes: ['mehendi'],
+  base_colors: {
+    primary: '#00695C',    // Teal
+    secondary: '#80CBC4',  // Light teal
+    accent: '#26A69A',     // Medium teal
+    text: '#004D40'        // Dark teal
+  },
+  gradient: {
+    type: 'linear',
+    colors: ['#B2DFDB', '#80CBC4', '#4DB6AC'],
+    stops: [0, 50, 100]
+  },
+  background: {
+    base: 'linear-gradient(180deg, #B2DFDB 0%, #80CBC4 50%, #4DB6AC 100%)',
+    overlay: 'radial-gradient(circle at 70% 30%, rgba(0,105,92,0.1) 0%, transparent 60%)'
+  },
+  texture: {
+    type: 'paisley',
+    opacity: 0.12,
+    pattern: `<svg width="80" height="80" xmlns="http://www.w3.org/2000/svg">
+      <path d="M40,10 Q60,20 60,40 Q60,60 40,70 Q35,65 35,40 Q35,20 40,10" fill="rgba(0,105,92,0.2)"/>
+    </svg>`
+  },
+  decorations: {
+    flowers: {
+      enabled: true,
+      type: 'leaf',
+      colors: ['#00695C', '#26A69A', '#80CBC4'],
+      positions: ['corners-elegant']
+    },
+    gantalu: {
+      enabled: false,
+      color: null,
+      positions: []
+    },
+    dheepalu: {
+      enabled: false,
+      color: null,
+      positions: []
+    }
+  },
+  lord_allowed: false,
+  lord_mandatory: false,
+  hero_opening: {
+    duration: 2000,
+    show_lord: false,
+    show_gantalu: false,
+    show_dheepalu: false
+  }
+};
+
+// Design 7: Divine Temple (Marriage)
+const DESIGN_7 = {
+  id: 'design_7',
+  name: 'Divine Temple',
+  eventTypes: ['marriage'],
+  base_colors: {
+    primary: '#8B0000',    // Dark red
+    secondary: '#DC143C',  // Crimson
+    accent: '#FFD700',     // Gold
+    text: '#FFF5E1'        // Cream
+  },
+  gradient: {
+    type: 'radial',
+    colors: ['#DC143C', '#B22222', '#8B0000'],
+    stops: [0, 50, 100]
+  },
+  background: {
+    base: 'radial-gradient(ellipse at 50% 50%, #DC143C 0%, #B22222 50%, #8B0000 100%)',
+    overlay: 'repeating-linear-gradient(0deg, transparent, transparent 50px, rgba(255,215,0,0.03) 50px, rgba(255,215,0,0.03) 100px)'
+  },
+  texture: {
+    type: 'temple',
+    opacity: 0.2,
+    pattern: `<svg width="120" height="120" xmlns="http://www.w3.org/2000/svg">
+      <path d="M60,10 L70,40 L100,40 L75,60 L85,90 L60,70 L35,90 L45,60 L20,40 L50,40 Z" fill="rgba(255,215,0,0.3)"/>
+    </svg>`
+  },
+  decorations: {
+    flowers: {
+      enabled: true,
+      type: 'lotus',
+      colors: ['#FFD700', '#FFA500', '#FF6347'],
+      positions: ['all-corners']
+    },
+    gantalu: {
+      enabled: true,
+      color: '#FFD700',
+      positions: ['top-left', 'top-right']
+    },
+    dheepalu: {
+      enabled: true,
+      color: '#FFD700',
+      positions: ['bottom-left', 'bottom-right']
+    }
+  },
+  lord_allowed: true,
+  lord_mandatory: true,
+  hero_opening: {
+    duration: 2000,
+    show_lord: true,
+    show_gantalu: true,
+    show_dheepalu: true
+  }
+};
+
+// Design 8: Royal Reception (Reception)
+const DESIGN_8 = {
+  id: 'design_8',
+  name: 'Royal Reception',
+  eventTypes: ['reception'],
+  base_colors: {
+    primary: '#1A237E',    // Royal blue
+    secondary: '#3F51B5',  // Indigo
+    accent: '#FFD700',     // Gold
+    text: '#E8EAF6'        // Light indigo
+  },
+  gradient: {
+    type: 'linear',
+    colors: ['#3F51B5', '#303F9F', '#1A237E'],
+    stops: [0, 50, 100]
+  },
+  background: {
+    base: 'linear-gradient(135deg, #3F51B5 0%, #303F9F 50%, #1A237E 100%)',
+    overlay: 'radial-gradient(circle at 50% 50%, rgba(255,215,0,0.08) 0%, transparent 70%)'
+  },
+  texture: {
+    type: 'elegant',
+    opacity: 0.1,
+    pattern: `<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="10" width="30" height="30" fill="none" stroke="rgba(255,215,0,0.2)" stroke-width="1"/>
+      <rect x="60" y="10" width="30" height="30" fill="none" stroke="rgba(255,215,0,0.2)" stroke-width="1"/>
+      <rect x="10" y="60" width="30" height="30" fill="none" stroke="rgba(255,215,0,0.2)" stroke-width="1"/>
+      <rect x="60" y="60" width="30" height="30" fill="none" stroke="rgba(255,215,0,0.2)" stroke-width="1"/>
+    </svg>`
+  },
+  decorations: {
+    flowers: {
+      enabled: true,
+      type: 'orchid',
+      colors: ['#FFD700', '#FFA500', '#3F51B5'],
+      positions: ['top-elegant', 'bottom-elegant']
+    },
+    gantalu: {
+      enabled: true,
+      color: '#FFD700',
+      positions: ['top-left', 'top-right']
+    },
+    dheepalu: {
+      enabled: true,
+      color: '#FFD700',
+      positions: ['bottom-left', 'bottom-right']
+    }
+  },
+  lord_allowed: true,
+  lord_mandatory: false,
+  hero_opening: {
+    duration: 2000,
+    show_lord: true,
+    show_gantalu: true,
+    show_dheepalu: true
+  }
+};
+
+// Central Design Registry
+export const DESIGN_REGISTRY = {
+  design_1: DESIGN_1,
+  design_2: DESIGN_2,
+  design_3: DESIGN_3,
+  design_4: DESIGN_4,
+  design_5: DESIGN_5,
+  design_6: DESIGN_6,
+  design_7: DESIGN_7,
+  design_8: DESIGN_8
+};
+
+// Event to Design Mapping (Defaults)
+export const EVENT_DESIGN_MAPPING = {
+  [EVENT_TYPES.ENGAGEMENT]: ['design_1', 'design_2'],
+  [EVENT_TYPES.HALDI]: ['design_3', 'design_4'],
+  [EVENT_TYPES.MEHNDI]: ['design_5', 'design_6'],
+  [EVENT_TYPES.MARRIAGE]: ['design_7'],
+  [EVENT_TYPES.RECEPTION]: ['design_8']
+};
+
+// Helper Functions
+export const getDesignById = (designId) => {
+  return DESIGN_REGISTRY[designId] || null;
+};
+
+export const getDesignsForEvent = (eventType) => {
+  const designIds = EVENT_DESIGN_MAPPING[eventType] || [];
+  return designIds.map(id => DESIGN_REGISTRY[id]).filter(Boolean);
+};
+
+export const getDefaultDesignForEvent = (eventType) => {
+  const designs = getDesignsForEvent(eventType);
+  return designs[0] || null;
+};
+
+export const isLordAllowedForEvent = (eventType) => {
+  const rules = LORD_RULES[eventType];
+  return rules ? rules.allowed : false;
+};
+
+export const isLordMandatoryForEvent = (eventType) => {
+  const rules = LORD_RULES[eventType];
+  return rules ? rules.mandatory : false;
+};
+
+export const getAllDesigns = () => {
+  return Object.values(DESIGN_REGISTRY);
+};
+
+export const getDesignThumbnail = (designId) => {
+  const design = getDesignById(designId);
+  if (!design) return null;
+  
+  return {
+    id: design.id,
+    name: design.name,
+    gradient: design.background.base,
+    primaryColor: design.base_colors.primary,
+    accentColor: design.base_colors.accent
+  };
+};
+
+export default DESIGN_REGISTRY;
+===== frontend/src/config/designSystem.js =====
+/**
+ * PHASE 22: Premium Background Design System - Frontend Configuration
+ * 
+ * This file contains the design registry and utilities for the event-wise
+ * background and design engine system.
+ */
+
+// Design Type Definitions
+export const BACKGROUND_TYPES = {
+  CSS: 'css',
+  IMAGE: 'image',
+  HYBRID: 'hybrid'
+};
+
+// Event Types
+export const EVENT_TYPES = {
+  ENGAGEMENT: 'engagement',
+  HALDI: 'haldi',
+  MEHENDI: 'mehendi',
+  MARRIAGE: 'marriage',
+  RECEPTION: 'reception'
+};
+
+/**
+ * Design Registry - 8 Premium Designs
+ * Matches backend design_registry.py configuration
+ */
+export const DESIGN_REGISTRY = [
+  {
+    design_id: 'design_1',
+    name: 'Royal Temple Gold',
+    description: 'Traditional temple theme with golden accents',
+    event_types: [EVENT_TYPES.ENGAGEMENT, EVENT_TYPES.MARRIAGE, EVENT_TYPES.RECEPTION],
+    supports_lord: true,
+    background_type: BACKGROUND_TYPES.HYBRID,
+    default_colors: {
+      primary: '#D4AF37',
+      secondary: '#8B0000',
+      accent: '#FFD700'
+    },
+    preview_image: '/designs/preview/design_1.jpg',
+    css_class: 'royal-temple-gold',
+    background_image: '/designs/backgrounds/temple-pattern.png',
+    gradient: 'linear-gradient(135deg, rgba(212,175,55,0.1) 0%, rgba(139,0,0,0.1) 100%)',
+    pattern: 'temple-motif',
+    is_default: true,
+    order: 1
+  },
+  {
+    design_id: 'design_2',
+    name: 'Vibrant Haldi Celebration',
+    description: 'Bright and cheerful yellow theme for Haldi ceremonies',
+    event_types: [EVENT_TYPES.HALDI],
+    supports_lord: false,
+    background_type: BACKGROUND_TYPES.CSS,
+    default_colors: {
+      primary: '#FFD700',
+      secondary: '#FF8C00',
+      accent: '#FFA500'
+    },
+    preview_image: '/designs/preview/design_2.jpg',
+    css_class: 'vibrant-haldi',
+    gradient: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)',
+    is_default: true,
+    order: 2
+  },
+  {
+    design_id: 'design_3',
+    name: 'Mehendi Green Magic',
+    description: 'Elegant green with floral mehendi patterns',
+    event_types: [EVENT_TYPES.MEHENDI],
+    supports_lord: false,
+    background_type: BACKGROUND_TYPES.HYBRID,
+    default_colors: {
+      primary: '#228B22',
+      secondary: '#9ACD32',
+      accent: '#3CB371'
+    },
+    preview_image: '/designs/preview/design_3.jpg',
+    css_class: 'mehendi-green',
+    background_image: '/designs/backgrounds/mehendi-pattern.png',
+    gradient: 'linear-gradient(135deg, rgba(34,139,34,0.2) 0%, rgba(60,179,113,0.2) 100%)',
+    pattern: 'mehendi-floral',
+    is_default: true,
+    order: 3
+  },
+  {
+    design_id: 'design_4',
+    name: 'Elegant Royal Maroon',
+    description: 'Rich maroon with golden divine elements',
+    event_types: [EVENT_TYPES.ENGAGEMENT, EVENT_TYPES.MARRIAGE, EVENT_TYPES.RECEPTION],
+    supports_lord: true,
+    background_type: BACKGROUND_TYPES.IMAGE,
+    default_colors: {
+      primary: '#800000',
+      secondary: '#B8860B',
+      accent: '#CD853F'
+    },
+    preview_image: '/designs/preview/design_4.jpg',
+    background_image: '/designs/backgrounds/royal-maroon-texture.jpg',
+    is_default: false,
+    order: 4
+  },
+  {
+    design_id: 'design_5',
+    name: 'Pastel Pink Romance',
+    description: 'Soft pink with romantic floral touches',
+    event_types: [EVENT_TYPES.ENGAGEMENT, EVENT_TYPES.RECEPTION],
+    supports_lord: true,
+    background_type: BACKGROUND_TYPES.CSS,
+    default_colors: {
+      primary: '#FFB6C1',
+      secondary: '#FF69B4',
+      accent: '#FFC0CB'
+    },
+    preview_image: '/designs/preview/design_5.jpg',
+    css_class: 'pastel-pink-romance',
+    gradient: 'linear-gradient(135deg, #FFB6C1 0%, #FFC0CB 50%, #FF69B4 100%)',
+    is_default: true,
+    order: 5
+  },
+  {
+    design_id: 'design_6',
+    name: 'Deep Royal Blue',
+    description: 'Majestic blue with silver accents',
+    event_types: [EVENT_TYPES.ENGAGEMENT, EVENT_TYPES.MARRIAGE, EVENT_TYPES.RECEPTION],
+    supports_lord: true,
+    background_type: BACKGROUND_TYPES.HYBRID,
+    default_colors: {
+      primary: '#000080',
+      secondary: '#4169E1',
+      accent: '#C0C0C0'
+    },
+    preview_image: '/designs/preview/design_6.jpg',
+    css_class: 'deep-royal-blue',
+    background_image: '/designs/backgrounds/royal-pattern.png',
+    gradient: 'linear-gradient(135deg, rgba(0,0,128,0.3) 0%, rgba(65,105,225,0.3) 100%)',
+    pattern: 'royal-motif',
+    is_default: true,
+    order: 6
+  },
+  {
+    design_id: 'design_7',
+    name: 'Sunset Orange Glow',
+    description: 'Warm sunset gradient for modern celebrations',
+    event_types: [EVENT_TYPES.HALDI, EVENT_TYPES.MEHENDI, EVENT_TYPES.RECEPTION],
+    supports_lord: false,
+    background_type: BACKGROUND_TYPES.CSS,
+    default_colors: {
+      primary: '#FF4500',
+      secondary: '#FF8C00',
+      accent: '#FFD700'
+    },
+    preview_image: '/designs/preview/design_7.jpg',
+    css_class: 'sunset-orange',
+    gradient: 'linear-gradient(135deg, #FF4500 0%, #FF8C00 50%, #FFD700 100%)',
+    is_default: false,
+    order: 7
+  },
+  {
+    design_id: 'design_8',
+    name: 'Emerald Green Elegance',
+    description: 'Deep emerald with golden divine touches',
+    event_types: [EVENT_TYPES.ENGAGEMENT, EVENT_TYPES.MARRIAGE, EVENT_TYPES.RECEPTION],
+    supports_lord: true,
+    background_type: BACKGROUND_TYPES.HYBRID,
+    default_colors: {
+      primary: '#046307',
+      secondary: '#50C878',
+      accent: '#FFD700'
+    },
+    preview_image: '/designs/preview/design_8.jpg',
+    css_class: 'emerald-elegance',
+    background_image: '/designs/backgrounds/emerald-texture.png',
+    gradient: 'linear-gradient(135deg, rgba(4,99,7,0.2) 0%, rgba(80,200,120,0.2) 100%)',
+    pattern: 'divine-pattern',
+    is_default: false,
+    order: 8
+  }
+];
+
+/**
+ * Get all designs
+ */
+export const getAllDesigns = () => {
+  return DESIGN_REGISTRY;
+};
+
+/**
+ * Get designs filtered by event type
+ */
+export const getDesignsByEventType = (eventType) => {
+  return DESIGN_REGISTRY.filter(design => 
+    design.event_types.includes(eventType.toLowerCase())
+  );
+};
+
+/**
+ * Get specific design by ID
+ */
+export const getDesignById = (designId) => {
+  return DESIGN_REGISTRY.find(design => design.design_id === designId);
+};
+
+/**
+ * Get default design for event type
+ */
+export const getDefaultDesignForEvent = (eventType) => {
+  const designs = getDesignsByEventType(eventType);
+  const defaultDesign = designs.find(design => design.is_default);
+  return defaultDesign || designs[0] || null;
+};
+
+/**
+ * Validate if design is compatible with event
+ */
+export const validateDesignForEvent = (designId, eventType, showLord = false) => {
+  const design = getDesignById(designId);
+  
+  if (!design) {
+    return { valid: false, message: 'Design not found' };
+  }
+  
+  // Check if design supports this event type
+  if (!design.event_types.includes(eventType.toLowerCase())) {
+    return { 
+      valid: false, 
+      message: `Design '${design.name}' does not support ${eventType} events` 
+    };
+  }
+  
+  // Check lord decoration compatibility for Haldi/Mehendi
+  const nonLordEvents = [EVENT_TYPES.HALDI, EVENT_TYPES.MEHENDI];
+  if (nonLordEvents.includes(eventType.toLowerCase())) {
+    if (showLord && design.supports_lord) {
+      return { 
+        valid: false, 
+        message: `Design '${design.name}' cannot be used with lord decorations for ${eventType} events` 
+      };
+    }
+  }
+  
+  return { valid: true, message: 'Valid' };
+};
+
+/**
+ * Default designs map for quick lookup
+ */
+export const DEFAULT_DESIGNS_MAP = {
+  [EVENT_TYPES.ENGAGEMENT]: 'design_5',
+  [EVENT_TYPES.HALDI]: 'design_2',
+  [EVENT_TYPES.MEHENDI]: 'design_3',
+  [EVENT_TYPES.MARRIAGE]: 'design_1',
+  [EVENT_TYPES.RECEPTION]: 'design_6'
+};
+
+/**
+ * Generate CSS variables from color palette
+ */
+export const generateColorVariables = (colorPalette) => {
+  if (!colorPalette) return {};
+  
+  return {
+    '--design-primary-color': colorPalette.primary || '#D4AF37',
+    '--design-secondary-color': colorPalette.secondary || '#8B0000',
+    '--design-accent-color': colorPalette.accent || '#FFD700'
+  };
+};
+
+/**
+ * Apply background design styles
+ */
+export const applyBackgroundDesign = (design, colorPalette = null) => {
+  if (!design) return {};
+  
+  const colors = colorPalette || design.default_colors;
+  const styles = {
+    ...generateColorVariables(colors)
+  };
+  
+  // Apply background based on type
+  switch (design.background_type) {
+    case BACKGROUND_TYPES.CSS:
+      if (design.gradient) {
+        styles.background = design.gradient;
+      }
+      break;
+      
+    case BACKGROUND_TYPES.IMAGE:
+      if (design.background_image) {
+        styles.backgroundImage = `url(${design.background_image})`;
+        styles.backgroundSize = 'cover';
+        styles.backgroundPosition = 'center';
+        styles.backgroundRepeat = 'no-repeat';
+      }
+      break;
+      
+    case BACKGROUND_TYPES.HYBRID:
+      if (design.gradient && design.background_image) {
+        styles.background = design.gradient;
+        styles.backgroundImage = `${design.gradient}, url(${design.background_image})`;
+        styles.backgroundSize = 'cover';
+        styles.backgroundPosition = 'center';
+        styles.backgroundBlendMode = 'overlay';
+      } else if (design.gradient) {
+        styles.background = design.gradient;
+      } else if (design.background_image) {
+        styles.backgroundImage = `url(${design.background_image})`;
+        styles.backgroundSize = 'cover';
+        styles.backgroundPosition = 'center';
+      }
+      break;
+      
+    default:
+      break;
+  }
+  
+  return styles;
+};
+
+export default {
+  DESIGN_REGISTRY,
+  BACKGROUND_TYPES,
+  EVENT_TYPES,
+  getAllDesigns,
+  getDesignsByEventType,
+  getDesignById,
+  getDefaultDesignForEvent,
+  validateDesignForEvent,
+  DEFAULT_DESIGNS_MAP,
+  generateColorVariables,
+  applyBackgroundDesign
+};
+===== frontend/src/config/designThemes.js =====
+/**
+ * Design Themes Configuration
+ * 
+ * Each theme defines visual styling including:
+ * - Colors (primary, secondary, background, text, accent)
+ * - Fonts (heading and body font families)
+ * - Spacing and layout properties
+ */
+
+export const DESIGN_THEMES = [
+  {
+    id: 'royal_classic',
+    name: 'Royal Classic',
+    description: 'Elegant maroon and gold with traditional motifs',
+    thumbnail: '/assets/designs/royal_classic_thumb.webp',
+    preview: '/assets/designs/royal_classic_preview.webp',
+    colors: {
+      primary: '#8B0000',      // Deep maroon
+      secondary: '#FFD700',     // Gold
+      background: '#FFF8E7',    // Cream
+      text: '#2C1810',          // Dark brown
+      accent: '#B8860B',        // Dark goldenrod
+      card: '#FFFFFF'           // White cards
+    },
+    fonts: {
+      heading: 'Playfair Display',
+      body: 'Lora'
+    }
+  },
+  {
+    id: 'floral_soft',
+    name: 'Floral Soft',
+    description: 'Pastel pink with delicate floral patterns',
+    thumbnail: '/assets/designs/floral_soft_thumb.webp',
+    preview: '/assets/designs/floral_soft_preview.webp',
+    colors: {
+      primary: '#FFB6C1',       // Light pink
+      secondary: '#FF69B4',     // Hot pink
+      background: '#FFF5F7',    // Very light pink
+      text: '#4A4A4A',          // Dark gray
+      accent: '#FF1493',        // Deep pink
+      card: '#FFFFFF'           // White cards
+    },
+    fonts: {
+      heading: 'Cormorant Garamond',
+      body: 'Crimson Text'
+    }
+  },
+  {
+    id: 'divine_temple',
+    name: 'Divine Temple',
+    description: 'Warm ivory and gold with sacred temple aesthetics',
+    thumbnail: '/assets/designs/divine_temple_thumb.webp',
+    preview: '/assets/designs/divine_temple_preview.webp',
+    colors: {
+      primary: '#D4AF37',       // Gold
+      secondary: '#8B4513',     // Saddle brown
+      background: '#FFF8DC',    // Cornsilk
+      text: '#3E2723',          // Dark brown
+      accent: '#CD853F',        // Peru
+      card: '#FFFBF0'           // Ivory cards
+    },
+    fonts: {
+      heading: 'Cinzel',
+      body: 'Spectral'
+    }
+  },
+  {
+    id: 'modern_minimal',
+    name: 'Modern Minimal',
+    description: 'Clean white and gray with contemporary design',
+    thumbnail: '/assets/designs/modern_minimal_thumb.webp',
+    preview: '/assets/designs/modern_minimal_preview.webp',
+    colors: {
+      primary: '#2C3E50',       // Dark blue-gray
+      secondary: '#95A5A6',     // Gray
+      background: '#FFFFFF',    // White
+      text: '#34495E',          // Dark gray
+      accent: '#3498DB',        // Blue
+      card: '#F8F9FA'           // Very light gray cards
+    },
+    fonts: {
+      heading: 'Montserrat',
+      body: 'Open Sans'
+    }
+  },
+  {
+    id: 'cinematic_luxury',
+    name: 'Cinematic Luxury',
+    description: 'Dark gradient with gold accents and premium feel',
+    thumbnail: '/assets/designs/cinematic_luxury_thumb.webp',
+    preview: '/assets/designs/cinematic_luxury_preview.webp',
+    colors: {
+      primary: '#1A1A1A',       // Almost black
+      secondary: '#DAA520',     // Goldenrod
+      background: '#0F0F0F',    // Very dark gray
+      text: '#E8E8E8',          // Light gray
+      accent: '#FFD700',        // Gold
+      card: '#2A2A2A'           // Dark gray cards
+    },
+    fonts: {
+      heading: 'Playfair Display',
+      body: 'Raleway'
+    }
+  }
+];
+
+/**
+ * Get theme by ID
+ * @param {string} themeId - Theme identifier
+ * @returns {object|null} Theme configuration or null if not found
+ */
+export const getTheme = (themeId) => {
+  return DESIGN_THEMES.find(theme => theme.id === themeId) || DESIGN_THEMES[0];
+};
+
+/**
+ * Get all available theme IDs
+ * @returns {string[]} Array of theme IDs
+ */
+export const getThemeIds = () => {
+  return DESIGN_THEMES.map(theme => theme.id);
+};
+===== frontend/src/config/divineDecorationsConfig.js =====
+/**
+ * DIVINE DECORATIONS CONFIGURATION
+ * 
+ * Structural layout rules for divine decorations based on event type and theme
+ * Controls visibility and positioning of LORD IMAGE, GANTALU (bells), and DHEEPALU (fire lamps)
+ * 
+ * Configuration Flags:
+ * - showLord: Display deity image at top-center
+ * - showGantalu: Display temple bells at top-left and top-right
+ * - showFire: Display fire lamps at bottom corners
+ */
+
+/**
+ * Event-specific decoration rules
+ * Defines which decorations are visible for each event type
+ */
+export const EVENT_DECORATION_RULES = {
+  engagement: {
+    showLord: true,
+    showGantalu: true,
+    showFire: true,
+    description: 'Engagement: lord + gantalu + rings background'
+  },
+  
+  marriage: {
+    showLord: true,
+    showGantalu: true,
+    showFire: true,
+    description: 'Marriage: lord + gantalu + temple background'
+  },
+  
+  reception: {
+    showLord: true,
+    showGantalu: true,
+    showFire: true,
+    description: 'Reception: lord + gantalu + royal background'
+  },
+  
+  haldi: {
+    showLord: false,
+    showGantalu: false,
+    showFire: false,
+    description: 'Haldi: NO lord, NO gantalu, NO fire'
+  },
+  
+  mehendi: {
+    showLord: false,
+    showGantalu: false,
+    showFire: false,
+    description: 'Mehendi: NO lord, NO gantalu, NO fire'
+  }
+};
+
+/**
+ * Default decoration settings (fallback)
+ */
+export const DEFAULT_DECORATION_CONFIG = {
+  showLord: true,
+  showGantalu: true,
+  showFire: true
+};
+
+/**
+ * Layout configuration for each decoration element
+ */
+export const DECORATION_LAYOUT = {
+  lord: {
+    position: 'top-center',
+    description: 'Medium size on load, fades after scroll',
+    zIndex: 5,
+    initialOpacity: 0.9,
+    scrolledOpacity: 0.5,
+    scrollThreshold: 100, // pixels scrolled before fade starts
+    maxHeight: {
+      mobile: '250px',
+      tablet: '300px',
+      desktop: '350px'
+    }
+  },
+  
+  gantalu: {
+    position: 'top-left-right',
+    description: 'Two bells at top corners, visible first 2 seconds, fade on scroll',
+    zIndex: 10,
+    initialVisibleDuration: 2000, // milliseconds
+    fadeOnScroll: true,
+    scrollFadeThreshold: 50, // pixels scrolled before fade starts
+    size: {
+      mobile: { width: '48px', height: '64px' },
+      tablet: { width: '56px', height: '72px' },
+      desktop: { width: '64px', height: '80px' }
+    },
+    ropeHeight: '80px'
+  },
+  
+  fire: {
+    position: 'bottom-corners',
+    description: 'Near bottom corners, low opacity, static',
+    zIndex: 10,
+    opacity: 0.4,
+    bottomOffset: '32px',
+    sideOffset: {
+      mobile: '16px',
+      desktop: '32px'
+    },
+    size: {
+      mobile: { width: '64px', height: '80px' },
+      desktop: { width: '80px', height: '96px' }
+    }
+  }
+};
+
+/**
+ * Get decoration configuration for a specific event type
+ * @param {string} eventType - Event type (engagement, marriage, reception, haldi, mehendi)
+ * @returns {Object} Decoration configuration with showLord, showGantalu, showFire flags
+ */
+export const getDecorationConfig = (eventType) => {
+  if (!eventType) {
+    return DEFAULT_DECORATION_CONFIG;
+  }
+  
+  const normalizedEventType = eventType.toLowerCase();
+  return EVENT_DECORATION_RULES[normalizedEventType] || DEFAULT_DECORATION_CONFIG;
+};
+
+/**
+ * Check if decorations should be shown for an event type
+ * @param {string} eventType - Event type
+ * @returns {boolean} True if any decoration should be shown
+ */
+export const shouldShowDecorations = (eventType) => {
+  const config = getDecorationConfig(eventType);
+  return config.showLord || config.showGantalu || config.showFire;
+};
+
+/**
+ * Check if lord image should be shown
+ * @param {string} eventType - Event type
+ * @returns {boolean}
+ */
+export const shouldShowLord = (eventType) => {
+  const config = getDecorationConfig(eventType);
+  return config.showLord;
+};
+
+/**
+ * Check if gantalu (bells) should be shown
+ * @param {string} eventType - Event type
+ * @returns {boolean}
+ */
+export const shouldShowGantalu = (eventType) => {
+  const config = getDecorationConfig(eventType);
+  return config.showGantalu;
+};
+
+/**
+ * Check if fire lamps should be shown
+ * @param {string} eventType - Event type
+ * @returns {boolean}
+ */
+export const shouldShowFire = (eventType) => {
+  const config = getDecorationConfig(eventType);
+  return config.showFire;
+};
+
+/**
+ * Get layout configuration for a specific decoration element
+ * @param {string} element - Element name (lord, gantalu, fire)
+ * @returns {Object} Layout configuration
+ */
+export const getLayoutConfig = (element) => {
+  return DECORATION_LAYOUT[element] || {};
+};
+
+/**
+ * Get all event types that allow lord decorations
+ * @returns {Array} Array of event types
+ */
+export const getLordEnabledEvents = () => {
+  return Object.keys(EVENT_DECORATION_RULES).filter(
+    eventType => EVENT_DECORATION_RULES[eventType].showLord
+  );
+};
+
+/**
+ * Validate event type
+ * @param {string} eventType - Event type to validate
+ * @returns {boolean} True if valid event type
+ */
+export const isValidEventType = (eventType) => {
+  if (!eventType) return false;
+  return Object.keys(EVENT_DECORATION_RULES).includes(eventType.toLowerCase());
+};
+===== frontend/src/config/eventBackgroundConfig.js =====
+/**
+ * EVENT-BASED BACKGROUND CONFIGURATION
+ * 
+ * Implements event-specific background rules with dual-layer support:
+ * - Hero/Top Background: Displayed at top of invitation
+ * - Scroll Background: Displayed as user scrolls down
+ * 
+ * EVENT RULES:
+ * - Engagement → Lord background at top, rings background on scroll
+ * - Marriage → Full temple + lord background (both layers)
+ * - Reception → Royal background, lord optional
+ * - Haldi → Trendy yellow background (NO lord allowed)
+ * - Mehendi → Trendy green mehendi background (NO lord allowed)
+ */
+
+// Import existing deity options for lord backgrounds
+import { DEITY_OPTIONS } from './religiousAssets';
+
+/**
+ * Background Layer Types
+ */
+export const BACKGROUND_LAYERS = {
+  HERO: 'hero',      // Top/Hero section background
+  SCROLL: 'scroll'   // Scroll/Body background
+};
+
+/**
+ * ENGAGEMENT BACKGROUNDS
+ * Lord at top, rings/flowers on scroll
+ */
+export const ENGAGEMENT_BACKGROUNDS = {
+  hero: {
+    type: 'lord',
+    options: DEITY_OPTIONS.filter(d => d.id !== 'none'),
+    label: 'Lord Background (Top)',
+    description: 'Religious deity background for hero section'
+  },
+  scroll: {
+    type: 'rings_flowers',
+    options: [
+      {
+        id: 'engagement_rings_gold',
+        name: 'Golden Rings',
+        description: 'Elegant golden engagement rings',
+        images: {
+          thumbnail: '/assets/backgrounds/engagement_rings_gold_thumb.webp',
+          mobile: '/assets/backgrounds/engagement_rings_gold_mobile.webp',
+          desktop: '/assets/backgrounds/engagement_rings_gold_desktop.webp'
+        }
+      },
+      {
+        id: 'engagement_rings_diamond',
+        name: 'Diamond Rings',
+        description: 'Sparkling diamond engagement rings',
+        images: {
+          thumbnail: '/assets/backgrounds/engagement_rings_diamond_thumb.webp',
+          mobile: '/assets/backgrounds/engagement_rings_diamond_mobile.webp',
+          desktop: '/assets/backgrounds/engagement_rings_diamond_desktop.webp'
+        }
+      },
+      {
+        id: 'engagement_flowers_pink',
+        name: 'Pink Flowers',
+        description: 'Romantic pink floral arrangement',
+        images: {
+          thumbnail: '/assets/backgrounds/engagement_flowers_pink_thumb.webp',
+          mobile: '/assets/backgrounds/engagement_flowers_pink_mobile.webp',
+          desktop: '/assets/backgrounds/engagement_flowers_pink_desktop.webp'
+        }
+      },
+      {
+        id: 'engagement_flowers_white',
+        name: 'White Flowers',
+        description: 'Pure white floral elegance',
+        images: {
+          thumbnail: '/assets/backgrounds/engagement_flowers_white_thumb.webp',
+          mobile: '/assets/backgrounds/engagement_flowers_white_mobile.webp',
+          desktop: '/assets/backgrounds/engagement_flowers_white_desktop.webp'
+        }
+      },
+      {
+        id: 'engagement_flowers_mixed',
+        name: 'Mixed Flowers',
+        description: 'Colorful mixed floral bouquet',
+        images: {
+          thumbnail: '/assets/backgrounds/engagement_flowers_mixed_thumb.webp',
+          mobile: '/assets/backgrounds/engagement_flowers_mixed_mobile.webp',
+          desktop: '/assets/backgrounds/engagement_flowers_mixed_desktop.webp'
+        }
+      }
+    ],
+    label: 'Scroll Background',
+    description: 'Rings or flowers for scrolling sections'
+  }
+};
+
+/**
+ * MARRIAGE BACKGROUNDS
+ * Full temple + lord for both layers
+ */
+export const MARRIAGE_BACKGROUNDS = {
+  hero: {
+    type: 'temple_lord',
+    options: DEITY_OPTIONS.filter(d => d.id !== 'none'),
+    label: 'Temple + Lord Background',
+    description: 'Full temple deity background for entire page'
+  },
+  scroll: {
+    type: 'temple_lord',
+    options: DEITY_OPTIONS.filter(d => d.id !== 'none'),
+    label: 'Temple + Lord Background',
+    description: 'Same temple deity background continues'
+  }
+};
+
+/**
+ * RECEPTION BACKGROUNDS
+ * Royal background, lord optional
+ */
+export const RECEPTION_BACKGROUNDS = {
+  hero: {
+    type: 'royal_classy',
+    options: [
+      {
+        id: 'reception_royal_gold',
+        name: 'Royal Gold',
+        description: 'Luxurious gold and maroon theme',
+        images: {
+          thumbnail: '/assets/backgrounds/reception_royal_gold_thumb.webp',
+          mobile: '/assets/backgrounds/reception_royal_gold_mobile.webp',
+          desktop: '/assets/backgrounds/reception_royal_gold_desktop.webp'
+        }
+      },
+      {
+        id: 'reception_royal_purple',
+        name: 'Royal Purple',
+        description: 'Majestic purple and gold combination',
+        images: {
+          thumbnail: '/assets/backgrounds/reception_royal_purple_thumb.webp',
+          mobile: '/assets/backgrounds/reception_royal_purple_mobile.webp',
+          desktop: '/assets/backgrounds/reception_royal_purple_desktop.webp'
+        }
+      },
+      {
+        id: 'reception_classy_silver',
+        name: 'Classy Silver',
+        description: 'Elegant silver and white theme',
+        images: {
+          thumbnail: '/assets/backgrounds/reception_classy_silver_thumb.webp',
+          mobile: '/assets/backgrounds/reception_classy_silver_mobile.webp',
+          desktop: '/assets/backgrounds/reception_classy_silver_desktop.webp'
+        }
+      },
+      {
+        id: 'reception_classy_champagne',
+        name: 'Champagne Elegance',
+        description: 'Sophisticated champagne and ivory',
+        images: {
+          thumbnail: '/assets/backgrounds/reception_classy_champagne_thumb.webp',
+          mobile: '/assets/backgrounds/reception_classy_champagne_mobile.webp',
+          desktop: '/assets/backgrounds/reception_classy_champagne_desktop.webp'
+        }
+      }
+    ],
+    label: 'Royal Background',
+    description: 'Royal/classy backgrounds for reception'
+  },
+  scroll: {
+    type: 'royal_classy_or_lord',
+    options: [
+      ...DEITY_OPTIONS.filter(d => d.id !== 'none'), // Lord option
+      {
+        id: 'reception_royal_gold',
+        name: 'Royal Gold',
+        description: 'Luxurious gold and maroon theme',
+        images: {
+          thumbnail: '/assets/backgrounds/reception_royal_gold_thumb.webp',
+          mobile: '/assets/backgrounds/reception_royal_gold_mobile.webp',
+          desktop: '/assets/backgrounds/reception_royal_gold_desktop.webp'
+        }
+      },
+      {
+        id: 'reception_royal_purple',
+        name: 'Royal Purple',
+        description: 'Majestic purple and gold combination',
+        images: {
+          thumbnail: '/assets/backgrounds/reception_royal_purple_thumb.webp',
+          mobile: '/assets/backgrounds/reception_royal_purple_mobile.webp',
+          desktop: '/assets/backgrounds/reception_royal_purple_desktop.webp'
+        }
+      }
+    ],
+    label: 'Scroll Background (Lord Optional)',
+    description: 'Royal backgrounds or optional lord background'
+  }
+};
+
+/**
+ * HALDI BACKGROUNDS
+ * Trendy yellow only - NO lord allowed
+ */
+export const HALDI_BACKGROUNDS = {
+  hero: {
+    type: 'trendy_yellow',
+    options: [
+      {
+        id: 'haldi_turmeric',
+        name: 'Turmeric Traditional',
+        description: 'Traditional turmeric paste and flowers',
+        images: {
+          thumbnail: '/assets/backgrounds/haldi_turmeric_thumb.webp',
+          mobile: '/assets/backgrounds/haldi_turmeric_mobile.webp',
+          desktop: '/assets/backgrounds/haldi_turmeric_desktop.webp'
+        }
+      },
+      {
+        id: 'haldi_bindelu',
+        name: 'Bindelu Pattern',
+        description: 'Traditional bindelu design with yellow theme',
+        images: {
+          thumbnail: '/assets/backgrounds/haldi_bindelu_thumb.webp',
+          mobile: '/assets/backgrounds/haldi_bindelu_mobile.webp',
+          desktop: '/assets/backgrounds/haldi_bindelu_desktop.webp'
+        }
+      },
+      {
+        id: 'haldi_yellow_florals',
+        name: 'Yellow Florals',
+        description: 'Vibrant yellow marigolds and flowers',
+        images: {
+          thumbnail: '/assets/backgrounds/haldi_yellow_florals_thumb.webp',
+          mobile: '/assets/backgrounds/haldi_yellow_florals_mobile.webp',
+          desktop: '/assets/backgrounds/haldi_yellow_florals_desktop.webp'
+        }
+      },
+      {
+        id: 'haldi_yellow_abstract',
+        name: 'Yellow Abstract',
+        description: 'Modern yellow abstract pattern',
+        images: {
+          thumbnail: '/assets/backgrounds/haldi_yellow_abstract_thumb.webp',
+          mobile: '/assets/backgrounds/haldi_yellow_abstract_mobile.webp',
+          desktop: '/assets/backgrounds/haldi_yellow_abstract_desktop.webp'
+        }
+      }
+    ],
+    label: 'Yellow Background (Hero)',
+    description: 'Trendy yellow backgrounds - no lord allowed'
+  },
+  scroll: {
+    type: 'trendy_yellow',
+    options: [
+      {
+        id: 'haldi_turmeric',
+        name: 'Turmeric Traditional',
+        description: 'Traditional turmeric paste and flowers',
+        images: {
+          thumbnail: '/assets/backgrounds/haldi_turmeric_thumb.webp',
+          mobile: '/assets/backgrounds/haldi_turmeric_mobile.webp',
+          desktop: '/assets/backgrounds/haldi_turmeric_desktop.webp'
+        }
+      },
+      {
+        id: 'haldi_yellow_florals',
+        name: 'Yellow Florals',
+        description: 'Vibrant yellow marigolds and flowers',
+        images: {
+          thumbnail: '/assets/backgrounds/haldi_yellow_florals_thumb.webp',
+          mobile: '/assets/backgrounds/haldi_yellow_florals_mobile.webp',
+          desktop: '/assets/backgrounds/haldi_yellow_florals_desktop.webp'
+        }
+      }
+    ],
+    label: 'Yellow Background (Scroll)',
+    description: 'Trendy yellow backgrounds - no lord allowed'
+  }
+};
+
+/**
+ * MEHENDI BACKGROUNDS
+ * Trendy green mehendi only - NO lord allowed
+ */
+export const MEHENDI_BACKGROUNDS = {
+  hero: {
+    type: 'trendy_green',
+    options: [
+      {
+        id: 'mehendi_pattern_intricate',
+        name: 'Intricate Mehendi',
+        description: 'Detailed mehendi hand design',
+        images: {
+          thumbnail: '/assets/backgrounds/mehendi_pattern_intricate_thumb.webp',
+          mobile: '/assets/backgrounds/mehendi_pattern_intricate_mobile.webp',
+          desktop: '/assets/backgrounds/mehendi_pattern_intricate_desktop.webp'
+        }
+      },
+      {
+        id: 'mehendi_green_leaves',
+        name: 'Green Leaves',
+        description: 'Fresh green leaf pattern',
+        images: {
+          thumbnail: '/assets/backgrounds/mehendi_green_leaves_thumb.webp',
+          mobile: '/assets/backgrounds/mehendi_green_leaves_mobile.webp',
+          desktop: '/assets/backgrounds/mehendi_green_leaves_desktop.webp'
+        }
+      },
+      {
+        id: 'mehendi_paisley',
+        name: 'Paisley Pattern',
+        description: 'Traditional paisley mehendi design',
+        images: {
+          thumbnail: '/assets/backgrounds/mehendi_paisley_thumb.webp',
+          mobile: '/assets/backgrounds/mehendi_paisley_mobile.webp',
+          desktop: '/assets/backgrounds/mehendi_paisley_desktop.webp'
+        }
+      },
+      {
+        id: 'mehendi_green_abstract',
+        name: 'Green Abstract',
+        description: 'Modern green theme with abstract elements',
+        images: {
+          thumbnail: '/assets/backgrounds/mehendi_green_abstract_thumb.webp',
+          mobile: '/assets/backgrounds/mehendi_green_abstract_mobile.webp',
+          desktop: '/assets/backgrounds/mehendi_green_abstract_desktop.webp'
+        }
+      }
+    ],
+    label: 'Green Background (Hero)',
+    description: 'Trendy green mehendi backgrounds - no lord allowed'
+  },
+  scroll: {
+    type: 'trendy_green',
+    options: [
+      {
+        id: 'mehendi_pattern_intricate',
+        name: 'Intricate Mehendi',
+        description: 'Detailed mehendi hand design',
+        images: {
+          thumbnail: '/assets/backgrounds/mehendi_pattern_intricate_thumb.webp',
+          mobile: '/assets/backgrounds/mehendi_pattern_intricate_mobile.webp',
+          desktop: '/assets/backgrounds/mehendi_pattern_intricate_desktop.webp'
+        }
+      },
+      {
+        id: 'mehendi_green_leaves',
+        name: 'Green Leaves',
+        description: 'Fresh green leaf pattern',
+        images: {
+          thumbnail: '/assets/backgrounds/mehendi_green_leaves_thumb.webp',
+          mobile: '/assets/backgrounds/mehendi_green_leaves_mobile.webp',
+          desktop: '/assets/backgrounds/mehendi_green_leaves_desktop.webp'
+        }
+      }
+    ],
+    label: 'Green Background (Scroll)',
+    description: 'Trendy green mehendi backgrounds - no lord allowed'
+  }
+};
+
+/**
+ * Get background configuration for a specific event type
+ * @param {string} eventType - Event type (engagement, marriage, reception, haldi, mehendi)
+ * @returns {object|null} Background configuration with hero and scroll layers
+ */
+export const getEventBackgroundConfig = (eventType) => {
+  switch (eventType?.toLowerCase()) {
+    case 'engagement':
+      return ENGAGEMENT_BACKGROUNDS;
+    case 'marriage':
+      return MARRIAGE_BACKGROUNDS;
+    case 'reception':
+      return RECEPTION_BACKGROUNDS;
+    case 'haldi':
+      return HALDI_BACKGROUNDS;
+    case 'mehendi':
+      return MEHENDI_BACKGROUNDS;
+    default:
+      return null;
+  }
+};
+
+/**
+ * Get background asset by ID from all event backgrounds
+ * @param {string} backgroundId - Background identifier
+ * @returns {object|null} Background asset or null
+ */
+export const getBackgroundById = (backgroundId) => {
+  if (!backgroundId) return null;
+  
+  // Collect all background options from all event types
+  const allBackgrounds = [
+    ...ENGAGEMENT_BACKGROUNDS.hero.options,
+    ...ENGAGEMENT_BACKGROUNDS.scroll.options,
+    ...MARRIAGE_BACKGROUNDS.hero.options,
+    ...RECEPTION_BACKGROUNDS.hero.options,
+    ...RECEPTION_BACKGROUNDS.scroll.options,
+    ...HALDI_BACKGROUNDS.hero.options,
+    ...HALDI_BACKGROUNDS.scroll.options,
+    ...MEHENDI_BACKGROUNDS.hero.options,
+    ...MEHENDI_BACKGROUNDS.scroll.options
+  ];
+  
+  return allBackgrounds.find(bg => bg.id === backgroundId) || null;
+};
+
+/**
+ * Check if an event type allows lord backgrounds
+ * @param {string} eventType - Event type
+ * @returns {boolean} True if lord backgrounds are allowed
+ */
+export const allowsLordBackgrounds = (eventType) => {
+  return ['engagement', 'marriage', 'reception'].includes(eventType?.toLowerCase());
+};
+
+/**
+ * Check if lord backgrounds are MANDATORY for an event type
+ * @param {string} eventType - Event type
+ * @returns {boolean} True if lord backgrounds are mandatory
+ */
+export const requiresLordBackgrounds = (eventType) => {
+  return ['engagement', 'marriage'].includes(eventType?.toLowerCase());
+};
+
+/**
+ * Check if an event type PROHIBITS lord backgrounds
+ * @param {string} eventType - Event type
+ * @returns {boolean} True if lord backgrounds are prohibited
+ */
+export const prohibitsLordBackgrounds = (eventType) => {
+  return ['haldi', 'mehendi'].includes(eventType?.toLowerCase());
+};
+
+/**
+ * Get default background IDs for an event type
+ * @param {string} eventType - Event type
+ * @returns {object} Default hero and scroll background IDs
+ */
+export const getDefaultBackgrounds = (eventType) => {
+  const config = getEventBackgroundConfig(eventType);
+  if (!config) return { hero: null, scroll: null };
+  
+  return {
+    hero: config.hero.options[0]?.id || null,
+    scroll: config.scroll.options[0]?.id || null
+  };
+};
+===== frontend/src/config/eventBackgrounds.js =====
+/**
+ * PHASE 13 PART 2: Event-Specific Background Assets Configuration
+ * 
+ * Manages event-specific background images for different wedding events.
+ * Each event type has specific background options based on requirements.
+ */
+
+// Import existing deity options for lord backgrounds
+import { DEITY_OPTIONS } from './religiousAssets';
+
+/**
+ * Engagement Backgrounds: Lord backgrounds + Ring/Flower backgrounds
+ */
+export const ENGAGEMENT_BACKGROUNDS = {
+  lord: DEITY_OPTIONS.filter(d => d.id !== 'none'), // All lord backgrounds
+  trendy: [
+    {
+      id: 'engagement_rings_gold',
+      name: 'Golden Rings',
+      description: 'Elegant golden engagement rings',
+      thumbnail: '/assets/backgrounds/engagement_rings_gold_thumb.webp',
+      images: {
+        thumbnail: '/assets/backgrounds/engagement_rings_gold_thumb.webp',
+        mobile: '/assets/backgrounds/engagement_rings_gold_mobile.webp',
+        desktop: '/assets/backgrounds/engagement_rings_gold_desktop.webp'
+      }
+    },
+    {
+      id: 'engagement_flowers_pink',
+      name: 'Pink Flowers',
+      description: 'Romantic pink floral arrangement',
+      thumbnail: '/assets/backgrounds/engagement_flowers_pink_thumb.webp',
+      images: {
+        thumbnail: '/assets/backgrounds/engagement_flowers_pink_thumb.webp',
+        mobile: '/assets/backgrounds/engagement_flowers_pink_mobile.webp',
+        desktop: '/assets/backgrounds/engagement_flowers_pink_desktop.webp'
+      }
+    },
+    {
+      id: 'engagement_flowers_white',
+      name: 'White Flowers',
+      description: 'Pure white floral elegance',
+      thumbnail: '/assets/backgrounds/engagement_flowers_white_thumb.webp',
+      images: {
+        thumbnail: '/assets/backgrounds/engagement_flowers_white_thumb.webp',
+        mobile: '/assets/backgrounds/engagement_flowers_white_mobile.webp',
+        desktop: '/assets/backgrounds/engagement_flowers_white_desktop.webp'
+      }
+    }
+  ]
+};
+
+/**
+ * Haldi Backgrounds: Trendy only (turmeric, bindelu, yellow florals)
+ */
+export const HALDI_BACKGROUNDS = [
+  {
+    id: 'haldi_turmeric',
+    name: 'Turmeric Traditional',
+    description: 'Traditional turmeric paste and flowers',
+    thumbnail: '/assets/backgrounds/haldi_turmeric_thumb.webp',
+    images: {
+      thumbnail: '/assets/backgrounds/haldi_turmeric_thumb.webp',
+      mobile: '/assets/backgrounds/haldi_turmeric_mobile.webp',
+      desktop: '/assets/backgrounds/haldi_turmeric_desktop.webp'
+    }
+  },
+  {
+    id: 'haldi_bindelu',
+    name: 'Bindelu Pattern',
+    description: 'Traditional bindelu design with yellow theme',
+    thumbnail: '/assets/backgrounds/haldi_bindelu_thumb.webp',
+    images: {
+      thumbnail: '/assets/backgrounds/haldi_bindelu_thumb.webp',
+      mobile: '/assets/backgrounds/haldi_bindelu_mobile.webp',
+      desktop: '/assets/backgrounds/haldi_bindelu_desktop.webp'
+    }
+  },
+  {
+    id: 'haldi_yellow_florals',
+    name: 'Yellow Florals',
+    description: 'Vibrant yellow marigolds and flowers',
+    thumbnail: '/assets/backgrounds/haldi_yellow_florals_thumb.webp',
+    images: {
+      thumbnail: '/assets/backgrounds/haldi_yellow_florals_thumb.webp',
+      mobile: '/assets/backgrounds/haldi_yellow_florals_mobile.webp',
+      desktop: '/assets/backgrounds/haldi_yellow_florals_desktop.webp'
+    }
+  },
+  {
+    id: 'haldi_yellow_abstract',
+    name: 'Yellow Abstract',
+    description: 'Modern yellow abstract pattern',
+    thumbnail: '/assets/backgrounds/haldi_yellow_abstract_thumb.webp',
+    images: {
+      thumbnail: '/assets/backgrounds/haldi_yellow_abstract_thumb.webp',
+      mobile: '/assets/backgrounds/haldi_yellow_abstract_mobile.webp',
+      desktop: '/assets/backgrounds/haldi_yellow_abstract_desktop.webp'
+    }
+  }
+];
+
+/**
+ * Mehendi Backgrounds: Trendy only (mehendi patterns, green theme)
+ */
+export const MEHENDI_BACKGROUNDS = [
+  {
+    id: 'mehendi_pattern_intricate',
+    name: 'Intricate Mehendi',
+    description: 'Detailed mehendi hand design',
+    thumbnail: '/assets/backgrounds/mehendi_pattern_intricate_thumb.webp',
+    images: {
+      thumbnail: '/assets/backgrounds/mehendi_pattern_intricate_thumb.webp',
+      mobile: '/assets/backgrounds/mehendi_pattern_intricate_mobile.webp',
+      desktop: '/assets/backgrounds/mehendi_pattern_intricate_desktop.webp'
+    }
+  },
+  {
+    id: 'mehendi_green_leaves',
+    name: 'Green Leaves',
+    description: 'Fresh green leaf pattern',
+    thumbnail: '/assets/backgrounds/mehendi_green_leaves_thumb.webp',
+    images: {
+      thumbnail: '/assets/backgrounds/mehendi_green_leaves_thumb.webp',
+      mobile: '/assets/backgrounds/mehendi_green_leaves_mobile.webp',
+      desktop: '/assets/backgrounds/mehendi_green_leaves_desktop.webp'
+    }
+  },
+  {
+    id: 'mehendi_paisley',
+    name: 'Paisley Pattern',
+    description: 'Traditional paisley mehendi design',
+    thumbnail: '/assets/backgrounds/mehendi_paisley_thumb.webp',
+    images: {
+      thumbnail: '/assets/backgrounds/mehendi_paisley_thumb.webp',
+      mobile: '/assets/backgrounds/mehendi_paisley_mobile.webp',
+      desktop: '/assets/backgrounds/mehendi_paisley_desktop.webp'
+    }
+  },
+  {
+    id: 'mehendi_green_abstract',
+    name: 'Green Abstract',
+    description: 'Modern green theme with abstract elements',
+    thumbnail: '/assets/backgrounds/mehendi_green_abstract_thumb.webp',
+    images: {
+      thumbnail: '/assets/backgrounds/mehendi_green_abstract_thumb.webp',
+      mobile: '/assets/backgrounds/mehendi_green_abstract_mobile.webp',
+      desktop: '/assets/backgrounds/mehendi_green_abstract_desktop.webp'
+    }
+  }
+];
+
+/**
+ * Marriage Backgrounds: Lord backgrounds only
+ */
+export const MARRIAGE_BACKGROUNDS = {
+  lord: DEITY_OPTIONS.filter(d => d.id !== 'none') // All lord backgrounds, excluding 'none'
+};
+
+/**
+ * Reception Backgrounds: Mandatory choice - With Lord OR Without Lord (royal/classy)
+ */
+export const RECEPTION_BACKGROUNDS = {
+  with_lord: DEITY_OPTIONS.filter(d => d.id !== 'none'), // All lord backgrounds
+  without_lord: [
+    {
+      id: 'reception_royal_gold',
+      name: 'Royal Gold',
+      description: 'Luxurious gold and maroon theme',
+      thumbnail: '/assets/backgrounds/reception_royal_gold_thumb.webp',
+      images: {
+        thumbnail: '/assets/backgrounds/reception_royal_gold_thumb.webp',
+        mobile: '/assets/backgrounds/reception_royal_gold_mobile.webp',
+        desktop: '/assets/backgrounds/reception_royal_gold_desktop.webp'
+      }
+    },
+    {
+      id: 'reception_classy_silver',
+      name: 'Classy Silver',
+      description: 'Elegant silver and white theme',
+      thumbnail: '/assets/backgrounds/reception_classy_silver_thumb.webp',
+      images: {
+        thumbnail: '/assets/backgrounds/reception_classy_silver_thumb.webp',
+        mobile: '/assets/backgrounds/reception_classy_silver_mobile.webp',
+        desktop: '/assets/backgrounds/reception_classy_silver_desktop.webp'
+      }
+    },
+    {
+      id: 'reception_royal_purple',
+      name: 'Royal Purple',
+      description: 'Majestic purple and gold combination',
+      thumbnail: '/assets/backgrounds/reception_royal_purple_thumb.webp',
+      images: {
+        thumbnail: '/assets/backgrounds/reception_royal_purple_thumb.webp',
+        mobile: '/assets/backgrounds/reception_royal_purple_mobile.webp',
+        desktop: '/assets/backgrounds/reception_royal_purple_desktop.webp'
+      }
+    },
+    {
+      id: 'reception_classy_champagne',
+      name: 'Champagne Elegance',
+      description: 'Sophisticated champagne and ivory',
+      thumbnail: '/assets/backgrounds/reception_classy_champagne_thumb.webp',
+      images: {
+        thumbnail: '/assets/backgrounds/reception_classy_champagne_thumb.webp',
+        mobile: '/assets/backgrounds/reception_classy_champagne_mobile.webp',
+        desktop: '/assets/backgrounds/reception_classy_champagne_desktop.webp'
+      }
+    }
+  ]
+};
+
+/**
+ * Get available backgrounds for a specific event type
+ * @param {string} eventType - Event type (engagement, haldi, mehendi, marriage, reception)
+ * @returns {object} Available background options
+ */
+export const getEventBackgrounds = (eventType) => {
+  switch (eventType) {
+    case 'engagement':
+      return ENGAGEMENT_BACKGROUNDS;
+    case 'haldi':
+      return { trendy: HALDI_BACKGROUNDS };
+    case 'mehendi':
+      return { trendy: MEHENDI_BACKGROUNDS };
+    case 'marriage':
+      return MARRIAGE_BACKGROUNDS;
+    case 'reception':
+      return RECEPTION_BACKGROUNDS;
+    default:
+      return null;
+  }
+};
+
+/**
+ * Get background by ID from all event backgrounds
+ * @param {string} backgroundId - Background identifier
+ * @returns {object|null} Background configuration or null
+ */
+export const getBackgroundById = (backgroundId) => {
+  if (!backgroundId) return null;
+  
+  // Check in all background collections
+  const allBackgrounds = [
+    ...ENGAGEMENT_BACKGROUNDS.trendy,
+    ...HALDI_BACKGROUNDS,
+    ...MEHENDI_BACKGROUNDS,
+    ...ENGAGEMENT_BACKGROUNDS.lord,
+    ...MARRIAGE_BACKGROUNDS.lord,
+    ...RECEPTION_BACKGROUNDS.with_lord,
+    ...RECEPTION_BACKGROUNDS.without_lord
+  ];
+  
+  return allBackgrounds.find(bg => bg.id === backgroundId) || null;
+};
+
+/**
+ * Check if an event type allows lord backgrounds
+ * @param {string} eventType - Event type
+ * @returns {boolean} True if lord backgrounds are allowed
+ */
+export const allowsLordBackgrounds = (eventType) => {
+  return ['engagement', 'marriage', 'reception'].includes(eventType);
+};
+
+/**
+ * Check if an event type requires background selection
+ * @param {string} eventType - Event type
+ * @returns {boolean} True if background selection is mandatory
+ */
+export const requiresBackgroundSelection = (eventType) => {
+  return eventType === 'reception'; // Reception requires mandatory choice
+};
+===== frontend/src/config/eventDesignSystem.js =====
+/**
+ * PHASE 15 – EVENT DESIGN & COLOR SYSTEM
+ * 
+ * 8 Reusable Background Designs for Wedding Events
+ * Each design supports multiple Indian wedding color variants
+ */
+
+// Indian Wedding Color Palette
+export const INDIAN_WEDDING_COLORS = {
+  red: {
+    primary: '#DC143C',
+    secondary: '#8B0000',
+    accent: '#FFD700',
+    light: '#FFC0CB',
+  },
+  maroon: {
+    primary: '#800000',
+    secondary: '#5C0000',
+    accent: '#DAA520',
+    light: '#BC8F8F',
+  },
+  yellow: {
+    primary: '#FFD700',
+    secondary: '#FFA500',
+    accent: '#FF6347',
+    light: '#FFFACD',
+  },
+  gold: {
+    primary: '#DAA520',
+    secondary: '#B8860B',
+    accent: '#8B0000',
+    light: '#F0E68C',
+  },
+  orange: {
+    primary: '#FF8C00',
+    secondary: '#FF6347',
+    accent: '#FFD700',
+    light: '#FFE4B5',
+  },
+  cream: {
+    primary: '#FFFDD0',
+    secondary: '#F5DEB3',
+    accent: '#8B4513',
+    light: '#FFF8DC',
+  },
+  pastelPink: {
+    primary: '#FFB6C1',
+    secondary: '#FF69B4',
+    accent: '#FFD700',
+    light: '#FFF0F5',
+  },
+  royalBlue: {
+    primary: '#4169E1',
+    secondary: '#191970',
+    accent: '#FFD700',
+    light: '#B0E0E6',
+  },
+  deepGreen: {
+    primary: '#228B22',
+    secondary: '#006400',
+    accent: '#FFD700',
+    light: '#90EE90',
+  },
+};
+
+// 8 Base Design Types
+export const DESIGN_TYPES = {
+  ROYAL_TEMPLE: 'royal_temple',
+  TRADITIONAL_FLORAL: 'traditional_floral',
+  MINIMAL_DIVINE: 'minimal_divine',
+  FESTIVE_MARIGOLD: 'festive_marigold',
+  ELEGANT_RINGS: 'elegant_rings',
+  CLASSIC_RED_WEDDING: 'classic_red_wedding',
+  SOFT_PASTEL_CELEBRATION: 'soft_pastel_celebration',
+  GRAND_RECEPTION_LUXURY: 'grand_reception_luxury',
+};
+
+// Design Configuration
+export const EVENT_DESIGNS = {
+  // Design 1: Royal Temple
+  [DESIGN_TYPES.ROYAL_TEMPLE]: {
+    id: 'royal_temple',
+    name: 'Royal Temple',
+    description: 'Traditional temple architecture with ornate patterns',
+    defaultColor: 'maroon',
+    allowedColors: ['maroon', 'gold', 'red', 'royalBlue'],
+    pattern: 'temple',
+    features: {
+      hasArchPattern: true,
+      hasPillarDesign: true,
+      hasOrnateTop: true,
+      centerClear: true, // Keep center clear for lord image
+    },
+    responsive: {
+      mobile: { patternScale: 0.8, spacing: 'compact' },
+      tablet: { patternScale: 1.0, spacing: 'normal' },
+      desktop: { patternScale: 1.2, spacing: 'wide' },
+    },
+  },
+
+  // Design 2: Traditional Floral
+  [DESIGN_TYPES.TRADITIONAL_FLORAL]: {
+    id: 'traditional_floral',
+    name: 'Traditional Floral',
+    description: 'Intricate floral patterns with mandalas',
+    defaultColor: 'red',
+    allowedColors: ['red', 'orange', 'pastelPink', 'yellow'],
+    pattern: 'floral',
+    features: {
+      hasMandala: true,
+      hasFloralBorder: true,
+      hasCornerDesign: true,
+      centerClear: true,
+    },
+    responsive: {
+      mobile: { patternScale: 0.7, spacing: 'compact' },
+      tablet: { patternScale: 0.9, spacing: 'normal' },
+      desktop: { patternScale: 1.1, spacing: 'wide' },
+    },
+  },
+
+  // Design 3: Minimal Divine
+  [DESIGN_TYPES.MINIMAL_DIVINE]: {
+    id: 'minimal_divine',
+    name: 'Minimal Divine',
+    description: 'Clean lines with subtle religious symbols',
+    defaultColor: 'cream',
+    allowedColors: ['cream', 'gold', 'pastelPink', 'deepGreen'],
+    pattern: 'minimal',
+    features: {
+      hasSubtleSymbols: true,
+      hasCleanLines: true,
+      hasMinimalBorder: true,
+      centerClear: true,
+    },
+    responsive: {
+      mobile: { patternScale: 0.85, spacing: 'comfortable' },
+      tablet: { patternScale: 1.0, spacing: 'comfortable' },
+      desktop: { patternScale: 1.15, spacing: 'spacious' },
+    },
+  },
+
+  // Design 4: Festive Marigold
+  [DESIGN_TYPES.FESTIVE_MARIGOLD]: {
+    id: 'festive_marigold',
+    name: 'Festive Marigold',
+    description: 'Marigold flower garlands and festive elements',
+    defaultColor: 'yellow',
+    allowedColors: ['yellow', 'orange', 'gold', 'red'],
+    pattern: 'marigold',
+    features: {
+      hasGarlandPattern: true,
+      hasFlowerClusters: true,
+      hasFestiveAccents: true,
+      centerClear: true,
+    },
+    responsive: {
+      mobile: { patternScale: 0.75, spacing: 'compact' },
+      tablet: { patternScale: 0.95, spacing: 'normal' },
+      desktop: { patternScale: 1.2, spacing: 'wide' },
+    },
+  },
+
+  // Design 5: Elegant Rings
+  [DESIGN_TYPES.ELEGANT_RINGS]: {
+    id: 'elegant_rings',
+    name: 'Elegant Rings',
+    description: 'Wedding rings with elegant swirls',
+    defaultColor: 'gold',
+    allowedColors: ['gold', 'cream', 'pastelPink', 'yellow'],
+    pattern: 'rings',
+    features: {
+      hasRingMotif: true,
+      hasElegantSwirls: true,
+      hasRomanticAccents: true,
+      centerClear: true,
+    },
+    responsive: {
+      mobile: { patternScale: 0.8, spacing: 'comfortable' },
+      tablet: { patternScale: 1.0, spacing: 'comfortable' },
+      desktop: { patternScale: 1.15, spacing: 'spacious' },
+    },
+  },
+
+  // Design 6: Classic Red Wedding
+  [DESIGN_TYPES.CLASSIC_RED_WEDDING]: {
+    id: 'classic_red_wedding',
+    name: 'Classic Red Wedding',
+    description: 'Classic wedding motifs with paisley patterns',
+    defaultColor: 'red',
+    allowedColors: ['red', 'maroon', 'gold', 'orange'],
+    pattern: 'paisley',
+    features: {
+      hasPaisleyPattern: true,
+      hasTraditionalMotifs: true,
+      hasRichBorder: true,
+      centerClear: true,
+    },
+    responsive: {
+      mobile: { patternScale: 0.7, spacing: 'compact' },
+      tablet: { patternScale: 0.9, spacing: 'normal' },
+      desktop: { patternScale: 1.1, spacing: 'wide' },
+    },
+  },
+
+  // Design 7: Soft Pastel Celebration
+  [DESIGN_TYPES.SOFT_PASTEL_CELEBRATION]: {
+    id: 'soft_pastel_celebration',
+    name: 'Soft Pastel Celebration',
+    description: 'Gentle patterns with soft florals',
+    defaultColor: 'pastelPink',
+    allowedColors: ['pastelPink', 'cream', 'yellow', 'gold'],
+    pattern: 'soft',
+    features: {
+      hasSoftFloral: true,
+      hasGentleGradient: true,
+      hasDelicateAccents: true,
+      centerClear: true,
+    },
+    responsive: {
+      mobile: { patternScale: 0.85, spacing: 'comfortable' },
+      tablet: { patternScale: 1.0, spacing: 'comfortable' },
+      desktop: { patternScale: 1.1, spacing: 'spacious' },
+    },
+  },
+
+  // Design 8: Grand Reception Luxury
+  [DESIGN_TYPES.GRAND_RECEPTION_LUXURY]: {
+    id: 'grand_reception_luxury',
+    name: 'Grand Reception Luxury',
+    description: 'Luxurious patterns with geometric elegance',
+    defaultColor: 'royalBlue',
+    allowedColors: ['royalBlue', 'gold', 'maroon', 'deepGreen'],
+    pattern: 'luxury',
+    features: {
+      hasGeometricPattern: true,
+      hasLuxuryAccents: true,
+      hasGrandBorder: true,
+      centerClear: true,
+    },
+    responsive: {
+      mobile: { patternScale: 0.75, spacing: 'compact' },
+      tablet: { patternScale: 0.95, spacing: 'normal' },
+      desktop: { patternScale: 1.15, spacing: 'wide' },
+    },
+  },
+};
+
+// Helper Functions
+
+/**
+ * Get design configuration by ID
+ */
+export const getDesignById = (designId) => {
+  return EVENT_DESIGNS[designId] || EVENT_DESIGNS[DESIGN_TYPES.ROYAL_TEMPLE];
+};
+
+/**
+ * Get color palette by color name
+ */
+export const getColorPalette = (colorName) => {
+  return INDIAN_WEDDING_COLORS[colorName] || INDIAN_WEDDING_COLORS.maroon;
+};
+
+/**
+ * Get all available designs
+ */
+export const getAllDesigns = () => {
+  return Object.values(EVENT_DESIGNS);
+};
+
+/**
+ * Get allowed colors for a design
+ */
+export const getAllowedColors = (designId) => {
+  const design = getDesignById(designId);
+  return design.allowedColors.map(colorName => ({
+    name: colorName,
+    palette: getColorPalette(colorName),
+  }));
+};
+
+/**
+ * Validate design and color combination
+ */
+export const isValidDesignColor = (designId, colorName) => {
+  const design = getDesignById(designId);
+  return design.allowedColors.includes(colorName);
+};
+
+/**
+ * Get responsive settings for design
+ */
+export const getResponsiveSettings = (designId, screenSize = 'mobile') => {
+  const design = getDesignById(designId);
+  return design.responsive[screenSize] || design.responsive.mobile;
+};
+
+/**
+ * Generate CSS gradient based on color palette
+ */
+export const generateGradient = (colorPalette, direction = 'to bottom') => {
+  return `linear-gradient(${direction}, ${colorPalette.light}, ${colorPalette.primary})`;
+};
+
+/**
+ * Generate pattern overlay CSS
+ */
+export const generatePatternOverlay = (patternType, colorPalette, opacity = 0.1) => {
+  const patterns = {
+    temple: `repeating-linear-gradient(90deg, ${colorPalette.accent}22 0px, transparent 1px, transparent 50px, ${colorPalette.accent}22 51px)`,
+    floral: `radial-gradient(circle at 25% 25%, ${colorPalette.primary}15 1%, transparent 50%)`,
+    minimal: `linear-gradient(to bottom right, ${colorPalette.light}80, transparent)`,
+    marigold: `radial-gradient(circle at 50% 50%, ${colorPalette.primary}20 5%, transparent 20%)`,
+    rings: `radial-gradient(circle at center, transparent 40%, ${colorPalette.accent}10 40%, transparent 60%)`,
+    paisley: `repeating-linear-gradient(45deg, ${colorPalette.primary}10 0px, transparent 10px, transparent 30px)`,
+    soft: `linear-gradient(135deg, ${colorPalette.light}60, ${colorPalette.primary}10)`,
+    luxury: `linear-gradient(to right, ${colorPalette.primary}15, transparent 50%, ${colorPalette.accent}15)`,
+  };
+
+  return patterns[patternType] || patterns.minimal;
+};
+
+// Design Metadata
+export const DESIGN_METADATA = {
+  version: '1.0.0',
+  totalDesigns: 8,
+  colorPaletteCount: 9,
+  responsive: true,
+  lordImageCompatible: true,
+};
+
+export default EVENT_DESIGNS;
+===== frontend/src/config/languageTemplates.js =====
+/**
+ * Language Templates Configuration
+ * 
+ * Default text templates for each supported language.
+ * Custom text in profile overrides these defaults.
+ * 
+ * Fallback order: Custom → Default Template → English
+ */
+
+export const LANGUAGE_TEMPLATES = {
+  english: {
+    opening: {
+      title: "Wedding Invitation",
+      subtitle: "Join us in celebrating our special day"
+    },
+    welcome: {
+      message: "With great joy, we invite you to witness the beginning of our journey together"
+    },
+    couple: {
+      groomLabel: "Groom",
+      brideLabel: "Bride"
+    },
+    events: {
+      title: "Event Details",
+      dateLabel: "Date",
+      venueLabel: "Venue"
+    },
+    photos: {
+      title: "Our Moments"
+    },
+    video: {
+      title: "Our Story"
+    },
+    greetings: {
+      title: "Wedding Wishes",
+      nameLabel: "Your Name",
+      messagePlaceholder: "Write your wishes here...",
+      submitButton: "Send Wishes"
+    },
+    whatsapp: {
+      groomButton: "Message Groom",
+      brideButton: "Message Bride",
+      defaultMessage: "Congratulations on your wedding! Wishing you both a lifetime of love and happiness."
+    },
+    footer: {
+      thankyou: "Thank you for being part of our celebration"
+    }
+  },
+  
+  telugu: {
+    opening: {
+      title: "వివాహ ఆహ్వానం",
+      subtitle: "మా ప్రత్యేక రోజును జరుపుకోవడానికి మాతో చేరండి"
+    },
+    welcome: {
+      message: "చాలా సంతోషంతో, మా ప్రయాణ ప్రారంభానికి సాక్షిగా ఉండమని మిమ్మల్ని ఆహ్వానిస్తున్నాము"
+    },
+    couple: {
+      groomLabel: "వరుడు",
+      brideLabel: "వధువు"
+    },
+    events: {
+      title: "కార్యక్రమ వివరాలు",
+      dateLabel: "తేదీ",
+      venueLabel: "స్థలం"
+    },
+    photos: {
+      title: "మా జ్ఞాపకాలు"
+    },
+    video: {
+      title: "మా కథ"
+    },
+    greetings: {
+      title: "శుభాకాంక్షలు",
+      nameLabel: "మీ పేరు",
+      messagePlaceholder: "మీ శుభాకాంక్షలు ఇక్కడ రాయండి...",
+      submitButton: "శుభాకాంక్షలు పంపండి"
+    },
+    whatsapp: {
+      groomButton: "వరుడికి సందేశం పంపండి",
+      brideButton: "వధువుకు సందేశం పంపండి",
+      defaultMessage: "మీ వివాహానికి శుభాకాంక్షలు! మీ ఇద్దరికీ ప్రేమ మరియు సంతోషంతో నిండిన జీవితం కోరుకుంటున్నాను."
+    },
+    footer: {
+      thankyou: "మా వేడుకలో భాగం అయినందుకు ధన్యవాదాలు"
+    }
+  },
+  
+  hindi: {
+    opening: {
+      title: "विवाह निमंत्रण",
+      subtitle: "हमारे खास दिन को मनाने के लिए हमसे जुड़ें"
+    },
+    welcome: {
+      message: "बहुत खुशी के साथ, हम आपको हमारी यात्रा की शुरुआत का गवाह बनने के लिए आमंत्रित करते हैं"
+    },
+    couple: {
+      groomLabel: "वर",
+      brideLabel: "वधू"
+    },
+    events: {
+      title: "कार्यक्रम विवरण",
+      dateLabel: "तारीख",
+      venueLabel: "स्थान"
+    },
+    photos: {
+      title: "हमारी यादें"
+    },
+    video: {
+      title: "हमारी कहानी"
+    },
+    greetings: {
+      title: "शुभकामनाएं",
+      nameLabel: "आपका नाम",
+      messagePlaceholder: "यहां अपनी शुभकामनाएं लिखें...",
+      submitButton: "शुभकामनाएं भेजें"
+    },
+    whatsapp: {
+      groomButton: "वर को संदेश भेजें",
+      brideButton: "वधू को संदेश भेजें",
+      defaultMessage: "आपकी शादी की बधाई! आप दोनों को प्यार और खुशियों से भरी जिंदगी की शुभकामनाएं।"
+    },
+    footer: {
+      thankyou: "हमारे उत्सव का हिस्सा बनने के लिए धन्यवाद"
+    }
+  },
+  
+  tamil: {
+    opening: {
+      title: "திருமண அழைப்பிதழ்",
+      subtitle: "எங்கள் சிறப்பு நாளை கொண்டாட எங்களுடன் சேருங்கள்"
+    },
+    welcome: {
+      message: "மிகுந்த மகிழ்ச்சியுடன், எங்கள் பயணத்தின் தொடக்கத்திற்கு சாட்சியாக உங்களை அழைக்கிறோம்"
+    },
+    couple: {
+      groomLabel: "மாப்பிள்ளை",
+      brideLabel: "மணமகள்"
+    },
+    events: {
+      title: "நிகழ்வு விவரங்கள்",
+      dateLabel: "தேதி",
+      venueLabel: "இடம்"
+    },
+    photos: {
+      title: "எங்கள் நினைவுகள்"
+    },
+    video: {
+      title: "எங்கள் கதை"
+    },
+    greetings: {
+      title: "திருமண வாழ்த்துக்கள்",
+      nameLabel: "உங்கள் பெயர்",
+      messagePlaceholder: "உங்கள் வாழ்த்துக்களை இங்கே எழுதுங்கள்...",
+      submitButton: "வாழ்த்துக்களை அனுப்பவும்"
+    },
+    whatsapp: {
+      groomButton: "மாப்பிள்ளைக்கு செய்தி அனுப்பவும்",
+      brideButton: "மணமகளுக்கு செய்தி அனுப்பவும்",
+      defaultMessage: "உங்கள் திருமணத்திற்கு வாழ்த்துக்கள்! நீங்கள் இருவருக்கும் அன்பும் மகிழ்ச்சியும் நிறைந்த வாழ்க்கை வாழ வாழ்த்துகிறேன்."
+    },
+    footer: {
+      thankyou: "எங்கள் கொண்டாட்டத்தில் பங்கேற்றதற்கு நன்றி"
+    }
+  },
+  
+  kannada: {
+    opening: {
+      title: "ಮದುವೆಯ ಆಹ್ವಾನ",
+      subtitle: "ನಮ್ಮ ವಿಶೇಷ ದಿನವನ್ನು ಆಚರಿಸಲು ನಮ್ಮೊಂದಿಗೆ ಸೇರಿ"
+    },
+    welcome: {
+      message: "ಅಪಾರ ಸಂತೋಷದಿಂದ, ನಮ್ಮ ಪ್ರಯಾಣದ ಪ್ರಾರಂಭಕ್ಕೆ ಸಾಕ್ಷಿಯಾಗಲು ನಿಮ್ಮನ್ನು ಆಹ್ವಾನಿಸುತ್ತೇವೆ"
+    },
+    couple: {
+      groomLabel: "ವರ",
+      brideLabel: "ವಧು"
+    },
+    events: {
+      title: "ಕಾರ್ಯಕ್ರಮ ವಿವರಗಳು",
+      dateLabel: "ದಿನಾಂಕ",
+      venueLabel: "ಸ್ಥಳ"
+    },
+    photos: {
+      title: "ನಮ್ಮ ನೆನಪುಗಳು"
+    },
+    video: {
+      title: "ನಮ್ಮ ಕಥೆ"
+    },
+    greetings: {
+      title: "ಮದುವೆಯ ಶುಭಾಶಯಗಳು",
+      nameLabel: "ನಿಮ್ಮ ಹೆಸರು",
+      messagePlaceholder: "ನಿಮ್ಮ ಶುಭಾಶಯಗಳನ್ನು ಇಲ್ಲಿ ಬರೆಯಿರಿ...",
+      submitButton: "ಶುಭಾಶಯಗಳನ್ನು ಕಳುಹಿಸಿ"
+    },
+    whatsapp: {
+      groomButton: "ವರನಿಗೆ ಸಂದೇಶ ಕಳುಹಿಸಿ",
+      brideButton: "ವಧುವಿಗೆ ಸಂದೇಶ ಕಳುಹಿಸಿ",
+      defaultMessage: "ನಿಮ್ಮ ಮದುವೆಗೆ ಶುಭಾಶಯಗಳು! ನೀವಿಬ್ಬರಿಗೂ ಪ್ರೀತಿ ಮತ್ತು ಸಂತೋಷದಿಂದ ತುಂಬಿದ ಜೀವನವನ್ನು ಹಾರೈಸುತ್ತೇನೆ."
+    },
+    footer: {
+      thankyou: "ನಮ್ಮ ಆಚರಣೆಯಲ್ಲಿ ಭಾಗವಹಿಸಿದ್ದಕ್ಕಾಗಿ ಧನ್ಯವಾದಗಳು"
+    }
+  },
+  
+  malayalam: {
+    opening: {
+      title: "വിവാഹ ക്ഷണം",
+      subtitle: "ഞങ്ങളുടെ പ്രത്യേക ദിവസം ആഘോഷിക്കാൻ ഞങ്ങളോടൊപ്പം ചേരുക"
+    },
+    welcome: {
+      message: "അതിയായ സന്തോഷത്തോടെ, ഞങ്ങളുടെ യാത്രയുടെ തുടക്കത്തിന് സാക്ഷ്യം വഹിക്കാൻ നിങ്ങളെ ക്ഷണിക്കുന്നു"
+    },
+    couple: {
+      groomLabel: "വരൻ",
+      brideLabel: "വധു"
+    },
+    events: {
+      title: "പരിപാടി വിശദാംശങ്ങൾ",
+      dateLabel: "തീയതി",
+      venueLabel: "സ്ഥലം"
+    },
+    photos: {
+      title: "ഞങ്ങളുടെ സ്മരണകൾ"
+    },
+    video: {
+      title: "ഞങ്ങളുടെ കഥ"
+    },
+    greetings: {
+      title: "വിവാഹ ആശംസകൾ",
+      nameLabel: "നിങ്ങളുടെ പേര്",
+      messagePlaceholder: "നിങ്ങളുടെ ആശംസകൾ ഇവിടെ എഴുതുക...",
+      submitButton: "ആശംസകൾ അയയ്ക്കുക"
+    },
+    whatsapp: {
+      groomButton: "വരന് സന്ദേശം അയയ്ക്കുക",
+      brideButton: "വധുവിന് സന്ദേശം അയയ്ക്കുക",
+      defaultMessage: "നിങ്ങളുടെ വിവാഹത്തിന് അഭിനന്ദനങ്ങൾ! നിങ്ങൾ രണ്ടുപേർക്കും സ്നേഹവും സന്തോഷവും നിറഞ്ഞ ജീവിതം ആശംസിക്കുന്നു."
+    },
+    footer: {
+      thankyou: "ഞങ്ങളുടെ ആഘോഷത്തിൽ പങ്കാളികളായതിന് നന്ദി"
+    }
+  }
+};
+
+/**
+ * Language metadata
+ */
+export const LANGUAGES = [
+  {
+    code: 'english',
+    name: 'English',
+    nativeName: 'English',
+    rtl: false
+  },
+  {
+    code: 'telugu',
+    name: 'Telugu',
+    nativeName: 'తెలుగు',
+    rtl: false
+  },
+  {
+    code: 'hindi',
+    name: 'Hindi',
+    nativeName: 'हिन्दी',
+    rtl: false
+  },
+  {
+    code: 'tamil',
+    name: 'Tamil',
+    nativeName: 'தமிழ்',
+    rtl: false
+  },
+  {
+    code: 'kannada',
+    name: 'Kannada',
+    nativeName: 'ಕನ್ನಡ',
+    rtl: false
+  },
+  {
+    code: 'malayalam',
+    name: 'Malayalam',
+    nativeName: 'മലയാളം',
+    rtl: false
+  }
+];
+
+/**
+ * Get text for a specific section and language
+ * @param {string} language - Language code
+ * @param {string} section - Section name
+ * @param {string} key - Text key
+ * @param {object} customText - Custom text overrides from profile
+ * @returns {string} Text content with fallback
+ */
+export const getText = (language, section, key, customText = {}) => {
+  // Check custom text first
+  if (customText[language] && customText[language][`${section}_${key}`]) {
+    return customText[language][`${section}_${key}`];
+  }
+  
+  // Check language template
+  if (LANGUAGE_TEMPLATES[language] && 
+      LANGUAGE_TEMPLATES[language][section] && 
+      LANGUAGE_TEMPLATES[language][section][key]) {
+    return LANGUAGE_TEMPLATES[language][section][key];
+  }
+  
+  // Fallback to English
+  if (LANGUAGE_TEMPLATES.english[section] && 
+      LANGUAGE_TEMPLATES.english[section][key]) {
+    return LANGUAGE_TEMPLATES.english[section][key];
+  }
+  
+  return '';
+};
+
+/**
+ * Get all text for a section in a language
+ * @param {string} language - Language code
+ * @param {string} section - Section name
+ * @param {object} customText - Custom text overrides from profile
+ * @returns {object} Section text with fallback
+ */
+export const getSectionText = (language, section, customText = {}) => {
+  const template = LANGUAGE_TEMPLATES[language]?.[section] || LANGUAGE_TEMPLATES.english[section];
+  
+  if (!template) return {};
+  
+  const result = { ...template };
+  
+  // Apply custom overrides
+  if (customText[language]) {
+    Object.keys(result).forEach(key => {
+      const customKey = `${section}_${key}`;
+      if (customText[language][customKey]) {
+        result[key] = customText[language][customKey];
+      }
+    });
+  }
+  
+  return result;
+};
+
+/**
+ * Get language metadata by code
+ * @param {string} code - Language code
+ * @returns {object|null} Language metadata
+ */
+export const getLanguage = (code) => {
+  return LANGUAGES.find(lang => lang.code === code);
+};
+===== frontend/src/config/religiousAssets.js =====
+/**
+ * Religious Assets Configuration
+ * 
+ * Manages deity images and background assets for invitations.
+ * Includes progressive loading (thumbnail, mobile, desktop) and fallbacks.
+ */
+
+export const DEITY_OPTIONS = [
+  {
+    id: 'none',
+    name: 'No Religious Theme',
+    description: 'Secular invitation without deity imagery',
+    thumbnail: '/assets/deities/none.svg',
+    images: null
+  },
+  {
+    id: 'ganesha',
+    name: 'Lord Ganesha',
+    description: 'Remover of obstacles, auspicious beginning',
+    thumbnail: '/assets/deities/ganesha_thumb.webp',
+    images: {
+      thumbnail: '/assets/deities/ganesha_thumb.webp',
+      mobile: '/assets/deities/ganesha_mobile.webp',
+      desktop: '/assets/deities/ganesha_desktop.webp'
+    },
+    fallback: '/assets/deities/ganesha_desktop.jpg'
+  },
+  {
+    id: 'venkateswara_padmavati',
+    name: 'Lord Venkateswara & Padmavati',
+    description: 'Divine couple symbolizing eternal love',
+    thumbnail: '/assets/deities/venkateswara_padmavati_thumb.webp',
+    images: {
+      thumbnail: '/assets/deities/venkateswara_padmavati_thumb.webp',
+      mobile: '/assets/deities/venkateswara_padmavati_mobile.webp',
+      desktop: '/assets/deities/venkateswara_padmavati_desktop.webp'
+    },
+    fallback: '/assets/deities/venkateswara_padmavati_desktop.jpg'
+  },
+  {
+    id: 'shiva_parvati',
+    name: 'Lord Shiva & Parvati',
+    description: 'Perfect union of masculine and feminine energy',
+    thumbnail: '/assets/deities/shiva_parvati_thumb.webp',
+    images: {
+      thumbnail: '/assets/deities/shiva_parvati_thumb.webp',
+      mobile: '/assets/deities/shiva_parvati_mobile.webp',
+      desktop: '/assets/deities/shiva_parvati_desktop.webp'
+    },
+    fallback: '/assets/deities/shiva_parvati_desktop.jpg'
+  },
+  {
+    id: 'lakshmi_vishnu',
+    name: 'Lakshmi & Vishnu',
+    description: 'Wealth, prosperity, and harmony',
+    thumbnail: '/assets/deities/lakshmi_vishnu_thumb.webp',
+    images: {
+      thumbnail: '/assets/deities/lakshmi_vishnu_thumb.webp',
+      mobile: '/assets/deities/lakshmi_vishnu_mobile.webp',
+      desktop: '/assets/deities/lakshmi_vishnu_desktop.webp'
+    },
+    fallback: '/assets/deities/lakshmi_vishnu_desktop.jpg'
+  }
+];
+
+/**
+ * Get deity configuration by ID
+ * @param {string} deityId - Deity identifier
+ * @returns {object|null} Deity configuration or null if not found
+ */
+export const getDeity = (deityId) => {
+  if (!deityId) return DEITY_OPTIONS[0]; // Return 'none' as default
+  return DEITY_OPTIONS.find(deity => deity.id === deityId) || DEITY_OPTIONS[0];
+};
+
+/**
+ * Get responsive image source for deity
+ * @param {string} deityId - Deity identifier
+ * @param {string} size - Image size: 'thumbnail', 'mobile', or 'desktop'
+ * @returns {string|null} Image URL or null
+ */
+export const getDeityImage = (deityId, size = 'desktop') => {
+  const deity = getDeity(deityId);
+  
+  if (!deity || !deity.images) {
+    return null;
+  }
+  
+  return deity.images[size] || deity.images.desktop;
+};
+
+/**
+ * Get all deity IDs
+ * @returns {string[]} Array of deity IDs
+ */
+export const getDeityIds = () => {
+  return DEITY_OPTIONS.map(deity => deity.id);
+};
+===== frontend/src/config/themeSystem.js =====
+/**
+ * SCALABLE THEME SYSTEM - PRODUCTION-READY FOUNDATION
+ * 
+ * This is the centralized configuration for all invitation themes.
+ * Each theme supports dynamic switching and includes visual, structural, 
+ * and feature-level properties.
+ * 
+ * Theme Properties:
+ * - themeId: Unique identifier for the theme
+ * - name: Display name of the theme
+ * - backgroundColor: Primary background color for the theme
+ * - accentColors: Array of accent colors for highlights, borders, etc.
+ * - hasLord: Whether theme supports religious deity backgrounds
+ * - hasGantalu: Whether theme supports temple bells (gantalu) decoration
+ * - hasFire: Whether theme supports fire/lamp (diya) elements
+ * - colors: Detailed color palette
+ * - fonts: Typography configuration
+ * - spacing: Layout spacing rules
+ * - card: Card styling properties
+ * - image: Image styling properties
+ */
+
+export const THEME_SYSTEM = {
+  // Theme 1: Royal Red
+  royal_red: {
+    themeId: 'royal_red',
+    name: 'Royal Red',
+    backgroundColor: '#8B0000',
+    accentColors: ['#FFD700', '#FFC700', '#B8860B', '#CD853F'],
+    hasLord: true,
+    hasGantalu: true,
+    hasFire: true,
+    colors: {
+      primary: '#8B0000',
+      secondary: '#FFD700',
+      background: '#8B0000',
+      card: '#A52A2A',
+      text: '#FFF8DC',
+      accent: '#FFC700',
+      border: '#B8860B'
+    },
+    fonts: {
+      heading: "'Playfair Display', serif",
+      body: "'Lora', serif"
+    },
+    spacing: {
+      section: '3rem',
+      card: '1.5rem'
+    },
+    card: {
+      shadow: '0 4px 12px rgba(255, 215, 0, 0.3)',
+      border: '2px solid #FFD700',
+      radius: '12px'
+    },
+    image: {
+      border: '4px solid #FFD700',
+      radius: '8px'
+    }
+  },
+
+  // Theme 2: Temple Gold
+  temple_gold: {
+    themeId: 'temple_gold',
+    name: 'Temple Gold',
+    backgroundColor: '#DAA520',
+    accentColors: ['#800000', '#FF9933', '#D2691E', '#FFA500'],
+    hasLord: true,
+    hasGantalu: true,
+    hasFire: true,
+    colors: {
+      primary: '#800000',
+      secondary: '#FF9933',
+      background: '#DAA520',
+      card: '#F0E68C',
+      text: '#3E2723',
+      accent: '#D2691E',
+      border: '#FFA500'
+    },
+    fonts: {
+      heading: "'Cinzel', serif",
+      body: "'Libre Baskerville', serif"
+    },
+    spacing: {
+      section: '3rem',
+      card: '1.5rem'
+    },
+    card: {
+      shadow: '0 4px 12px rgba(128, 0, 0, 0.25)',
+      border: '2px solid #800000',
+      radius: '12px'
+    },
+    image: {
+      border: '4px solid #FF9933',
+      radius: '8px'
+    }
+  },
+
+  // Theme 3: Divine Yellow
+  divine_yellow: {
+    themeId: 'divine_yellow',
+    name: 'Divine Yellow',
+    backgroundColor: '#FFD700',
+    accentColors: ['#DC143C', '#FF4500', '#FF8C00', '#FFA500'],
+    hasLord: true,
+    hasGantalu: true,
+    hasFire: true,
+    colors: {
+      primary: '#DC143C',
+      secondary: '#FF4500',
+      background: '#FFD700',
+      card: '#FFF8DC',
+      text: '#8B0000',
+      accent: '#FF8C00',
+      border: '#FFA500'
+    },
+    fonts: {
+      heading: "'Merriweather', serif",
+      body: "'Noto Serif', serif"
+    },
+    spacing: {
+      section: '3rem',
+      card: '1.5rem'
+    },
+    card: {
+      shadow: '0 4px 12px rgba(220, 20, 60, 0.2)',
+      border: '2px solid #DC143C',
+      radius: '12px'
+    },
+    image: {
+      border: '4px solid #FF4500',
+      radius: '8px'
+    }
+  },
+
+  // Theme 4: Sacred Orange
+  sacred_orange: {
+    themeId: 'sacred_orange',
+    name: 'Sacred Orange',
+    backgroundColor: '#FF8C00',
+    accentColors: ['#800000', '#FFD700', '#8B0000', '#DAA520'],
+    hasLord: true,
+    hasGantalu: true,
+    hasFire: true,
+    colors: {
+      primary: '#800000',
+      secondary: '#FFD700',
+      background: '#FF8C00',
+      card: '#FFA500',
+      text: '#4A0E0E',
+      accent: '#8B0000',
+      border: '#DAA520'
+    },
+    fonts: {
+      heading: "'Cormorant Garamond', serif",
+      body: "'Crimson Text', serif"
+    },
+    spacing: {
+      section: '3rem',
+      card: '1.5rem'
+    },
+    card: {
+      shadow: '0 4px 12px rgba(128, 0, 0, 0.3)',
+      border: '2px solid #800000',
+      radius: '12px'
+    },
+    image: {
+      border: '4px solid #FFD700',
+      radius: '8px'
+    }
+  },
+
+  // Theme 5: Lotus Pink
+  lotus_pink: {
+    themeId: 'lotus_pink',
+    name: 'Lotus Pink',
+    backgroundColor: '#FFB6C1',
+    accentColors: ['#FFD700', '#FFFFFF', '#F0E68C', '#FAFAD2'],
+    hasLord: true,
+    hasGantalu: true,
+    hasFire: true,
+    colors: {
+      primary: '#FFB6C1',
+      secondary: '#FFD700',
+      background: '#FFB6C1',
+      card: '#FFE4E1',
+      text: '#4A2C2A',
+      accent: '#F0E68C',
+      border: '#FAFAD2'
+    },
+    fonts: {
+      heading: "'Quicksand', sans-serif",
+      body: "'Nunito', sans-serif"
+    },
+    spacing: {
+      section: '3rem',
+      card: '1.5rem'
+    },
+    card: {
+      shadow: '0 4px 12px rgba(255, 215, 0, 0.25)',
+      border: '2px solid #FFD700',
+      radius: '16px'
+    },
+    image: {
+      border: '4px solid #FFD700',
+      radius: '12px'
+    }
+  },
+
+  // Theme 6: Peacock Blue
+  peacock_blue: {
+    themeId: 'peacock_blue',
+    name: 'Peacock Blue',
+    backgroundColor: '#4169E1',
+    accentColors: ['#FFD700', '#20B2AA', '#4682B4', '#5F9EA0'],
+    hasLord: true,
+    hasGantalu: true,
+    hasFire: true,
+    colors: {
+      primary: '#4169E1',
+      secondary: '#FFD700',
+      background: '#4169E1',
+      card: '#6495ED',
+      text: '#F0F8FF',
+      accent: '#20B2AA',
+      border: '#4682B4'
+    },
+    fonts: {
+      heading: "'Spectral', serif",
+      body: "'Source Sans Pro', sans-serif"
+    },
+    spacing: {
+      section: '3rem',
+      card: '1.5rem'
+    },
+    card: {
+      shadow: '0 4px 12px rgba(255, 215, 0, 0.3)',
+      border: '2px solid #FFD700',
+      radius: '12px'
+    },
+    image: {
+      border: '4px solid #FFD700',
+      radius: '8px'
+    }
+  },
+
+  // Theme 7: Emerald Green
+  emerald_green: {
+    themeId: 'emerald_green',
+    name: 'Emerald Green',
+    backgroundColor: '#50C878',
+    accentColors: ['#FFD700', '#FFFACD', '#F5DEB3', '#D4AF37'],
+    hasLord: true,
+    hasGantalu: true,
+    hasFire: true,
+    colors: {
+      primary: '#50C878',
+      secondary: '#FFD700',
+      background: '#50C878',
+      card: '#90EE90',
+      text: '#1B4D3E',
+      accent: '#FFFACD',
+      border: '#F5DEB3'
+    },
+    fonts: {
+      heading: "'Josefin Sans', sans-serif",
+      body: "'Roboto', sans-serif"
+    },
+    spacing: {
+      section: '3rem',
+      card: '1.5rem'
+    },
+    card: {
+      shadow: '0 4px 12px rgba(255, 215, 0, 0.25)',
+      border: '2px solid #FFD700',
+      radius: '12px'
+    },
+    image: {
+      border: '4px solid #FFD700',
+      radius: '8px'
+    }
+  },
+
+  // Theme 8: Classic Ivory
+  classic_ivory: {
+    themeId: 'classic_ivory',
+    name: 'Classic Ivory',
+    backgroundColor: '#FFFFF0',
+    accentColors: ['#800000', '#FFD700', '#8B0000', '#B8860B'],
+    hasLord: true,
+    hasGantalu: true,
+    hasFire: true,
+    colors: {
+      primary: '#800000',
+      secondary: '#FFD700',
+      background: '#FFFFF0',
+      card: '#FAFAF0',
+      text: '#3E1F1F',
+      accent: '#8B0000',
+      border: '#B8860B'
+    },
+    fonts: {
+      heading: "'Playfair Display', serif",
+      body: "'Georgia', serif"
+    },
+    spacing: {
+      section: '3rem',
+      card: '1.5rem'
+    },
+    card: {
+      shadow: '0 4px 12px rgba(128, 0, 0, 0.2)',
+      border: '2px solid #800000',
+      radius: '12px'
+    },
+    image: {
+      border: '4px solid #FFD700',
+      radius: '8px'
+    }
+  }
+};
+
+
+// ============================================================================
+// UTILITY FUNCTIONS - Production-Ready Helper Functions
+// ============================================================================
+
+/**
+ * Get theme configuration by themeId
+ * @param {string} themeId - The unique identifier for the theme
+ * @returns {object} Theme configuration object
+ */
+export const getThemeById = (themeId) => {
+  return THEME_SYSTEM[themeId] || THEME_SYSTEM.royal_red;
+};
+
+/**
+ * Get all available theme IDs
+ * @returns {string[]} Array of all theme IDs
+ */
+export const getAllThemeIds = () => {
+  return Object.keys(THEME_SYSTEM);
+};
+
+/**
+ * Get all themes as an array
+ * @returns {object[]} Array of all theme objects
+ */
+export const getAllThemes = () => {
+  return Object.values(THEME_SYSTEM);
+};
+
+/**
+ * Check if a theme supports lord backgrounds
+ * @param {string} themeId - The theme identifier
+ * @returns {boolean} True if theme supports lord backgrounds
+ */
+export const themeSupportsLord = (themeId) => {
+  const theme = getThemeById(themeId);
+  return theme.hasLord;
+};
+
+/**
+ * Check if a theme supports gantalu (temple bells)
+ * @param {string} themeId - The theme identifier
+ * @returns {boolean} True if theme supports gantalu
+ */
+export const themeSupportsGantalu = (themeId) => {
+  const theme = getThemeById(themeId);
+  return theme.hasGantalu;
+};
+
+/**
+ * Check if a theme supports fire/lamp elements
+ * @param {string} themeId - The theme identifier
+ * @returns {boolean} True if theme supports fire elements
+ */
+export const themeSupportsFire = (themeId) => {
+  const theme = getThemeById(themeId);
+  return theme.hasFire;
+};
+
+/**
+ * Apply theme CSS variables to document root
+ * Enables dynamic theme switching without page reload
+ * @param {string} themeId - The theme identifier to apply
+ */
+export const applyTheme = (themeId) => {
+  const theme = getThemeById(themeId);
+  const root = document.documentElement;
+  
+  // Apply color variables
+  root.style.setProperty('--theme-primary', theme.colors.primary);
+  root.style.setProperty('--theme-secondary', theme.colors.secondary);
+  root.style.setProperty('--theme-background', theme.colors.background);
+  root.style.setProperty('--theme-card', theme.colors.card);
+  root.style.setProperty('--theme-text', theme.colors.text);
+  root.style.setProperty('--theme-accent', theme.colors.accent);
+  root.style.setProperty('--theme-border', theme.colors.border);
+  
+  // Apply accent colors (for gradients, highlights, etc.)
+  theme.accentColors.forEach((color, index) => {
+    root.style.setProperty(`--theme-accent-${index + 1}`, color);
+  });
+  
+  // Apply font variables
+  root.style.setProperty('--theme-font-heading', theme.fonts.heading);
+  root.style.setProperty('--theme-font-body', theme.fonts.body);
+  
+  // Apply spacing variables
+  root.style.setProperty('--theme-spacing-section', theme.spacing.section);
+  root.style.setProperty('--theme-spacing-card', theme.spacing.card);
+  
+  // Apply card styling variables
+  root.style.setProperty('--theme-card-shadow', theme.card.shadow);
+  root.style.setProperty('--theme-card-border', theme.card.border);
+  root.style.setProperty('--theme-card-radius', theme.card.radius);
+  
+  // Apply image styling variables
+  root.style.setProperty('--theme-image-border', theme.image.border);
+  root.style.setProperty('--theme-image-radius', theme.image.radius);
+  
+  // Store current theme ID in data attribute for conditional styling
+  root.setAttribute('data-theme-id', themeId);
+  
+  return theme;
+};
+
+/**
+ * Get theme features summary
+ * @param {string} themeId - The theme identifier
+ * @returns {object} Object with boolean flags for all theme features
+ */
+export const getThemeFeatures = (themeId) => {
+  const theme = getThemeById(themeId);
+  return {
+    hasLord: theme.hasLord,
+    hasGantalu: theme.hasGantalu,
+    hasFire: theme.hasFire
+  };
+};
+
+/**
+ * Filter themes by feature support
+ * @param {object} features - Object with feature flags (e.g., {hasLord: true})
+ * @returns {object[]} Array of themes matching the criteria
+ */
+export const filterThemesByFeatures = (features) => {
+  return getAllThemes().filter(theme => {
+    return Object.keys(features).every(feature => {
+      return theme[feature] === features[feature];
+    });
+  });
+};
+
+/**
+ * Get themes that support religious elements (lord, gantalu, fire)
+ * @returns {object[]} Array of traditional/religious themes
+ */
+export const getTraditionalThemes = () => {
+  return getAllThemes().filter(theme => 
+    theme.hasLord && (theme.hasGantalu || theme.hasFire)
+  );
+};
+
+/**
+ * Get themes that are modern/minimal (no religious elements)
+ * @returns {object[]} Array of modern themes
+ */
+export const getModernThemes = () => {
+  return getAllThemes().filter(theme => 
+    !theme.hasLord && !theme.hasGantalu && !theme.hasFire
+  );
+};
+
+/**
+ * Validate if a themeId exists in the system
+ * @param {string} themeId - The theme identifier to validate
+ * @returns {boolean} True if theme exists
+ */
+export const isValidThemeId = (themeId) => {
+  return themeId in THEME_SYSTEM;
+};
+
+/**
+ * Get accent color by index
+ * @param {string} themeId - The theme identifier
+ * @param {number} index - Index of accent color (0-based)
+ * @returns {string} Hex color code
+ */
+export const getAccentColor = (themeId, index = 0) => {
+  const theme = getThemeById(themeId);
+  return theme.accentColors[index] || theme.accentColors[0];
+};
+
+/**
+ * Get theme background color
+ * @param {string} themeId - The theme identifier
+ * @returns {string} Background color or gradient
+ */
+export const getThemeBackground = (themeId) => {
+  const theme = getThemeById(themeId);
+  return theme.backgroundColor;
+};
+
+/**
+ * Get theme name for display
+ * @param {string} themeId - The theme identifier
+ * @returns {string} Human-readable theme name
+ */
+export const getThemeName = (themeId) => {
+  const theme = getThemeById(themeId);
+  return theme.name;
+};
+
+
+// ============================================================================
+// THEME METADATA - For Admin UI and Documentation
+// ============================================================================
+
+export const THEME_METADATA = {
+  version: '2.0.0',
+  totalThemes: Object.keys(THEME_SYSTEM).length,
+  categories: {
+    traditional: ['royal_red', 'temple_gold', 'divine_yellow', 'sacred_orange', 'classic_ivory'],
+    romantic: ['lotus_pink'],
+    vibrant: ['peacock_blue', 'emerald_green']
+  },
+  defaultTheme: 'royal_red'
+};
+
+/**
+ * Get theme category
+ * @param {string} themeId - The theme identifier
+ * @returns {string} Category name or 'uncategorized'
+ */
+export const getThemeCategory = (themeId) => {
+  for (const [category, themes] of Object.entries(THEME_METADATA.categories)) {
+    if (themes.includes(themeId)) {
+      return category;
+    }
+  }
+  return 'uncategorized';
+};
+
+/**
+ * Get themes by category
+ * @param {string} category - Category name (traditional, modern, romantic, luxury)
+ * @returns {object[]} Array of themes in the category
+ */
+export const getThemesByCategory = (category) => {
+  const themeIds = THEME_METADATA.categories[category] || [];
+  return themeIds.map(id => getThemeById(id));
+};
+
+
+// Export default for convenient importing
+export default {
+  THEME_SYSTEM,
+  THEME_METADATA,
+  getThemeById,
+  getAllThemeIds,
+  getAllThemes,
+  themeSupportsLord,
+  themeSupportsGantalu,
+  themeSupportsFire,
+  applyTheme,
+  getThemeFeatures,
+  filterThemesByFeatures,
+  getTraditionalThemes,
+  getModernThemes,
+  isValidThemeId,
+  getAccentColor,
+  getThemeBackground,
+  getThemeName,
+  getThemeCategory,
+  getThemesByCategory
+};
+===== frontend/src/config/themes.js =====
+// Design themes configuration
+export const themes = {
+  temple_divine: {
+    name: 'Temple Divine',
+    colors: {
+      primary: '#8B7355',
+      secondary: '#D4AF37',
+      background: '#FFF8E7',
+      card: '#FFFDF7',
+      text: '#4A3728',
+      accent: '#C9A961'
+    },
+    fonts: {
+      heading: "'Cinzel', serif",
+      body: "'Lora', serif"
+    },
+    spacing: {
+      section: '3rem',
+      card: '1.5rem'
+    },
+    card: {
+      shadow: '0 4px 12px rgba(139, 115, 85, 0.15)',
+      border: '1px solid #E8D9C5',
+      radius: '12px'
+    },
+    image: {
+      border: '4px solid #D4AF37',
+      radius: '8px'
+    }
+  },
+  
+  royal_classic: {
+    name: 'Royal Classic',
+    colors: {
+      primary: '#8B0000',
+      secondary: '#FFD700',
+      background: '#FFF5E6',
+      card: '#FFFEFA',
+      text: '#4A1A1A',
+      accent: '#B8860B'
+    },
+    fonts: {
+      heading: "'Playfair Display', serif",
+      body: "'Libre Baskerville', serif"
+    },
+    spacing: {
+      section: '3.5rem',
+      card: '2rem'
+    },
+    card: {
+      shadow: '0 6px 16px rgba(139, 0, 0, 0.2)',
+      border: '2px solid #FFD700',
+      radius: '16px'
+    },
+    image: {
+      border: '6px solid #8B0000',
+      radius: '12px'
+    }
+  },
+  
+  floral_soft: {
+    name: 'Floral Soft',
+    colors: {
+      primary: '#FFB6C1',
+      secondary: '#FFDAB9',
+      background: '#FFF0F5',
+      card: '#FFFFFF',
+      text: '#6B4E71',
+      accent: '#E6A8D7'
+    },
+    fonts: {
+      heading: "'Quicksand', sans-serif",
+      body: "'Nunito', sans-serif"
+    },
+    spacing: {
+      section: '2.5rem',
+      card: '1.5rem'
+    },
+    card: {
+      shadow: '0 4px 12px rgba(255, 182, 193, 0.25)',
+      border: '1px solid #FFE4E1',
+      radius: '20px'
+    },
+    image: {
+      border: '3px solid #FFB6C1',
+      radius: '16px'
+    }
+  },
+  
+  cinematic_luxury: {
+    name: 'Cinematic Luxury',
+    colors: {
+      primary: '#1A1A1A',
+      secondary: '#D4AF37',
+      background: 'linear-gradient(135deg, #2C2C2C 0%, #1A1A1A 100%)',
+      card: '#2A2A2A',
+      text: '#F5F5F5',
+      accent: '#C9A961'
+    },
+    fonts: {
+      heading: "'Cormorant Garamond', serif",
+      body: "'Montserrat', sans-serif"
+    },
+    spacing: {
+      section: '4rem',
+      card: '2rem'
+    },
+    card: {
+      shadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
+      border: '1px solid #D4AF37',
+      radius: '8px'
+    },
+    image: {
+      border: '2px solid #D4AF37',
+      radius: '4px'
+    }
+  },
+  
+  heritage_scroll: {
+    name: 'Heritage Scroll',
+    colors: {
+      primary: '#8B4513',
+      secondary: '#D2691E',
+      background: '#F5E6D3',
+      card: '#FAF0E6',
+      text: '#3E2723',
+      accent: '#A0522D'
+    },
+    fonts: {
+      heading: "'UnifrakturMaguntia', cursive",
+      body: "'Merriweather', serif"
+    },
+    spacing: {
+      section: '3rem',
+      card: '1.5rem'
+    },
+    card: {
+      shadow: '0 4px 12px rgba(139, 69, 19, 0.2)',
+      border: '2px solid #8B4513',
+      radius: '4px'
+    },
+    image: {
+      border: '4px double #8B4513',
+      radius: '0px'
+    }
+  },
+  
+  minimal_elegant: {
+    name: 'Minimal Elegant',
+    colors: {
+      primary: '#000000',
+      secondary: '#808080',
+      background: '#FFFFFF',
+      card: '#FAFAFA',
+      text: '#1A1A1A',
+      accent: '#606060'
+    },
+    fonts: {
+      heading: "'Raleway', sans-serif",
+      body: "'Inter', sans-serif"
+    },
+    spacing: {
+      section: '4rem',
+      card: '2rem'
+    },
+    card: {
+      shadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+      border: '1px solid #E0E0E0',
+      radius: '4px'
+    },
+    image: {
+      border: '1px solid #CCCCCC',
+      radius: '2px'
+    }
+  },
+  
+  modern_premium: {
+    name: 'Modern Premium',
+    colors: {
+      primary: '#2C3E50',
+      secondary: '#16A085',
+      background: '#ECF0F1',
+      card: '#FFFFFF',
+      text: '#2C3E50',
+      accent: '#D4AF37'
+    },
+    fonts: {
+      heading: "'Poppins', sans-serif",
+      body: "'Open Sans', sans-serif"
+    },
+    spacing: {
+      section: '3.5rem',
+      card: '2rem'
+    },
+    card: {
+      shadow: '0 4px 16px rgba(44, 62, 80, 0.15)',
+      border: 'none',
+      radius: '12px'
+    },
+    image: {
+      border: 'none',
+      radius: '8px'
+    }
+  },
+  
+  artistic_handcrafted: {
+    name: 'Artistic Handcrafted',
+    colors: {
+      primary: '#8B7D6B',
+      secondary: '#C19A6B',
+      background: '#FAF8F3',
+      card: '#FFFFFF',
+      text: '#4A4A4A',
+      accent: '#B8A78F'
+    },
+    fonts: {
+      heading: "'Indie Flower', cursive",
+      body: "'Architects Daughter', cursive"
+    },
+    spacing: {
+      section: '2.5rem',
+      card: '1.5rem'
+    },
+    card: {
+      shadow: '0 4px 12px rgba(139, 125, 107, 0.15)',
+      border: '1px solid #E8DED0',
+      radius: '24px'
+    },
+    image: {
+      border: '3px solid #C19A6B',
+      radius: '20px'
+    }
+  }
+};
+
+// Helper function to get theme
+export const getTheme = (designId) => {
+  return themes[designId] || themes.temple_divine;
+};
+
+// Helper function to apply theme CSS variables
+export const applyThemeVariables = (theme) => {
+  const root = document.documentElement;
+  
+  root.style.setProperty('--color-primary', theme.colors.primary);
+  root.style.setProperty('--color-secondary', theme.colors.secondary);
+  root.style.setProperty('--color-background', theme.colors.background);
+  root.style.setProperty('--color-card', theme.colors.card);
+  root.style.setProperty('--color-text', theme.colors.text);
+  root.style.setProperty('--color-accent', theme.colors.accent);
+  
+  root.style.setProperty('--font-heading', theme.fonts.heading);
+  root.style.setProperty('--font-body', theme.fonts.body);
+  
+  root.style.setProperty('--spacing-section', theme.spacing.section);
+  root.style.setProperty('--spacing-card', theme.spacing.card);
+  
+  root.style.setProperty('--card-shadow', theme.card.shadow);
+  root.style.setProperty('--card-border', theme.card.border);
+  root.style.setProperty('--card-radius', theme.card.radius);
+  
+  root.style.setProperty('--image-border', theme.image.border);
+  root.style.setProperty('--image-radius', theme.image.radius);
+};
+===== frontend/src/constants/testIds/auth.js =====
+// Test IDs for the auth feature (login, register, password reset, logout).
+// Add new keys here as you wire up additional auth UI; see ./index.js for
+// the recipe to add a new feature file.
+//
+// Directive:
+//   - Keys are camelCase, values are kebab-case shaped as `<feature>-<element>`
+//     (or `<feature>-<element>-<qualifier>` when an element repeats). Examples:
+//     'login-submit-button', 'cart-quantity-input', 'product-card-image'.
+//   - Reference them in JSX as `data-testid={LOGIN.submitButton}`.
+//
+// Why kebab-case values: required by qabot's CSS-attribute selector matcher
+// and the lint rule `emergent(kebab-case-testid)`.
+
+export const LOGIN = {
+	emailInput: 'login-email-input',
+	passwordInput: 'login-password-input',
+	submitButton: 'login-submit-button',
+	forgotPasswordLink: 'login-forgot-password-link',
+	registerLink: 'login-register-link',
+};
+
+export const REGISTER = {
+	nameInput: 'register-name-input',
+	emailInput: 'register-email-input',
+	passwordInput: 'register-password-input',
+	passwordConfirmInput: 'register-password-confirm-input',
+	submitButton: 'register-submit-button',
+	loginLink: 'register-login-link',
+};
+
+export const LOGOUT = {
+	button: 'logout-button',
+};
+===== frontend/src/constants/testIds/home.js =====
+// Test IDs for the home / landing feature. Naming follows the directive
+// in ./auth.js (keys camelCase, values kebab-case `<feature>-<element>`).
+
+export const HOME = {
+	emergentLink: 'home-emergent-link',
+};
+===== frontend/src/constants/testIds/index.js =====
+// constants/testIds/ — central registry of data-testid values used by the
+// end-to-end testing agent (qabot) to locate and interact with UI elements
+// during automated tests. UI without testids cannot be automatically verified.
+//
+// Structure: each feature lives in its own file (auth.js, cart.js, ...) and
+// is re-exported from here, so consumers can do a single import like
+// `import { LOGIN, CART } from '@/constants/testIds'` (or relative).
+//
+// Adding a new feature:
+//   1. Create constants/testIds/<feature>.js
+//   2. Export named objects (e.g. `export const PROFILE = { ... }`)
+//   3. Re-export here: `export * from './<feature>';`
+
+export * from './auth';
+export * from './home';
+===== frontend/src/data/helpTourSteps.js =====
+/**
+ * Step definitions for the floating "How to create your wedding link" tour.
+ *
+ * Two presets:
+ *   - HOMEPAGE_USER_STEPS — for couples landing on the public site (`/`)
+ *   - PHOTOGRAPHER_STEPS  — for photographers inside the admin dashboard
+ *
+ * `target` is a CSS selector resolved at runtime. When a step has no
+ * target (or the element isn't found) the card centers on screen and the
+ * spotlight is suppressed.
+ */
+
+export const HOMEPAGE_USER_STEPS = [
+  {
+    title: 'Pick a theme',
+    body: 'Start by scrolling to the 10 cinematic themes below. Each is a complete look — palette, fonts, animations — built for one Indian wedding culture.',
+    target: '[data-testid="themes-grid"]',
+    badge: 'Browse',
+  },
+  {
+    title: 'Buy your theme',
+    body: 'Tap "Buy theme" on the card you love. Themes are paid in credits — top up later from your wallet.',
+    target: '[data-testid^="theme-buy-btn-"]',
+    badge: 'Purchase',
+  },
+  {
+    title: 'Choose an event',
+    body: 'After purchase you\'ll pick which event this link is for — Marriage, Reception, Engagement and more. One link per event.',
+    badge: 'Event',
+  },
+  {
+    title: 'Choose your favourite design',
+    body: 'Every theme ships with 3 photo-designs per event. Click any design card to open the full rich preview with photos, story, RSVP and more.',
+    badge: 'Design',
+  },
+  {
+    title: 'Fill in your details',
+    body: 'Add your names, dates, venue, photos and event info. Drafts are free — credits are only spent when you publish.',
+    badge: 'Edit',
+  },
+  {
+    title: 'Pick a link expiry',
+    body: 'Decide how long the public link stays alive — 6 months, 1 year, even lifetime. Each tier costs different credits.',
+    badge: 'Expiry',
+  },
+  {
+    title: 'Publish & share',
+    body: 'One tap to publish. Share the link on WhatsApp, Instagram and SMS. Guests can RSVP, send shagun, request songs and check-in.',
+    badge: 'Live',
+  },
+];
+
+export const PHOTOGRAPHER_STEPS = [
+  {
+    title: 'Step 1 — Top up your credits',
+    body: 'Click the "Credits" pill at the top-right to buy a pack. Drafts cost nothing — credits are only spent when you publish a paid link. As you climb the loyalty ladder (Pro / Elite / Partner) packs auto-discount and you earn bonus credits.',
+    target: '[data-testid="dashboard-credits-pill"]',
+    badge: '1 · Wallet',
+  },
+  {
+    title: 'Step 2 — Create a new wedding',
+    body: 'Click "Create Wedding" to open the luxury wizard. Don\'t worry — nothing is charged until you publish.',
+    target: '[data-testid="dashboard-create-wedding"]',
+    badge: '2 · Create',
+  },
+  {
+    title: 'Step 3 — Pick the ceremony',
+    body: 'Inside the wizard the first card is "Event" — pick Marriage, Reception, Sangeet, Haldi, Mehendi or Engagement. Each event tunes the photo slots and design defaults.',
+    badge: '3 · Event',
+  },
+  {
+    title: 'Step 4 — Fill couple details + photos',
+    body: 'Add the bride/groom names, wedding date, venue and upload couple/bride/groom photos. The green ✓ next to each photo slot means it will appear on the public invitation.',
+    badge: '4 · Couple',
+  },
+  {
+    title: 'Step 5 — Choose theme & design',
+    body: 'Open the "Theme" step. You\'ll first see all 10 cultural themes — pick one, then 3 designs unlock for that theme. Click "Preview" to open the full invitation in a NEW TAB (your draft stays safe).',
+    badge: '5 · Theme',
+  },
+  {
+    title: 'Step 6 — Tune the features',
+    body: 'Toggle premium add-ons (RSVP, gallery, AI story, multi-language). Every toggle updates the live credit total at the bottom of the Publish step in real-time.',
+    badge: '6 · Features',
+  },
+  {
+    title: 'Step 7 — Publish & share',
+    body: 'On the Publish step you\'ll see the auto-calculated total ("Publish Now · 7 credits"). Tap it — credits deduct atomically, your paid-links count goes up, and a public share link is generated. Copy and send it to your couple.',
+    target: '[data-testid="publish-btn"]',
+    badge: '7 · Publish',
+  },
+];
